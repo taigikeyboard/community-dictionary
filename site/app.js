@@ -3,11 +3,13 @@ import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
 import { checkBatch, duplicateStatus, findExisting, indexItaigi, MAX_WORDS, searchItaigi } from './logic.js';
 
-// The site is one page: a search box (community entries and iTaigi) above the submission form,
-// whose word rows show the community entries already collected.
+// Two pages: search (community entries and iTaigi) and the submission form, whose word rows show
+// the community entries already collected.
 
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
+const SITE_TITLE = '台語齒盤社群辭典';
+const SUBMIT_ROUTE = '#/submit';
 
 // Builds an element; children are nodes or strings (always text, never parsed as HTML).
 function h(tag, attrs = {}, ...children) {
@@ -62,17 +64,7 @@ function existingItem({ row, exact }) {
   );
 }
 
-// iTaigi results sit under their own heading naming the source and its licence (CC0).
-function itaigiHeading() {
-  return h(
-    'li',
-    { class: 'results-source' },
-    h('a', { href: 'https://itaigi.tw/', target: '_blank', rel: 'noopener' }, 'iTaigi 華台對照典'),
-    ' · ',
-    h('a', { href: 'https://creativecommons.org/publicdomain/zero/1.0/', target: '_blank', rel: 'noopener' }, 'CC0'),
-  );
-}
-
+// iTaigi rows (CC0, no attribution required) follow the community entries without a heading.
 function itaigiItem(row) {
   return h(
     'li',
@@ -107,10 +99,7 @@ function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
     panel.hidden = found.length === 0 && foundItaigi.length === 0;
     if (panel.hidden) return;
     if (panel.parentElement !== active.anchor) active.anchor.append(panel);
-    results.replaceChildren(
-      ...found.map(existingItem),
-      ...(foundItaigi.length > 0 ? [itaigiHeading(), ...foundItaigi.map(itaigiItem)] : []),
-    );
+    results.replaceChildren(...found.map(existingItem), ...foundItaigi.map(itaigiItem));
   };
   const load = () => {
     if (!rows) {
@@ -363,8 +352,33 @@ function renderSubmit() {
     // Phase 2: sign in through the Worker and POST the entries to its /submit endpoint.
   });
 
-  view.replaceChildren(hero('台語齒盤社群辭典'), searchBox(), form);
+  document.title = `提交一个詞 · ${SITE_TITLE}`;
+  view.replaceChildren(h('a', { class: 'back-link', href: '#/' }, icon('back'), '揣詞'), hero('提交一个詞'), form);
   sync();
 }
 
-renderSubmit();
+function renderSearch() {
+  document.title = SITE_TITLE;
+  view.replaceChildren(
+    hero(SITE_TITLE),
+    searchBox(),
+    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: SUBMIT_ROUTE }, '提交一个詞', icon('chevron'))),
+  );
+}
+
+// Two pages on hash routes: search at #/ (and any unknown hash), the submission form at #/submit.
+function route() {
+  if (location.hash === SUBMIT_ROUTE) renderSubmit();
+  else renderSearch();
+}
+
+// The focused link is replaced along with the page, so focus moves to the new heading instead of
+// falling back to <body>, keeping keyboard and screen-reader users in place.
+window.addEventListener('hashchange', () => {
+  route();
+  window.scrollTo(0, 0);
+  const heading = view.querySelector('h1');
+  heading.setAttribute('tabindex', '-1');
+  heading.focus({ preventScroll: true });
+});
+route();

@@ -61,6 +61,7 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 /* --- page head --- */
 .hero { padding: 0 0 2.5rem; text-align: center; }
 .hero h1 { margin: 0; font-size: 3.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.hero h1:focus { outline: none; }
 .hero p { max-width: 30rem; margin: 1rem auto 0; color: var(--secondary); font-size: 1.375rem; line-height: 1.45; }
 
 /* --- white panel --- */
@@ -77,17 +78,20 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .result-tl { color: var(--secondary); font-size: 0.9375rem; overflow-wrap: anywhere; }
 .meta { margin-left: auto; color: var(--secondary); font-size: 0.8125rem; }
 .exact .result-hanji { color: var(--accent); }
-.results .results-source { margin-top: 0.25rem; padding: 0.75rem 0.75rem 0.25rem; color: var(--secondary); font-size: 0.8125rem; }
-.results .results-source:first-child { margin-top: 0; padding-top: 0.25rem; }
-.results .results-source:hover { background: none; }
-.results-source a { color: inherit; }
-
 /* --- search: same shape as the form fields, icon on the left, popover below --- */
 .search { position: relative; margin-bottom: 1.25rem; }
 .search > .icon { position: absolute; left: 1rem; top: 24px; font-size: 1.125rem; color: var(--secondary); transform: translateY(-50%); pointer-events: none; }
 .search input[type="search"] { padding-left: 2.75rem; background: var(--card); }
 .search input::-webkit-search-cancel-button { display: none; }
 .search > .matches { right: 0; }
+
+/* --- links between the two pages --- */
+.cta { margin: 0; text-align: center; }
+.text-link { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.5rem; font-size: 1.25rem; }
+.text-link:hover, .back-link:hover { text-decoration: none; opacity: 0.8; }
+.text-link .icon { font-size: 1.125rem; }
+.back-link { display: inline-flex; align-items: center; gap: 0.125rem; margin-bottom: 1rem; font-size: 1.0625rem; }
+.back-link .icon { font-size: 1.125rem; }
 
 /* --- form --- */
 input[type="text"], input[type="search"], textarea {
