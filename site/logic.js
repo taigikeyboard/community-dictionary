@@ -33,15 +33,16 @@ export function searchRows(rows, query, limit = 50) {
 // "/" joins variant readings in iTaigi; folding it to a syllable break lets each variant match.
 const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 
-// itaigi.json rows [hanji, tl, poj, tps, [tag index]] → search index; folding runs once here, not
+// itaigi.json rows [hanji, tl, poj, tps, [tag index], [contributor]] → search index; folding runs once here, not
 // per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the whole tl.
 export function indexItaigi(rows) {
-  return rows.map(([hanji, tl, poj, tps, tags]) => ({
+  return rows.map(([hanji, tl, poj, tps, tags, contributors = []]) => ({
     hanji,
     tl,
     poj,
     tps,
     tags,
+    contributors,
     variants: tl.split('/').map(foldReading),
     folded: foldReading(tl),
   }));

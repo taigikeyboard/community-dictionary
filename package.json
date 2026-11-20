@@ -10,7 +10,6 @@
     "validate": "node scripts/validate.js",
     "compile": "node scripts/compile.js",
     "build": "node scripts/build-site.js",
-    "fetch-itaigi": "node scripts/fetch-itaigi.js",
-    "preview": "node scripts/build-site.js && node scripts/fetch-itaigi.js && python3 -m http.server 8000 --bind 127.0.0.1 -d dist"
+    "preview": "node scripts/build-site.js && python3 -m http.server 8000 --bind 127.0.0.1 -d dist"
   }
 }

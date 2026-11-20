@@ -412,8 +412,9 @@ function renderSearch() {
 const unique = (values) => [...new Set(values.filter((v) => v !== ''))];
 
 // One word card. Community rows merge their attestations (accents, meaning, example, note,
-// contributors); iTaigi rows have readings and tags only. With `headword` the card leads with the
-// word, linked to its own page (tag pages); a word page already names it in the heading.
+// contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
+// the card leads with the word, linked to its own page (tag pages); a word page already names it
+// in the heading.
 function wordCard(row, { headword }) {
   const attestations = row.attestations ?? [];
   const pick = (field) => unique(attestations.map((a) => a[field]));
@@ -424,7 +425,7 @@ function wordCard(row, { headword }) {
     ['意思', pick('meaning').join('\n')],
     ['例句', pick('example').join('\n')],
     ['說明', pick('note').join('\n')],
-    ['投稿', pick('contributor').join('、')],
+    ['投稿', (attestations.length > 0 ? pick('contributor') : (row.contributors ?? [])).join('、')],
   ].filter(([, value]) => value !== '');
   return h(
     'article',

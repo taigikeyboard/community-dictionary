@@ -6,15 +6,18 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { TAG_NAMES, TAGS } from '../site/tags.js';
-import { ITAIGI_URL, parseItaigi } from './fetch-itaigi.js';
+import { ITAIGI_URL, MIN_ROWS, parseItaigi } from './itaigi.js';
 
-// One-off, run by the maintainer: tags every iTaigi (Hanji, Tâi-lô) pair and writes
-// data/itaigi-tags.json, which fetch-itaigi.js joins on every deploy. A pair the 教典 also
-// lists takes the tags of its 教典 categories; the rest are classified by Claude through the
-// `claude` CLI in batches. Answers are cached per word, so an interrupted run resumes where it
-// stopped and a rerun after upstream changes asks only about new words.
+// One-off, run by the maintainer: downloads itaigi.tw's export, tags every (Hanji, Tâi-lô) pair
+// and writes the committed snapshot data/itaigi.json [[hanji, tl, [tag name], [contributor]]] in
+// export order (contributors as iTaigi lists them, 匿名 for anonymous answers),
+// which build-site turns into the site's search data. iTaigi no longer changes, so this runs only
+// when the tags or the cleaning rules change. A pair the 教典 also lists takes the tags of its
+// 教典 categories; the rest are classified by Claude through the `claude` CLI in batches from
+// Hanji, Tâi-lô and the Mandarin gloss (which the snapshot leaves out). Answers are cached per
+// word, so an interrupted run resumes where it stopped.
 //
-// usage: node scripts/classify-itaigi.js [--cache <dir>] [--model sonnet] [--jobs 4]
+// usage: node scripts/import-itaigi.js [--cache <dir>] [--model sonnet] [--jobs 4]
 
 const KAUTIAN_SHARD_URL = (n) => `https://taigikeyboard.tw/kautian-mirror/data/entries/${n}.json`;
 const KAUTIAN_SHARDS = 61;
@@ -68,7 +71,7 @@ export const foldTl = (tl) =>
 
 async function fetchJson(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`classify-itaigi: ${url} → HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`import-itaigi: ${url} → HTTP ${res.status}`);
   return res.json();
 }
 
@@ -143,7 +146,7 @@ async function main() {
   const cacheDir = option('cache', join(root, '.classify-cache'));
   const model = option('model', 'sonnet');
   const jobs = Number(option('jobs', '4'));
-  if (!Number.isInteger(jobs) || jobs < 1) throw new Error(`classify-itaigi: --jobs must be a whole number ≥ 1, got "${option('jobs', '4')}"`);
+  if (!Number.isInteger(jobs) || jobs < 1) throw new Error(`import-itaigi: --jobs must be a whole number ≥ 1, got "${option('jobs', '4')}"`);
 
   // One cache file per model and tag list: answers given for other tag scopes or another model
   // are never reused. Inside it, one answer per word, so upstream rows added or removed only send
@@ -157,11 +160,14 @@ async function main() {
   } catch {}
 
   const res = await fetch(ITAIGI_URL);
-  if (!res.ok) throw new Error(`classify-itaigi: ${ITAIGI_URL} → HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`import-itaigi: ${ITAIGI_URL} → HTTP ${res.status}`);
+  const parsed = parseItaigi(await res.text());
+  if (parsed.length < MIN_ROWS) throw new Error(`import-itaigi: only ${parsed.length} rows (expected ≥ ${MIN_ROWS}); check ${ITAIGI_URL}`);
   const words = new Map();
-  for (const [hanji, tl, meaning] of parseItaigi(await res.text())) {
-    const word = words.get(pairKey(hanji, tl)) ?? { hanji, tl, meanings: [] };
+  for (const [hanji, tl, meaning, contributor] of parsed) {
+    const word = words.get(pairKey(hanji, tl)) ?? { hanji, tl, meanings: [], contributors: [] };
     if (meaning && !word.meanings.includes(meaning)) word.meanings.push(meaning);
+    if (contributor && !word.contributors.includes(contributor)) word.contributors.push(contributor);
     words.set(pairKey(hanji, tl), word);
   }
 
@@ -174,7 +180,7 @@ async function main() {
     else if (cache[key]) tags.set(key, cache[key]);
     else rest.push(word);
   }
-  console.log(`classify-itaigi: ${words.size} pairs, ${tags.size} from 教典 or cache, ${rest.length} for Claude (${model})`);
+  console.log(`import-itaigi: ${words.size} pairs, ${tags.size} from 教典 or cache, ${rest.length} for Claude (${model})`);
 
   const batches = [];
   for (let i = 0; i < rest.length; i += BATCH_SIZE) batches.push(rest.slice(i, i + BATCH_SIZE));
@@ -194,24 +200,25 @@ async function main() {
         // saves run one after another, so two finishing batches never interleave their writes
         saving = saving.then(() => writeFile(cacheFile, JSON.stringify(cache)));
         await saving;
-        console.log(`classify-itaigi: batch ${n + 1}/${batches.length} done`);
+        console.log(`import-itaigi: batch ${n + 1}/${batches.length} done`);
       } catch (err) {
         failed++;
-        console.error(`classify-itaigi: batch ${n + 1}/${batches.length} failed (${err.message.split('\n')[0]})`);
+        console.error(`import-itaigi: batch ${n + 1}/${batches.length} failed (${err.message.split('\n')[0]})`);
       }
     }
   };
   await Promise.all(Array.from({ length: jobs }, worker));
 
   if (failed > 0) {
-    console.error(`classify-itaigi: ${failed} batches failed; data/itaigi-tags.json left as it was. Rerun: answers so far are cached.`);
+    console.error(`import-itaigi: ${failed} batches failed; data/itaigi.json left as it was. Rerun: answers so far are cached.`);
     process.exitCode = 1;
     return;
   }
-  const sorted = Object.fromEntries([...tags].filter(([, t]) => t.length > 0).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  // one pair per line, so a rerun's diff shows which words or tags changed
+  const snapshot = [...words.values()].map((w) => JSON.stringify([w.hanji, w.tl, tags.get(pairKey(w.hanji, w.tl)) ?? [], w.contributors]));
   await mkdir(join(root, 'data'), { recursive: true });
-  await writeFile(join(root, 'data', 'itaigi-tags.json'), `${JSON.stringify(sorted).replaceAll('],"', '],\n"')}\n`);
-  console.log(`classify-itaigi: ${Object.keys(sorted).length} tagged pairs → data/itaigi-tags.json`);
+  await writeFile(join(root, 'data', 'itaigi.json'), `[\n${snapshot.join(',\n')}\n]\n`);
+  console.log(`import-itaigi: ${snapshot.length} pairs → data/itaigi.json`);
 }
 
 if (import.meta.main) await main();

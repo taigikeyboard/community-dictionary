@@ -1,6 +1,6 @@
 // Semantic tags shown under the search box, in display order. Every name is a headword of the
 // Ministry of Education dictionary (教典), with its Tâi-lô reading; `scope` tells the build-time
-// classifier (scripts/classify-itaigi.js) what belongs under the tag and is never shown.
+// classifier (scripts/import-itaigi.js) what belongs under the tag and is never shown.
 
 export const TAGS = Object.freeze([
   { name: '身軀', tl: 'sin-khu', scope: 'body parts, the body, physical appearance' },
