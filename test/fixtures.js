@@ -7,6 +7,7 @@ export const accentEntry = () => ({
   hanji: '八',
   tl: 'pueh',
   category: 'khiunn-khau',
+  variation_types: ['gi-im'],
   accents: ['鹿港偏泉腔'],
   place: '',
   meaning: '',

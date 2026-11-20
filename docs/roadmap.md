@@ -26,6 +26,7 @@ Maintainer decisions, 2026-11-20 unless dated otherwise:
 | D9 | One JSON file per entry, in one directory per contributor (about 30 contributors expected). |
 | D10 | Entry identity = (Hanji, Tâi-lô); the category is a field. Different contributors may each submit the same pair — the second is an attestation, not a duplicate. The same contributor cannot submit a pair twice. |
 | D11 | A contributor can edit and withdraw their own entries, in the first version. Both go through a pull request and review like a new entry. |
+| D12 | 腔口差 entries carry a multiple-choice kind, after the Ministry of Education dictionary's 方言差 appendix: 語音差異, 詞彙差異, and 其他 for a difference the contributor cannot classify (2026-11-20). |
 
 Defaults chosen by the plan (not yet confirmed by the maintainer):
 
@@ -67,6 +68,7 @@ One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contribu
   "hanji": "八",
   "tl": "pueh",
   "category": "khiunn-khau",
+  "variation_types": ["gi-im"],
   "accents": ["鹿港偏泉腔"],
   "place": "",
   "meaning": "",
@@ -83,6 +85,7 @@ Ownership is `contributor_id`, never the directory name: a contributor who renam
 | Field | Categories | Notes |
 |---|---|---|
 | `hanji`, `tl`, `category`, `note` | all | `note` is the contributor's explanation |
+| `variation_types` | 腔口差 | multiple choice, after the Ministry of Education dictionary's 方言差 appendix (語音差異表 / 詞彙比較表): `gi-im` 語音差異 (same word, different reading), `su-lui` 詞彙差異 (different word for the same meaning), or `ki-thann` 其他 when the contributor cannot classify it (其他 stands alone) |
 | `accents`, `place` | 腔口差 | the ten accents used by the Ministry of Education dictionary, or 其他 with a place name |
 | `meaning`, `source` | 台語新詞 | Mandarin or English equivalent; where the word was seen, or an example sentence |
 
@@ -138,7 +141,7 @@ Built (2026-11-20). Implementation choices the roadmap did not fix (defaults, op
 | Choice | Value |
 |---|---|
 | Category slugs | `khiunn-khau` 腔口差, `sin-su` 台語新詞, `poo-tshiong` 一般詞目補充, `ki-thann` 其他 |
-| Required fields | `hanji`, `tl`, `category` always; `accents` (≥ 1) for `khiunn-khau`; `place` when `accents` contains 其他; `meaning` for `sin-su`. `note` and `source` optional. Fields of another category must be empty. |
+| Required fields | `hanji`, `tl`, `category` always; `variation_types` (≥ 1) and `accents` (≥ 1) for `khiunn-khau`; `place` when `accents` contains 其他; `meaning` for `sin-su`. `note` and `source` optional. Fields of another category must be empty. |
 | Stored text | NFC, LF line endings, trimmed; no control, format or line-separator characters except ZWJ. Hanji allows Han ideographs (not radicals), letters with tone marks, hyphens. The site and the Worker take form input through `prepareEntry` (clean, then validate); CI runs the strict `validateEntry`, which rejects unclean files. |
 | Stored `tl` | Keeps the contributor's case and spaces; only the key normalizes it. |
 | File format | `serializeEntry`: fixed field order, two-space indent, final newline. CI rejects any other formatting. |

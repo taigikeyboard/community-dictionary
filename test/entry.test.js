@@ -39,9 +39,9 @@ test('normalizeTl keeps the double hyphen of the neutral tone', () => {
 test('valid entries per category', () => {
   assert.deepEqual(validateEntry(accentEntry()), []);
   assert.deepEqual(errorsFor({ accents: ['其他'], place: '澎湖白沙' }), []);
-  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], meaning: '手機', source: '新聞' }), []);
-  assert.deepEqual(errorsFor({ category: 'poo-tshiong', accents: [], note: '' }), []);
-  assert.deepEqual(errorsFor({ category: 'ki-thann', accents: [] }), []);
+  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], variation_types: [], meaning: '手機', source: '新聞' }), []);
+  assert.deepEqual(errorsFor({ category: 'poo-tshiong', accents: [], variation_types: [], note: '' }), []);
+  assert.deepEqual(errorsFor({ category: 'ki-thann', accents: [], variation_types: [] }), []);
   assert.deepEqual(errorsFor({ hanji: '做khang-khuè', tl: 'tsò-khang-khuè' }), []);
   assert.deepEqual(errorsFor({ tl: 'tsau2-khi3' }), []);
   assert.deepEqual(errorsFor({ tl: 'o\u0358' }), []);
@@ -50,12 +50,21 @@ test('valid entries per category', () => {
 
 test('category rules', () => {
   assert.deepEqual(errorsFor({ category: 'other' }), ['category: must be one of khiunn-khau, sin-su, poo-tshiong, ki-thann']);
-  assert.deepEqual(errorsFor({ accents: [] }), ['accents: required for khiunn-khau']);
+  assert.deepEqual(errorsFor({ accents: [] }), ['accents: required']);
+  assert.deepEqual(errorsFor({ variation_types: [] }), ['variation_types: required']);
+  assert.deepEqual(errorsFor({ variation_types: ['gi-im', 'su-lui'] }), []);
+  assert.deepEqual(errorsFor({ variation_types: ['ki-thann'] }), []);
+  assert.deepEqual(errorsFor({ variation_types: ['gi-im', 'ki-thann'] }), ['variation_types: ki-thann cannot be combined with other types']);
+  assert.deepEqual(errorsFor({ variation_types: ['siann-tiau'] }), ['variation_types: unknown variation type "siann-tiau"']);
+  assert.deepEqual(errorsFor({ variation_types: ['gi-im', 'gi-im'] }), ['variation_types: duplicate variation type']);
+  assert.deepEqual(errorsFor({ variation_types: ['ki-thann', 'ki-thann'] }), ['variation_types: duplicate variation type']);
+  assert.deepEqual(errorsFor({ variation_types: 'gi-im' }), ['variation_types: must be an array of strings']);
+  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], meaning: '手機' }), ['variation_types: must be empty for sin-su']);
   assert.deepEqual(errorsFor({ accents: ['其他'] }), ['place: required']);
   assert.deepEqual(errorsFor({ place: '鹿港' }), ['place: only with accent 其他']);
   assert.deepEqual(errorsFor({ meaning: '八' }), ['meaning: must be empty for khiunn-khau']);
-  assert.deepEqual(errorsFor({ category: 'sin-su', meaning: '手機' }), ['accents: must be empty for sin-su']);
-  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [] }), ['meaning: required']);
+  assert.deepEqual(errorsFor({ category: 'sin-su', variation_types: [], meaning: '手機' }), ['accents: must be empty for sin-su']);
+  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], variation_types: [] }), ['meaning: required']);
   assert.deepEqual(errorsFor({ accents: ['台北腔'] }), ['accents: unknown accent "台北腔"']);
   assert.deepEqual(errorsFor({ accents: ['鹿港偏泉腔', '鹿港偏泉腔'] }), ['accents: duplicate accent']);
 });
@@ -94,7 +103,7 @@ test('text must be clean, single-line and free of control characters', () => {
     'note: contains a control character U+000D',
   ]);
   assert.deepEqual(errorsFor({ note: 'a\u202Eb' }), ['note: contains a control character U+202E']);
-  assert.deepEqual(errorsFor({ meaning: 'a\u2028b', category: 'sin-su', accents: [] }), ['meaning: contains a control character U+2028']);
+  assert.deepEqual(errorsFor({ meaning: 'a\u2028b', category: 'sin-su', accents: [], variation_types: [] }), ['meaning: contains a control character U+2028']);
   assert.deepEqual(errorsFor({ note: '👩\u200D💻' }), []);
 });
 
@@ -110,11 +119,12 @@ test('shape: missing, unknown and mistyped fields', () => {
 });
 
 test('prepareEntry cleans raw form input', () => {
-  const raw = withFields({ hanji: ' 八 ', tl: 'pue\u0301h ', note: 'a\r\nb ', accents: ['鹿港偏泉腔', '鹿港偏泉腔'] });
+  const raw = withFields({ hanji: ' 八 ', tl: 'pue\u0301h ', note: 'a\r\nb ', accents: ['鹿港偏泉腔', '鹿港偏泉腔'], variation_types: [' gi-im', 'gi-im', 'su-lui'] });
   const { entry: clean, errors } = prepareEntry(raw);
   assert.deepEqual(errors, []);
   assert.equal(clean.tl, 'puéh');
   assert.equal(clean.note, 'a\nb');
+  assert.deepEqual(clean.variation_types, ['gi-im', 'su-lui']);
 });
 
 test('parseEntryPath', () => {

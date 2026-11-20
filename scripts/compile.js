@@ -6,7 +6,7 @@ import { checkTree } from './check-tree.js';
 // Compiles entries/ into dist/dictionary.csv and dist/search.json, one row per (Hanji, Tâi-lô)
 // key listing every attesting contributor.
 
-const CSV_HEADER = 'key,hanji,tl,categories,accents,place,meaning,source,note,contributors';
+const CSV_HEADER = 'key,hanji,tl,categories,variation_types,accents,place,meaning,source,note,contributors';
 const FORMULA_START_RE = /^[=+\-@\t\r]/;
 const NEEDS_QUOTES_RE = /[",\n]/;
 
@@ -48,6 +48,7 @@ export function toCsv(rows) {
       hanji,
       tl,
       unique(pick('category')).join('; '),
+      unique(pick('variation_types').flat()).join('; '),
       unique(pick('accents').flat()).join('; '),
       unique(pick('place')).join('\n'),
       unique(pick('meaning')).join('\n'),
