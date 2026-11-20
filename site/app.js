@@ -96,14 +96,13 @@ async function renderSearch() {
   const dictionaryHeading = h('h2', { class: 'results-heading', hidden: true }, icon('book'), '辭典已收');
   const dictionaryResults = h('ul', { class: 'results compact' });
   view.replaceChildren(
-    h('img', { class: 'app-icon', src: 'favicon.svg', alt: '' }),
-    hero('台語齒盤社群辭典', '腔口差、新詞，佮辭典猶未收的詞。'),
+    hero('揣詞', '社群詞目佮辭典已收的詞。'),
     h('div', { class: 'search' }, icon('search'), input),
     status,
     results,
     dictionaryHeading,
     dictionaryResults,
-    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: '#/submit' }, '提交一个詞', icon('chevron'))),
+    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: '#/' }, '提交一个詞', icon('chevron'))),
   );
 
   let rows;
@@ -291,7 +290,11 @@ function renderSubmit() {
     // Phase 2: sign in through the Worker and POST the entry to its /submit endpoint.
   });
 
-  view.replaceChildren(hero('提交', open ? null : '猶未開放，表格會當先試。'), form);
+  view.replaceChildren(
+    hero('台語齒盤社群辭典', '提交腔口差、新詞，佮辭典猶未收的詞。'),
+    open ? null : h('p', { class: 'status closed' }, '提交猶未開放，表格會當先試。'),
+    form,
+  );
   sync();
 }
 
@@ -313,7 +316,7 @@ function renderAbout() {
   );
 }
 
-const ROUTES = { '/': renderSearch, '/submit': renderSubmit, '/about': renderAbout };
+const ROUTES = { '/': renderSubmit, '/search': renderSearch, '/about': renderAbout };
 
 for (const a of document.querySelectorAll('.globalnav [data-icon]')) a.prepend(icon(a.dataset.icon));
 
@@ -323,7 +326,7 @@ function route() {
     if (a.dataset.route === path) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
-  (ROUTES[path] ?? renderSearch)();
+  (ROUTES[path] ?? renderSubmit)();
   window.scrollTo(0, 0);
 }
 

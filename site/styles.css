@@ -70,7 +70,6 @@ a:hover { text-decoration: underline; }
 .globalnav a { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--secondary); transition: color 0.2s; }
 .globalnav a:hover, .globalnav a[aria-current="page"] { color: var(--text); text-decoration: none; }
 .globalnav-mark { gap: 0.5rem !important; color: var(--text) !important; font-weight: 700; font-size: 1.0625rem; }
-.globalnav-mark img { border-radius: 6px; }
 .globalnav .icon { font-size: 1rem; }
 
 /* fills the space between nav and footer and centers the page vertically; taller pages flow normally */
@@ -80,7 +79,6 @@ main { flex: 1; display: flex; flex-direction: column; justify-content: center; 
 .hero { padding: 0 0 2.5rem; text-align: center; }
 .hero h1 { margin: 0; font-size: 3.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
 .hero p { max-width: 30rem; margin: 1rem auto 0; color: var(--secondary); font-size: 1.375rem; line-height: 1.45; }
-.app-icon { display: block; width: 128px; height: 128px; margin: 0 auto 1.5rem; filter: drop-shadow(0 12px 24px rgba(0, 113, 227, 0.25)); }
 .text-link { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 1.5rem; font-size: 1.25rem; }
 .text-link:hover { text-decoration: none; opacity: 0.8; }
 .text-link .icon { font-size: 1.125rem; }
@@ -97,6 +95,7 @@ main { flex: 1; display: flex; flex-direction: column; justify-content: center; 
 .search input[type="search"] { height: 56px; padding: 0 1.5rem 0 3.25rem; border-radius: 28px; font-size: 1.125rem; background: var(--card); box-shadow: var(--card-shadow); }
 .search input::-webkit-search-cancel-button { display: none; }
 .cta { margin: 0; text-align: center; }
+.status.closed { margin: -1.25rem 0 2rem; }
 .status { margin: 1rem 0 0; color: var(--secondary); font-size: 0.9375rem; text-align: center; }
 
 .results { list-style: none; width: 100%; max-width: var(--measure); margin: 2.5rem auto 0; padding: 0 2.5rem; border-radius: 28px; background: var(--card); box-shadow: var(--card-shadow); }
@@ -194,7 +193,8 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 
 @media (max-width: 734px) {
   .globalnav nav { gap: 1.25rem; }
-  .globalnav-mark { font-size: 0 !important; }
+  .globalnav { justify-content: center; }
+  .globalnav-mark { display: none !important; }
   .hero { padding: 0 0 2rem; }
   .hero h1 { font-size: 2.5rem; }
   .hero p { font-size: 1.125rem; }
