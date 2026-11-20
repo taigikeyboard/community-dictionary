@@ -1,6 +1,6 @@
 # Community dictionary — roadmap
 
-> **Status**: 2026-11-20 — Phase 1 (schema and checks) built; Phases 2–4 pending.
+> **Status**: 2026-11-20 — Phase 1 built; Phase 3 first slice live (search, form with validation, explanation, Pages deploy); Phase 2 and the rest of Phase 3 pending.
 
 ## Goal
 
@@ -125,7 +125,7 @@ One pull request per phase.
 | 0 | This roadmap, README, licences | In progress |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
 | 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Pending |
-| 3 | Site: home page with the explanation of each category, the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | Pending |
+| 3 | Site: home page with the explanation of each category, the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — first slice live; sign-in, submit, "My submissions" and "submitted" wait for Phase 2 |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Pending |
 
 ### Phase 1 — schema and checks
@@ -163,7 +163,7 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 
 ### Phase 3 — site
 
-- Static, built with esbuild like kautian-mirror; fonts and style tokens taken from it.
+- Static; style tokens taken from kautian-mirror. Built (2026-11-20) without a bundler: native ES modules, `dist/` mirrors the repo so `site/*.js` imports `../lib/entry.js` directly (`npm run build`). The Iansui font is loaded from kautian-mirror on the same origin (`/kautian-mirror/fonts/`) instead of committing a 2.7 MB copy; without it the system font is used.
 - Interface text in Taiwanese (Hanji), with an explanation page: what each category means, what a good entry looks like, how review works, the CC0 notice, and that the contributor's GitHub account becomes public as the commit author.
 - Search over accepted entries; before submit the form applies the duplicate rules above from the published search JSON.
 - "My submissions" filters the same JSON by the signed-in id — no extra Worker endpoint — and offers edit and withdraw.

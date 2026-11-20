@@ -61,14 +61,13 @@ export function toCsv(rows) {
   return `${lines.join('\r\n')}\r\n`;
 }
 
-async function main() {
-  const root = process.cwd();
+// Writes dist/dictionary.csv and dist/search.json; returns false (after logging) on invalid entries.
+export async function compile(root) {
   const { checked, errors, count } = await checkTree(root);
   if (errors.length > 0) {
     for (const e of errors) console.error(e);
     console.error(`compile: ${errors.length} errors in entries/; run npm run validate`);
-    process.exitCode = 1;
-    return;
+    return false;
   }
   const rows = groupEntries(checked);
   const outDir = join(root, 'dist');
@@ -76,6 +75,7 @@ async function main() {
   await writeFile(join(outDir, 'dictionary.csv'), toCsv(rows));
   await writeFile(join(outDir, 'search.json'), `${JSON.stringify(rows)}\n`);
   console.log(`compile: ${count} entry files → ${rows.length} rows in dist/`);
+  return true;
 }
 
-if (import.meta.main) await main();
+if (import.meta.main && !(await compile(process.cwd()))) process.exitCode = 1;

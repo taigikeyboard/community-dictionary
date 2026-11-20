@@ -8,6 +8,7 @@
   "scripts": {
     "test": "node --test",
     "validate": "node scripts/validate.js",
-    "compile": "node scripts/compile.js"
+    "compile": "node scripts/compile.js",
+    "build": "node scripts/build-site.js"
   }
 }
