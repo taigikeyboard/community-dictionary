@@ -12,7 +12,7 @@ const dist = join(root, 'dist');
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'site'), { recursive: true });
 for (const file of ['index.html', 'styles.css', 'favicon.svg']) cpSync(join(root, 'site', file), join(dist, file));
-for (const file of ['app.js', 'logic.js', 'config.js']) cpSync(join(root, 'site', file), join(dist, 'site', file));
+for (const file of ['app.js', 'logic.js', 'config.js', 'icons.js']) cpSync(join(root, 'site', file), join(dist, 'site', file));
 cpSync(join(root, 'lib'), join(dist, 'lib'), { recursive: true });
 
 if (!(await compile(root))) process.exitCode = 1;

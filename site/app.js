@@ -1,46 +1,25 @@
 import { ACCENT_OTHER, ACCENTS, CATEGORIES, VARIATION_TYPES } from '../lib/entry.js';
 import { WORKER_URL } from './config.js';
+import { CATEGORY_ICONS, icon, VARIATION_ICONS } from './icons.js';
 import { checkForm, describeErrors, duplicateStatus, searchRows } from './logic.js';
 
 // Hash-routed single page: search (#/), submission form (#/submit), explanation (#/about).
 
 const view = document.getElementById('view');
+const LOAD_ERROR = '資料載入失敗，請重新整理。';
 
 // Builds an element; children are nodes or strings (always text, never parsed as HTML).
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [name, value] of Object.entries(attrs)) {
     if (value === false || value == null) continue;
-    if (name.startsWith('on')) el.addEventListener(name.slice(2), value);
-    else el.setAttribute(name, value === true ? '' : value);
+    el.setAttribute(name, value === true ? '' : value);
   }
   el.append(...children.flat().filter((c) => c != null && c !== false));
   return el;
 }
 
-const CATEGORY_TEXT = {
-  'khiunn-khau': '仝一个詞，無仝所在講法無仝。親像「欲」，宜蘭講 bueh、臺北講 beh。',
-  'sin-su': '這幾年才出現、辭典猶未收的新詞，親像網路抑是科技的用語。',
-  'poo-tshiong': '本底就有、毋過教典猶未收入去的詞。',
-  'ki-thann': '無合以上分類的詞。',
-};
-
-const VARIATION_TEXT = {
-  'gi-im': '字仝款，讀音無仝',
-  'su-lui': '意思仝款，用的詞無仝',
-  'ki-thann': '分袂清楚的時陣揀這个',
-};
-
-// Static markup only (no user data), so a template is safe here.
-const SEARCH_ICON =
-  '<svg class="search-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.75" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10.5 10.5l3.5 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
-function searchIcon() {
-  const template = document.createElement('template');
-  template.innerHTML = SEARCH_ICON;
-  return template.content.firstChild;
-}
-
-const LOAD_ERROR = '資料載入失敗，請重新整理網頁。';
+const hero = (title, lead) => h('header', { class: 'hero' }, h('h1', {}, title), lead ? h('p', {}, lead) : null);
 
 // Rejects on a network or HTTP failure; a failed load is not cached, so the next call retries.
 let rowsPromise;
@@ -57,47 +36,34 @@ function loadRows() {
   return rowsPromise;
 }
 
-function categoryCards() {
-  return h(
-    'div',
-    { class: 'categories' },
-    Object.entries(CATEGORIES).map(([slug, label]) =>
-      h('div', { class: 'category' }, h('h3', {}, label), h('p', {}, CATEGORY_TEXT[slug])),
-    ),
-  );
-}
-
 function resultItem(row) {
-  const categories = [...new Set(row.attestations.map((a) => CATEGORIES[a.category]))];
+  const categories = [...new Set(row.attestations.map((a) => a.category))];
   const accents = [...new Set(row.attestations.flatMap((a) => a.accents))];
+  const variations = [...new Set(row.attestations.flatMap((a) => a.variation_types))];
   return h(
     'li',
-    { class: 'result' },
+    {},
     h('div', { class: 'result-head' }, h('span', { class: 'result-hanji' }, row.hanji), h('span', { class: 'result-tl' }, row.tl)),
-    h('div', { class: 'chips' }, [...categories, ...accents].map((c) => h('span', { class: 'chip' }, c))),
+    h(
+      'div',
+      { class: 'meta' },
+      categories.map((c) => h('span', {}, icon(CATEGORY_ICONS[c]), CATEGORIES[c])),
+      variations.map((v) => h('span', {}, icon(VARIATION_ICONS[v]), VARIATION_TYPES[v])),
+      accents.length > 0 ? h('span', {}, icon('pin'), accents.join('、')) : null,
+    ),
     row.attestations
       .filter((a) => a.note || a.meaning)
-      .map((a) =>
-        h('div', { class: 'attestation' }, a.meaning ? `${a.meaning}　` : '', a.note, ' ', h('span', { class: 'by' }, `— ${a.contributor}`)),
-      ),
+      .map((a) => h('p', { class: 'note' }, a.meaning ? `${a.meaning}　` : '', a.note, ' ', h('span', { class: 'by' }, a.contributor))),
   );
 }
 
 async function renderSearch() {
-  const input = h('input', {
-    type: 'search',
-    'aria-label': '揣詞',
-    placeholder: '輸入漢字抑是台羅',
-    spellcheck: 'false',
-    autocapitalize: 'off',
-  });
+  const input = h('input', { type: 'search', 'aria-label': '揣詞', placeholder: '漢字抑是台羅', spellcheck: 'false', autocapitalize: 'off' });
+  const status = h('p', { class: 'status', role: 'status' });
   const results = h('ul', { class: 'results' });
-  const status = h('p', { class: 'muted', role: 'status' });
   view.replaceChildren(
-    h('p', {}, '逐家鬥陣收集台語的詞：腔口差、台語新詞，佮辭典猶未收的詞。每一筆攏會經過人工審查才收入來。'),
-    categoryCards(),
-    h('h2', {}, '揣詞'),
-    h('div', { class: 'search' }, searchIcon(), input),
+    hero('台語社群辭典', '腔口差、新詞，佮辭典猶未收的詞。'),
+    h('div', { class: 'search' }, icon('search'), input),
     status,
     results,
   );
@@ -112,51 +78,49 @@ async function renderSearch() {
   const update = () => {
     const found = searchRows(rows, input.value);
     results.replaceChildren(...found.map(resultItem));
-    if (rows.length === 0) status.textContent = '目前猶無收入來的詞目，歡迎提交第一筆。';
-    else if (input.value.trim() === '') status.textContent = `目前收 ${rows.length} 个詞目。`;
-    else status.textContent = found.length === 0 ? '揣無。' : '';
+    if (rows.length === 0) status.textContent = '猶無詞目';
+    else if (input.value.trim() === '') status.textContent = `${rows.length} 个詞目`;
+    else status.textContent = found.length === 0 ? '揣無' : '';
   };
   input.addEventListener('input', update);
   update();
   input.focus();
 }
 
-function field(name, label, control, hint) {
-  return h(
-    'div',
-    { class: 'field', 'data-field': name },
-    h('label', { for: `f-${name}` }, label, hint ? h('span', { class: 'hint' }, `　${hint}`) : null),
-    control,
-    h('div', { class: 'error', id: `e-${name}`, hidden: true }),
-  );
+const errorSlot = (name) => h('div', { class: 'error', id: `e-${name}`, hidden: true });
+
+function field(name, label, control) {
+  return h('div', { class: 'field' }, h('label', { for: `f-${name}` }, label), control, errorSlot(name));
 }
 
-function choiceGroup(name, label, options, { type = 'checkbox', hint } = {}) {
-  return h(
-    'fieldset',
-    { class: 'field', 'data-field': name, id: `f-${name}`, 'aria-describedby': `e-${name}` },
-    h('legend', {}, label, hint ? h('span', { class: 'hint' }, `　${hint}`) : null),
-    h(
-      'div',
-      { class: 'choices' },
-      options.map(([value, text, title]) =>
-        h('label', { class: 'choice', title }, h('input', { type, name, value }), text),
-      ),
-    ),
-    h('div', { class: 'error', id: `e-${name}`, hidden: true }),
-  );
-}
-
-function textInput(name, { multiline = false, romanized = false } = {}) {
+function textInput(name, { placeholder, multiline = false, romanized = false } = {}) {
   return h(multiline ? 'textarea' : 'input', {
     id: `f-${name}`,
     name,
     type: multiline ? null : 'text',
+    placeholder,
     class: romanized ? 'romanized' : null,
     spellcheck: romanized ? 'false' : null,
     autocapitalize: romanized ? 'off' : null,
     'aria-describedby': `e-${name}`,
   });
+}
+
+// options: [value, label, iconName?]
+function choiceGroup(name, label, options, { type = 'checkbox', style = 'pills' } = {}) {
+  return h(
+    'fieldset',
+    { class: 'field', id: `f-${name}`, 'aria-describedby': `e-${name}` },
+    h('legend', {}, label),
+    h(
+      'div',
+      { class: style },
+      options.map(([value, text, iconName]) =>
+        h('label', {}, h('input', { type, name, value }), iconName ? icon(iconName) : null, h('span', {}, text)),
+      ),
+    ),
+    errorSlot(name),
+  );
 }
 
 function readForm(form) {
@@ -187,36 +151,43 @@ function showErrors(form, errors) {
 
 function renderSubmit() {
   const open = WORKER_URL !== '';
-  const accentOptions = ACCENTS.map((a) => [a, a]);
+  const notice = h('p', { class: 'form-notice', role: 'status', hidden: true });
   const form = h(
     'form',
-    { class: 'form', novalidate: true },
-    choiceGroup('category', '分類', Object.entries(CATEGORIES).map(([v, t]) => [v, t, CATEGORY_TEXT[v]]), { type: 'radio' }),
-    field('hanji', '漢字', textInput('hanji'), '會當漢羅'),
-    field('tl', '台羅', textInput('tl', { romanized: true }), '例：tsia̍h-pn̄g'),
+    { class: 'form panel', novalidate: true },
+    choiceGroup('category', '分類', Object.entries(CATEGORIES).map(([v, t]) => [v, t, CATEGORY_ICONS[v]]), { type: 'radio', style: 'segmented' }),
+    h(
+      'div',
+      { class: 'row-2' },
+      field('hanji', '漢字', textInput('hanji', { placeholder: '食飯' })),
+      field('tl', '台羅', textInput('tl', { placeholder: 'tsia̍h-pn̄g', romanized: true })),
+    ),
     h(
       'div',
       { class: 'form', 'data-for': 'khiunn-khau', hidden: true },
-      choiceGroup('variation_types', '腔口差類型', Object.entries(VARIATION_TYPES).map(([v, t]) => [v, t, VARIATION_TEXT[v]]), { hint: '會當複選' }),
-      choiceGroup('accents', '腔口', accentOptions, { hint: '會當複選' }),
-      h('div', { 'data-for-accent': 'other', hidden: true }, field('place', '所在', textInput('place'), '揀「其他」腔口時，寫是佗位的講法')),
+      choiceGroup('variation_types', '腔口差類型', Object.entries(VARIATION_TYPES).map(([v, t]) => [v, t, VARIATION_ICONS[v]])),
+      choiceGroup('accents', '腔口', ACCENTS.map((a) => [a, a])),
+      h('div', { 'data-for-accent': true, hidden: true }, field('place', '所在', textInput('place', { placeholder: '佗位的講法' }))),
     ),
     h(
       'div',
-      { class: 'form', 'data-for': 'sin-su', hidden: true },
-      field('meaning', '意思', textInput('meaning'), '華語抑是英語'),
-      field('source', '出處', textInput('source'), '佇佗位看著，抑是一句例句'),
+      { class: 'row-2', 'data-for': 'sin-su', hidden: true },
+      field('meaning', '意思', textInput('meaning', { placeholder: '華語抑是英語' })),
+      field('source', '出處', textInput('source', { placeholder: '佇佗位看著，抑是例句' })),
     ),
-    field('note', '說明', textInput('note', { multiline: true }), '講予審查的人知影這个詞'),
+    field('note', '說明', textInput('note', { multiline: true, placeholder: '佇佗位聽著、啥人按怎講' })),
     h(
-      'label',
-      { class: 'consent' },
-      h('input', { type: 'checkbox', name: 'consent', id: 'f-consent', 'aria-describedby': 'e-consent' }),
-      h('span', {}, '我同意用 ', h('a', { href: 'https://creativecommons.org/publicdomain/zero/1.0/deed.zh-hant', rel: 'noopener', target: '_blank' }, 'CC0'), ' 釋出我提交的內容，而且我的 GitHub 帳號會公開顯示做提交者。'),
+      'div',
+      { class: 'field' },
+      h(
+        'label',
+        { class: 'consent' },
+        h('input', { type: 'checkbox', name: 'consent', id: 'f-consent', 'aria-describedby': 'e-consent' }),
+        h('span', {}, '我同意用 CC0 釋出，並公開我的 GitHub 帳號'),
+      ),
+      errorSlot('consent'),
     ),
-    h('div', { class: 'error', id: 'e-consent', hidden: true }),
-    h('div', { class: 'notice', id: 'form-notice', role: 'status', hidden: true }),
-    h('button', { class: 'button', type: 'submit' }, open ? '用 GitHub 登入並送出' : '檢查'),
+    h('div', { class: 'actions' }, h('button', { class: 'button', type: 'submit' }, icon('check'), open ? '登入 GitHub 送出' : '檢查'), notice),
   );
 
   const sync = () => {
@@ -226,19 +197,17 @@ function renderSubmit() {
   };
   form.addEventListener('change', sync);
 
+  const say = (text) => {
+    notice.textContent = text;
+    notice.hidden = false;
+  };
   let confirmedKey = null;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const notice = form.querySelector('#form-notice');
-    const say = (text) => {
-      notice.textContent = text;
-      notice.hidden = false;
-    };
     notice.hidden = true;
-    const values = readForm(form);
-    const { entry, errors } = checkForm(values);
+    const { entry, errors } = checkForm(readForm(form));
     const shown = describeErrors(errors);
-    if (!form.elements.consent.checked) shown.push({ field: 'consent', text: '愛同意 CC0 才會當提交' });
+    if (!form.elements.consent.checked) shown.push({ field: 'consent', text: '愛同意才會當提交' });
     showErrors(form, shown);
     if (shown.length > 0) return;
 
@@ -251,65 +220,45 @@ function renderSubmit() {
     }
     if (dup.status === 'attested' && confirmedKey !== dup.key) {
       confirmedKey = dup.key;
-      say(`這个詞 ${dup.contributors.join('、')} 已經提交過。若你的腔口無仝、抑是有欲補充的說明，請佇「說明」寫清楚，才閣揤一擺送出。`);
+      say(`${dup.contributors.join('、')} 已經提交過。腔口無仝抑是有補充，請寫佇「說明」才閣送一擺。`);
       return;
     }
-    if (!open) say('檢查過矣，格式無問題。提交功能當咧準備，猶未開放。');
+    if (!open) say('格式無問題。提交猶未開放。');
     // Phase 2: sign in through the Worker and POST the entry to its /submit endpoint.
   });
 
-  view.replaceChildren(
-    open ? null : h('p', { class: 'notice' }, '提交功能當咧準備：表格會當先試，毋過猶袂當送出。'),
-    h('p', { class: 'muted' }, '提交進前請先去「揣詞」看有人提交過無。分類的意思請看「說明」。'),
-    form,
-  );
+  view.replaceChildren(hero('提交', open ? null : '猶未開放，表格會當先試。'), form);
   sync();
 }
 
 function renderAbout() {
+  const tile = (iconName, title, text) => h('section', { class: 'tile' }, icon(iconName), h('h2', {}, title), h('p', {}, text));
   view.replaceChildren(
-    h('h2', {}, '這是啥物'),
-    h('p', {}, '台語社群辭典是一个用 git 收集台語詞的所在。逐家用 GitHub 帳號登入、填一張表，就會當提交一个詞；管理者審查了後，這个詞就收入來。'),
-    h('h2', {}, '分類'),
-    categoryCards(),
-    h('h3', {}, '腔口差類型'),
-    h('p', {}, '參考教育部《臺灣台語常用詞辭典》的「方言差」：分做語音差異佮詞彙比較兩部份。會當複選；分袂清楚就揀「其他」。'),
+    hero('說明', '用 GitHub 帳號提交，審查了後收入來。'),
     h(
-      'dl',
-      { class: 'facts' },
-      Object.entries(VARIATION_TYPES).flatMap(([v, t]) => [h('dt', {}, t), h('dd', {}, VARIATION_TEXT[v])]),
-    ),
-    h('h3', {}, '腔口'),
-    h('p', {}, `用教典的十个調查點：${ACCENTS.filter((a) => a !== ACCENT_OTHER).join('、')}。攏無合就揀「其他」，閣寫是佗位的講法。`),
-    h('h2', {}, '好的提交'),
-    h(
-      'ul',
-      {},
-      h('li', {}, '台羅用教育部台灣閩南語羅馬字拼音方案，會當用調符抑是數字。'),
-      h('li', {}, '「說明」寫你佇佗位聽著、啥人按怎講，愈詳細愈好。'),
-      h('li', {}, '別人已經提交過的詞，若你的腔口無仝，嘛會當閣提交。'),
-    ),
-    h('h2', {}, '審查'),
-    h('p', {}, '每一筆提交攏會變做 GitHub 的 pull request，由管理者人工審查。台羅拼了著毋著是人工檢查，電腦干焦檢查格式。'),
-    h('h2', {}, '授權佮帳號'),
-    h('dl', { class: 'facts' },
-      h('dt', {}, 'CC0'), h('dd', {}, '提交的內容用 CC0 1.0 公眾領域貢獻宣告釋出，任何人攏會當自由使用。'),
-      h('dt', {}, 'GitHub 帳號'), h('dd', {}, '提交愛用 GitHub 帳號登入，你的帳號會公開顯示做 commit 的作者。'),
-      h('dt', {}, '修改、收回'), h('dd', {}, '你會當修改抑是收回家己的詞目，嘛是經過審查。收回的詞目會對目前的資料提掉，毋過猶原留佇 git 歷史內底，CC0 宣告袂取消。'),
+      'div',
+      { class: 'tiles' },
+      tile('shield', '人工審查', '每筆提交是一个 pull request，台羅由人工檢查。'),
+      tile('globe', 'CC0 1.0', '提交的內容釋出到公眾領域，逐家攏會當用。'),
+      tile('person', 'GitHub 帳號', '你的帳號會公開顯示做提交者。'),
+      tile('undo', '修改、收回', '嘛愛審查。收回的詞目留佇 git 歷史。'),
+      tile('pin', '腔口', `教典十个調查點：${ACCENTS.filter((a) => a !== ACCENT_OTHER).join('、')}。`),
+      tile('speaker', '腔口差類型', '參考教育部《臺灣台語常用詞辭典》方言差：語音差異、詞彙差異。'),
     ),
   );
 }
 
 const ROUTES = { '/': renderSearch, '/submit': renderSubmit, '/about': renderAbout };
 
+for (const a of document.querySelectorAll('.globalnav [data-icon]')) a.prepend(icon(a.dataset.icon));
+
 function route() {
   const path = location.hash.replace(/^#/, '') || '/';
-  const render = ROUTES[path] ?? renderSearch;
-  for (const a of document.querySelectorAll('.tabs a')) {
+  for (const a of document.querySelectorAll('.globalnav [data-route]')) {
     if (a.dataset.route === path) a.setAttribute('aria-current', 'page');
     else a.removeAttribute('aria-current');
   }
-  render();
+  (ROUTES[path] ?? renderSearch)();
   window.scrollTo(0, 0);
 }
 
