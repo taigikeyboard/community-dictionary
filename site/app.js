@@ -63,10 +63,12 @@ async function renderSearch() {
   const status = h('p', { class: 'status', role: 'status' });
   const results = h('ul', { class: 'results' });
   view.replaceChildren(
+    h('img', { class: 'app-icon', src: 'favicon.svg', alt: '' }),
     hero('台語齒盤社群辭典', '腔口差、新詞，佮辭典猶未收的詞。'),
     h('div', { class: 'search' }, icon('search'), input),
     status,
     results,
+    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: '#/submit' }, '提交一个詞', icon('chevron'))),
   );
 
   let rows;

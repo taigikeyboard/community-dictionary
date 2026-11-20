@@ -17,12 +17,14 @@
   <script type="module" src="site/app.js"></script>
 </head>
 <body>
-  <nav class="globalnav" aria-label="頁面">
-    <a class="globalnav-mark" href="#/">台語齒盤社群辭典</a>
-    <a href="#/" data-route="/" data-icon="search">揣詞</a>
-    <a href="#/submit" data-route="/submit" data-icon="compose">提交</a>
-    <a href="#/about" data-route="/about" data-icon="info">說明</a>
-  </nav>
+  <header class="globalnav">
+    <a class="globalnav-mark" href="#/"><img src="favicon.svg" alt="" width="24" height="24">台語齒盤社群辭典</a>
+    <nav aria-label="頁面">
+      <a href="#/" data-route="/" data-icon="search">揣詞</a>
+      <a href="#/submit" data-route="/submit" data-icon="compose">提交</a>
+      <a href="#/about" data-route="/about" data-icon="info">說明</a>
+    </nav>
+  </header>
 
   <main id="view">
     <noscript>這个網站愛開 JavaScript 才會當用。</noscript>
