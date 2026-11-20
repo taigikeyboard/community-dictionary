@@ -89,7 +89,9 @@ main { width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padd
 
 /* --- search --- */
 .search { position: relative; max-width: 680px; margin: 0 auto; }
-.search .icon { position: absolute; left: 1.25rem; top: 50%; font-size: 1.25rem; color: var(--secondary); transform: translateY(-50%); pointer-events: none; }
+.search .icon { position: absolute; left: 1.25rem; top: 50%; font-size: 1.25rem; color: var(--secondary); transform: translateY(-50%); pointer-events: none; transition: left 0.3s ease, transform 0.3s ease, font-size 0.3s ease; }
+/* empty and unfocused: the icon stands in for a placeholder, centered */
+.search:has(input:placeholder-shown:not(:focus)) .icon { left: 50%; font-size: 1.5rem; transform: translate(-50%, -50%); }
 .search input[type="search"] { height: 56px; padding: 0 1.5rem 0 3.25rem; border-radius: 28px; font-size: 1.125rem; background: var(--card); box-shadow: var(--card-shadow); }
 .search input::-webkit-search-cancel-button { display: none; }
 .status { margin: 1rem 0 0; color: var(--secondary); font-size: 0.9375rem; text-align: center; }

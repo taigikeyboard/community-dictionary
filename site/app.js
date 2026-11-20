@@ -58,7 +58,8 @@ function resultItem(row) {
 }
 
 async function renderSearch() {
-  const input = h('input', { type: 'search', 'aria-label': '揣詞', placeholder: '漢字抑是台羅', spellcheck: 'false', autocapitalize: 'off' });
+  // blank placeholder: no text, it only drives :placeholder-shown for the centered icon
+  const input = h('input', { type: 'search', 'aria-label': '揣漢字抑是台羅', placeholder: ' ', spellcheck: 'false', autocapitalize: 'off' });
   const status = h('p', { class: 'status', role: 'status' });
   const results = h('ul', { class: 'results' });
   view.replaceChildren(
@@ -84,7 +85,6 @@ async function renderSearch() {
   };
   input.addEventListener('input', update);
   update();
-  input.focus();
 }
 
 const errorSlot = (name) => h('div', { class: 'error', id: `e-${name}`, hidden: true });
