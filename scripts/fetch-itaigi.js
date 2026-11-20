@@ -5,72 +5,36 @@ import { fileURLToPath } from 'node:url';
 import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from './romanize.js';
 
-// Pulls the iTaigi 華台對照典 (CC0, per the ChhoeTaigiDatabase README) and writes
-// dist/itaigi.json [[hanji, tl, poj, tps, [tag index]]] for the site's search, tags joined from
-// the committed data/itaigi-tags.json (scripts/classify-itaigi.js). Run after build-site (which
-// clears dist/).
+// Pulls the iTaigi dictionary from itaigi.tw's own export (CC0, per the iTaigi licence notice
+// mirrored in ChhoeTaigi/iTaigiDataMirror) and writes dist/itaigi.json
+// [[hanji, tl, poj, tps, [tag index]]] for the site's search, tags joined from the committed
+// data/itaigi-tags.json (scripts/classify-itaigi.js). Run after build-site (which clears dist/).
 
-export const ITAIGI_URL =
-  'https://raw.githubusercontent.com/ChhoeTaigi/ChhoeTaigiDatabase/master/ChhoeTaigiDatabase/ChhoeTaigi_iTaigiHoataiTuichiautian.csv';
+export const ITAIGI_URL = encodeURI('https://itaigi.tw/匯出資料');
 
-// Upstream holds about 19,800 rows; far fewer means a truncated or wrong file, not a smaller dictionary.
+// The export also bundles two dictionaries iTaigi imported; they are not crowdsourced iTaigi
+// content, so they are left out, as iTaigiDataMirror does.
+export const IMPORTED_SOURCES = Object.freeze(['台文華文線頂辭典', '臺灣閩南語常用詞辭典']);
+
+// The crowdsourced part holds about 20,000 rows; far fewer means a truncated or wrong file.
 export const MIN_ROWS = 15000;
 
-// RFC 4180 CSV text → array of records (arrays of fields); a leading BOM and blank lines are dropped.
-export function parseCsv(text) {
-  const records = [];
-  let record = [];
-  let field = '';
-  let quoted = false;
-  const endRecord = () => {
-    record.push(field);
-    if (record.length > 1 || record[0] !== '') records.push(record);
-    record = [];
-    field = '';
-  };
-  const input = text.replace(/^\uFEFF/, '');
-  for (let i = 0; i < input.length; i++) {
-    const c = input[i];
-    if (quoted) {
-      if (c !== '"') field += c;
-      else if (input[i + 1] === '"') {
-        field += '"';
-        i++;
-      } else quoted = false;
-    } else if (c === '"') quoted = true;
-    else if (c === ',') {
-      record.push(field);
-      field = '';
-    } else if (c === '\n' || c === '\r') {
-      if (c === '\r' && input[i + 1] === '\n') i++;
-      endRecord();
-    } else field += c;
-  }
-  if (field !== '' || record.length > 0) endRecord();
-  return records;
-}
+// A few contributors typed a full-width space between syllables; it is a plain space in Tâi-lô.
+const cleanTl = (text) => text.replaceAll('　', ' ').replace(/ {2,}/g, ' ').trim().normalize('NFC');
 
-// ChhoeTaigi CSV → distinct [[hanji, tl, meaning]]; rows without Tâi-lô are dropped. Variant
-// readings stay joined by "/" as upstream writes them.
-export function parseItaigi(csv) {
-  const [header, ...records] = parseCsv(csv);
-  const column = (name) => {
-    const index = header.indexOf(name);
-    if (index === -1) throw new Error(`itaigi CSV: column "${name}" missing from header`);
-    return index;
-  };
-  const hanjiAt = column('HanLoTaibunKip');
-  const tlAt = column('KipUnicode');
-  const meaningAt = column('HoaBun');
+// itaigi.tw export JSON ({ 資料: [{ 華語, 來源, 漢字, 羅馬字 }] }) → distinct [[hanji, tl, meaning]]
+// of crowdsourced rows. Rows whose Tâi-lô holds no Latin letter (empty, or Hanji typed in the
+// wrong field) are dropped. Variant readings stay joined by "/" as contributors wrote them.
+export function parseItaigi(json) {
+  const data = JSON.parse(json)['資料'];
+  if (!Array.isArray(data)) throw new Error('itaigi export: no 資料 array; check the export format at ' + ITAIGI_URL);
   const seen = new Set();
   const rows = [];
-  for (const [i, fields] of records.entries()) {
-    if (fields.length !== header.length) {
-      throw new Error(`itaigi CSV record ${i + 2}: ${fields.length} fields, header has ${header.length}`);
-    }
-    const row = [fields[hanjiAt], fields[tlAt], fields[meaningAt]].map((text) => text.trim().normalize('NFC'));
+  for (const entry of data) {
+    if (IMPORTED_SOURCES.includes(entry['來源'])) continue;
+    const row = [(entry['漢字'] ?? '').trim().normalize('NFC'), cleanTl(entry['羅馬字'] ?? ''), (entry['華語'] ?? '').trim().normalize('NFC')];
     const id = row.join('\n');
-    if (row[1] === '' || seen.has(id)) continue;
+    if (!/[A-Za-z]/.test(row[1]) || seen.has(id)) continue;
     seen.add(id);
     rows.push(row);
   }

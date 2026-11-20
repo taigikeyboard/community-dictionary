@@ -9,7 +9,7 @@ import { NOREPLY_RE, serializeEntry } from '../lib/entry.js';
 import { checkTree } from '../scripts/check-tree.js';
 import { groupEntries, toCsv } from '../scripts/compile.js';
 import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/classify-itaigi.js';
-import { buildSearchRows, parseCsv, parseItaigi } from '../scripts/fetch-itaigi.js';
+import { buildSearchRows, parseItaigi } from '../scripts/fetch-itaigi.js';
 import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from '../scripts/romanize.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
@@ -190,19 +190,27 @@ test('CSV neutralizes formula-like cells', () => {
   assert.match(toCsv(rows), /,"'=HYPERLINK\(""x""\)",octocat\r\n$/);
 });
 
-test('parseCsv: BOM, quoted commas, doubled quotes, CRLF, blank lines', () => {
-  assert.deepEqual(parseCsv('\uFEFF"a","b,c"\r\n\r\n"say ""hi""",d\n\n'), [['a', 'b,c'], ['say "hi"', 'd']]);
-});
-
-test('parseItaigi keeps hanji, tl, meaning; drops rows without tl and repeats', () => {
-  const csv = [
-    '\uFEFF"DictWordID","PojUnicode","PojInput","KipUnicode","KipInput","HanLoTaibunPoj","HanLoTaibunKip","HoaBun","DataProvidedBy"',
-    '"1","siān-neh","sian7-neh","siān-neh","sian7-neh","𤺪呢","𤺪呢","討厭","Liz Lin"',
-    '"2","","","","","空","空","空","匿名"',
-    '"3","siān-neh","sian7-neh","siān-neh","sian7-neh","𤺪呢","𤺪呢","討厭","匿名"',
-  ].join('\n');
-  assert.deepEqual(parseItaigi(csv), [['𤺪呢', 'siān-neh', '討厭']]);
-  assert.throws(() => parseItaigi('"a"\n"b"'), /column "HanLoTaibunKip" missing/);
+test('parseItaigi: crowdsourced rows only, Tâi-lô cleaned, repeats and non-Tâi-lô dropped', () => {
+  const json = JSON.stringify({
+    資料: [
+      { 華語: '討厭', 來源: 'Liz Lin', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
+      // the same word from another contributor is one row
+      { 華語: '討厭', 來源: '匿名', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
+      // imported dictionaries are not iTaigi's own content
+      { 華語: '討厭', 來源: '臺灣閩南語常用詞辭典', 漢字: '討厭', 羅馬字: 'thó-ià' },
+      { 華語: '一場空', 來源: '台文華文線頂辭典', 漢字: '空', 羅馬字: 'khang' },
+      // a full-width space between syllables becomes a plain one
+      { 華語: '一人', 來源: '匿名', 漢字: '一人', 羅馬字: 'tsit8　lang5' },
+      // Hanji typed in the Tâi-lô field, or nothing there, is not a reading
+      { 華語: '洪荒之力', 來源: '匿名', 漢字: '洪荒之力', 羅馬字: '洪荒之力' },
+      { 華語: '空', 來源: '匿名', 漢字: '空', 羅馬字: '' },
+    ],
+  });
+  assert.deepEqual(parseItaigi(json), [
+    ['𤺪呢', 'siān-neh', '討厭'],
+    ['一人', 'tsit8 lang5', '一人'],
+  ]);
+  assert.throws(() => parseItaigi('{"rows":[]}'), /no 資料 array/);
 });
 
 test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
