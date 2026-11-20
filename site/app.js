@@ -1,7 +1,16 @@
 import { ACCENT_OTHER, ACCENTS, CATEGORIES, VARIATION_TYPES } from '../lib/entry.js';
 import { WORKER_URL } from './config.js';
 import { CATEGORY_ICONS, icon, VARIATION_ICONS } from './icons.js';
-import { checkForm, describeErrors, duplicateStatus, searchRows } from './logic.js';
+import {
+  checkForm,
+  describeErrors,
+  dictionaryMatch,
+  duplicateStatus,
+  prepareDictionary,
+  searchDictionary,
+  searchRows,
+  sourceLabels,
+} from './logic.js';
 
 // Hash-routed single page: search (#/), submission form (#/submit), explanation (#/about).
 
@@ -21,20 +30,28 @@ function h(tag, attrs = {}, ...children) {
 
 const hero = (title, lead) => h('header', { class: 'hero' }, h('h1', {}, title), lead ? h('p', {}, lead) : null);
 
-// Rejects on a network or HTTP failure; a failed load is not cached, so the next call retries.
-let rowsPromise;
-function loadRows() {
-  rowsPromise ??= fetch('search.json')
-    .then((res) => {
-      if (!res.ok) throw new Error(`search.json: HTTP ${res.status}`);
-      return res.json();
-    })
-    .catch((err) => {
-      rowsPromise = undefined;
-      throw err;
-    });
-  return rowsPromise;
+// Fetches and caches one JSON file; rejects on a network or HTTP failure, and a failed load is not
+// cached, so the next call retries.
+function cachedJson(path, transform = (x) => x) {
+  let promise;
+  return () => {
+    promise ??= fetch(path)
+      .then((res) => {
+        if (!res.ok) throw new Error(`${path}: HTTP ${res.status}`);
+        return res.json();
+      })
+      .then(transform)
+      .catch((err) => {
+        promise = undefined;
+        throw err;
+      });
+    return promise;
+  };
 }
+
+const loadRows = cachedJson('search.json');
+// 4.5 MB (1.4 MB gzipped): loaded on the first keystroke, not with the page.
+const loadDictionary = cachedJson('dictionary.json', prepareDictionary);
 
 function resultItem(row) {
   const categories = [...new Set(row.attestations.map((a) => a.category))];
@@ -57,17 +74,35 @@ function resultItem(row) {
   );
 }
 
+function dictionaryItem(dictionary, row) {
+  return h(
+    'li',
+    {},
+    h(
+      'div',
+      { class: 'result-head' },
+      h('span', { class: 'result-hanji' }, row.hanji),
+      h('span', { class: 'result-tl' }, row.tl),
+      h('span', { class: 'meta' }, sourceLabels(dictionary, row.mask).join('、')),
+    ),
+  );
+}
+
 async function renderSearch() {
   // blank placeholder: no text, it only drives :placeholder-shown for the centered icon
   const input = h('input', { type: 'search', 'aria-label': '揣漢字抑是台羅', placeholder: ' ', spellcheck: 'false', autocapitalize: 'off' });
   const status = h('p', { class: 'status', role: 'status' });
   const results = h('ul', { class: 'results' });
+  const dictionaryHeading = h('h2', { class: 'results-heading', hidden: true }, icon('book'), '辭典已收');
+  const dictionaryResults = h('ul', { class: 'results compact' });
   view.replaceChildren(
     h('img', { class: 'app-icon', src: 'favicon.svg', alt: '' }),
     hero('台語齒盤社群辭典', '腔口差、新詞，佮辭典猶未收的詞。'),
     h('div', { class: 'search' }, icon('search'), input),
     status,
     results,
+    dictionaryHeading,
+    dictionaryResults,
     h('p', { class: 'cta' }, h('a', { class: 'text-link', href: '#/submit' }, '提交一个詞', icon('chevron'))),
   );
 
@@ -78,14 +113,32 @@ async function renderSearch() {
     status.textContent = LOAD_ERROR;
     return;
   }
+  let dictionary = null;
+  let dictionaryFailed = false;
   const update = () => {
-    const found = searchRows(rows, input.value);
+    const query = input.value;
+    const found = searchRows(rows, query);
+    const fromDictionary = dictionary ? searchDictionary(dictionary, query) : [];
     results.replaceChildren(...found.map(resultItem));
-    if (rows.length === 0) status.textContent = '猶無詞目';
-    else if (input.value.trim() === '') status.textContent = `${rows.length} 个詞目`;
-    else status.textContent = found.length === 0 ? '揣無' : '';
+    dictionaryResults.replaceChildren(...fromDictionary.map((row) => dictionaryItem(dictionary, row)));
+    dictionaryHeading.hidden = fromDictionary.length === 0;
+    if (query.trim() === '') status.textContent = rows.length === 0 ? '猶無社群詞目' : `${rows.length} 个社群詞目`;
+    else if (dictionaryFailed) status.textContent = `辭典${LOAD_ERROR}`;
+    else if (!dictionary) status.textContent = '辭典載入中…';
+    else status.textContent = found.length + fromDictionary.length === 0 ? '揣無' : '';
   };
-  input.addEventListener('input', update);
+  input.addEventListener('input', () => {
+    update();
+    if (dictionary || dictionaryFailed) return;
+    loadDictionary()
+      .then((loaded) => {
+        dictionary = loaded;
+      })
+      .catch(() => {
+        dictionaryFailed = true;
+      })
+      .finally(update);
+  });
   update();
 }
 
@@ -214,15 +267,24 @@ function renderSubmit() {
     if (shown.length > 0) return;
 
     let dup;
+    let known;
     try {
-      dup = await duplicateStatus(await loadRows(), entry.hanji, entry.tl);
+      const [rows, dictionary] = await Promise.all([loadRows(), loadDictionary()]);
+      dup = await duplicateStatus(rows, entry.hanji, entry.tl);
+      known = dictionaryMatch(dictionary, entry.hanji, entry.tl);
+      if (known) known = sourceLabels(dictionary, known.mask);
     } catch {
       say(LOAD_ERROR);
       return;
     }
-    if (dup.status === 'attested' && confirmedKey !== dup.key) {
+    // Neither blocks the submission (D10, and a dictionary word may still differ by accent);
+    // the contributor confirms once per pair.
+    const already = [];
+    if (dup.status === 'attested') already.push(`${dup.contributors.join('、')} 已經提交過`);
+    if (known) already.push(`${known.join('、')}已經有收`);
+    if (already.length > 0 && confirmedKey !== dup.key) {
       confirmedKey = dup.key;
-      say(`${dup.contributors.join('、')} 已經提交過。腔口無仝抑是有補充，請寫佇「說明」才閣送一擺。`);
+      say(`${already.join('；')}。腔口無仝抑是有補充，請寫佇「說明」才閣送一擺。`);
       return;
     }
     if (!open) say('格式無問題。提交猶未開放。');
@@ -246,6 +308,7 @@ function renderAbout() {
       tile('undo', '修改、收回', '嘛愛審查。收回的詞目留佇 git 歷史。'),
       tile('pin', '腔口', `教典十个調查點：${ACCENTS.filter((a) => a !== ACCENT_OTHER).join('、')}。`),
       tile('speaker', '腔口差類型', '參考教育部《臺灣台語常用詞辭典》方言差：語音差異、詞彙差異。'),
+      tile('book', '辭典資料', '揣詞的辭典結果逐工對台語齒盤辭典更新，來源有教典、台日大辭典、台華線頂對照典、華台對照典等，各來源保留原授權。'),
     ),
   );
 }

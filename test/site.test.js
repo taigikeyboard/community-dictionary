@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { groupEntries } from '../scripts/compile.js';
-import { checkForm, describeErrors, duplicateStatus, foldSearch, formToRaw, searchRows } from '../site/logic.js';
+import { parseDictionary } from '../scripts/fetch-dictionary.js';
+import {
+  checkForm,
+  describeErrors,
+  dictionaryMatch,
+  duplicateStatus,
+  foldSearch,
+  formToRaw,
+  prepareDictionary,
+  searchDictionary,
+  searchRows,
+  sourceLabels,
+} from '../site/logic.js';
 import { accentEntry, KEY } from './fixtures.js';
 
 // Tests for the browser-free site logic.
@@ -47,4 +59,27 @@ test('duplicateStatus: new, attested by others, mine', async () => {
   const attested = await duplicateStatus(rows, '八', 'Pueh');
   assert.deepEqual([attested.status, attested.contributors], ['attested', ['octocat']]);
   assert.equal((await duplicateStatus(rows, '八', 'pueh', 583231)).status, 'mine');
+});
+
+const CSV_HEADER = 'hanzi,tl,frequency,kautian,taijit,taihoa,itaigi,taigitv,stti,sitbut,kungge,lkk,khpoo,dev,khiin';
+const csvRow = (hanji, tl, ...flags) =>
+  [hanji, tl, '0', ...Array.from({ length: 12 }, (_, i) => (flags.includes(i) ? 'True' : 'False'))].join(',');
+
+test('parseDictionary keeps hanji, tl and a source bitmask', () => {
+  const index = parseDictionary([CSV_HEADER, csvRow('欲', 'beh', 0, 1), csvRow('', 'ah', 2), ''].join('\n'));
+  assert.deepEqual(index.rows, [['欲', 'beh', 0b11], ['', 'ah', 0b100]]);
+  assert.equal(index.sources[0].label, '教典');
+  assert.throws(() => parseDictionary(`${CSV_HEADER}\n欲,beh`), /line 2: 2 fields/);
+  assert.throws(() => parseDictionary('hanzi,tl\n'), /column "kautian" missing/);
+});
+
+test('searchDictionary ranks exact matches first; dictionaryMatch uses key normalization', () => {
+  const dictionary = prepareDictionary(
+    parseDictionary([CSV_HEADER, csvRow('欲愛', 'beh-ài', 1), csvRow('欲', 'beh', 0), csvRow('食飯', 'tsia̍h-pn̄g', 3)].join('\n')),
+  );
+  assert.deepEqual(searchDictionary(dictionary, '欲').map((r) => r.hanji), ['欲', '欲愛']);
+  assert.deepEqual(searchDictionary(dictionary, 'beh').map((r) => r.hanji), ['欲', '欲愛']);
+  assert.deepEqual(searchDictionary(dictionary, 'tsiah png').map((r) => r.hanji), ['食飯']);
+  assert.deepEqual(sourceLabels(dictionary, dictionaryMatch(dictionary, '食飯', 'Tsia̍h pn̄g').mask), ['華台對照典']);
+  assert.equal(dictionaryMatch(dictionary, '食飯', 'tsiah-png'), undefined);
 });

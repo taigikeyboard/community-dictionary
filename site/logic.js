@@ -3,6 +3,8 @@ import {
   CATEGORIES,
   entryKey,
   LIMITS,
+  normalizeHanji,
+  normalizeTl,
   prepareEntry,
 } from '../lib/entry.js';
 
@@ -27,6 +29,39 @@ export function searchRows(rows, query, limit = 50) {
   return rows
     .filter((row) => row.hanji.includes(q) || (folded !== '' && `-${foldSearch(row.tl)}`.includes(`-${folded}`)))
     .slice(0, limit);
+}
+
+const pairKey = (hanji, tl) => `${normalizeHanji(hanji)}\n${normalizeTl(tl)}`;
+
+// dictionary.json (scripts/fetch-dictionary.js) → searchable rows with folded tl and a pair index.
+export function prepareDictionary({ sources, rows }) {
+  const prepared = rows.map(([hanji, tl, mask]) => ({ hanji, tl, folded: foldSearch(tl), mask }));
+  const byPair = new Map(prepared.map((row) => [pairKey(row.hanji, row.tl), row]));
+  return { sources, rows: prepared, byPair };
+}
+
+export function sourceLabels(dictionary, mask) {
+  return dictionary.sources.filter((_, bit) => mask & (1 << bit)).map((s) => s.label);
+}
+
+// Same matching as searchRows; exact hanji or exact folded tl first.
+export function searchDictionary(dictionary, query, limit = 50) {
+  const q = query.trim();
+  if (q === '') return [];
+  const folded = foldSearch(q);
+  const exact = [];
+  const partial = [];
+  for (const row of dictionary.rows) {
+    if (row.hanji === q || (folded !== '' && row.folded === folded)) exact.push(row);
+    else if (row.hanji.includes(q) || (folded !== '' && `-${row.folded}`.includes(`-${folded}`))) partial.push(row);
+    if (exact.length >= limit) break;
+  }
+  return [...exact, ...partial].slice(0, limit);
+}
+
+// Dictionary row with this exact (Hanji, Tâi-lô) pair under key normalization, or undefined.
+export function dictionaryMatch(dictionary, hanji, tl) {
+  return dictionary.byPair.get(pairKey(hanji, tl));
 }
 
 // Form values → raw entry with every field present; fields of other categories stay empty so
