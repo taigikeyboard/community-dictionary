@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import {
   checkBatch,
   contributedTags,
+  contributorRoute,
   duplicateStatus,
   findExisting,
   indexItaigi,
@@ -12,6 +13,7 @@ import {
   searchItaigi,
   tagRoute,
   wordRoute,
+  wordsByContributor,
   wordsSpelled,
   wordsWithTag,
 } from './logic.js';
@@ -425,8 +427,12 @@ function wordCard(row, { headword }) {
     ['意思', pick('meaning').join('\n')],
     ['例句', pick('example').join('\n')],
     ['說明', pick('note').join('\n')],
-    ['貢獻', (attestations.length > 0 ? pick('contributor') : (row.contributors ?? [])).join('、')],
   ].filter(([, value]) => value !== '');
+  // contributors are tag-like links to their own card pages
+  const contributors = attestations.length > 0 ? pick('contributor') : (row.contributors ?? []);
+  if (contributors.length > 0) {
+    details.push(['貢獻', h('span', { class: 'card-contributors' }, contributors.map((name) => h('a', { class: 'tag', href: contributorRoute(name) }, name)))]);
+  }
   return h(
     'article',
     { class: 'word-card' },
@@ -488,6 +494,14 @@ function renderTag(tag) {
   withWords(list, (rows, itaigi) => cardList(list, wordsWithTag(rows, itaigi, tag), { headword: true }));
 }
 
+// A contributor's page: every word they gave, as cards.
+function renderContributor(name) {
+  document.title = `${name} · ${SITE_TITLE}`;
+  const list = h('div', { class: 'cards' });
+  view.replaceChildren(backToSearch(), hero(name), list);
+  withWords(list, (rows, itaigi) => cardList(list, wordsByContributor(rows, itaigi, name), { headword: true }));
+}
+
 // A word's page: its cards from each source, under the word itself.
 function renderWord(hanji, tl) {
   document.title = `${hanji || tl} · ${SITE_TITLE}`;
@@ -497,11 +511,12 @@ function renderWord(hanji, tl) {
 }
 
 // Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit,
-// cards at #/tag/<name> and #/word/<hanji>/<tl>.
+// cards at #/tag/<name>, #/contributor/<name> and #/word/<hanji>/<tl>.
 function route() {
   const target = parseRoute(location.hash);
   if (target.page === 'submit') renderSubmit();
   else if (target.page === 'tag') renderTag(target.tag);
+  else if (target.page === 'contributor') renderContributor(target.name);
   else if (target.page === 'word') renderWord(target.hanji, target.tl);
   else renderSearch();
 }

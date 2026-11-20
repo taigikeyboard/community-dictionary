@@ -81,15 +81,25 @@ export function wordsWithTag(rows, itaigi, tag) {
   };
 }
 
+// Every word one contributor gave, for the contributor's card page: community rows any of whose
+// attestations is theirs (GitHub login), and iTaigi rows naming them (iTaigi name, or 匿名).
+export function wordsByContributor(rows, itaigi, name) {
+  return {
+    community: rows.filter((row) => row.attestations.some((a) => a.contributor === name)),
+    itaigi: itaigi.filter((row) => row.contributors.includes(name)),
+  };
+}
+
 // The community and iTaigi rows spelled exactly (hanji, tl), for a word's card page.
 export function wordsSpelled(rows, itaigi, hanji, tl) {
   const same = (row) => row.hanji === hanji && row.tl === tl;
   return { community: rows.filter(same), itaigi: itaigi.filter(same) };
 }
 
-// Hash routes: #/ search, #/submit the form, #/tag/<name> a tag's cards, #/word/<hanji>/<tl> one
-// word's cards. Parts are URI-encoded, so a "/" inside a reading never splits the route.
+// Hash routes: #/ search, #/submit the form, #/tag/<name> a tag's cards, #/contributor/<name> a
+// contributor's cards, #/word/<hanji>/<tl> one word's cards. Parts are URI-encoded, so a "/" inside a reading never splits the route.
 export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
+export const contributorRoute = (name) => `#/contributor/${encodeURIComponent(name)}`;
 export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${encodeURIComponent(tl)}`;
 
 // location.hash → { page, ... }; anything unknown or undecodable is the search page.
@@ -99,6 +109,9 @@ export function parseRoute(hash) {
   try {
     if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {
       return { page: 'tag', tag: decodeURIComponent(parts[2]) };
+    }
+    if (parts[0] === '#' && parts[1] === 'contributor' && parts.length === 3 && parts[2] !== '') {
+      return { page: 'contributor', name: decodeURIComponent(parts[2]) };
     }
     if (parts[0] === '#' && parts[1] === 'word' && parts.length === 4 && parts[3] !== '') {
       return { page: 'word', hanji: decodeURIComponent(parts[2]), tl: decodeURIComponent(parts[3]) };

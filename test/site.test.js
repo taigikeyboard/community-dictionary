@@ -4,6 +4,7 @@ import { groupEntries } from '../scripts/compile.js';
 import {
   checkBatch,
   checkForm,
+  contributorRoute,
   describeErrors,
   duplicateStatus,
   findExisting,
@@ -15,6 +16,7 @@ import {
   searchRows,
   tagRoute,
   wordRoute,
+  wordsByContributor,
   wordsSpelled,
   wordsWithTag,
 } from '../site/logic.js';
@@ -112,7 +114,7 @@ test('searchItaigi: hanji, each variant reading; exact, then prefix, then the re
     ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant]],
     ['花蕊', 'hue-luí', 'hoe-luí', 'ㄏㄨㆤ ㄌㄨㄧˋ', [plant]],
     ['花', 'hue', 'hoe', 'ㄏㄨㆤ', [plant]],
-    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling]],
+    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling], ['Liz Lin', '匿名']],
   ]);
   const hanji = (query) => searchItaigi(index, query).map((r) => r.hanji);
   assert.deepEqual(hanji('花'), ['花', '花蕊', '青花']);
@@ -135,11 +137,17 @@ test('searchItaigi: hanji, each variant reading; exact, then prefix, then the re
   assert.deepEqual(wordsSpelled(rows, index, '花', 'hue').itaigi.map((r) => r.tl), ['hue']);
   assert.deepEqual(wordsSpelled(rows, index, '八', 'pueh').community.map((r) => r.key), [KEY]);
   assert.deepEqual(wordsSpelled(rows, index, '花', 'hoe').itaigi, []);
+  // a contributor's page: community rows by login, iTaigi rows by the names iTaigi lists
+  assert.deepEqual(wordsByContributor(rows, index, 'octocat').community.map((r) => r.key), [KEY]);
+  assert.deepEqual(wordsByContributor(rows, index, 'Liz Lin').itaigi.map((r) => r.hanji), ['𤺪呢']);
+  assert.deepEqual(wordsByContributor(rows, index, '匿名').itaigi.map((r) => r.hanji), ['𤺪呢']);
+  assert.deepEqual(wordsByContributor(rows, index, 'nobody'), { community: [], itaigi: [] });
 });
 
 test('routes: tag and word pages round-trip, anything else is search', () => {
   assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
   assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });
+  assert.deepEqual(parseRoute(contributorRoute('Liz Lin')), { page: 'contributor', name: 'Liz Lin' });
   // a "/" inside a reading stays inside the tl part
   assert.deepEqual(parseRoute(wordRoute('青花', 'tshenn-hue/tshinn-hue')), { page: 'word', hanji: '青花', tl: 'tshenn-hue/tshinn-hue' });
   // community words may have no Hanji

@@ -307,3 +307,6 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .empty { color: var(--secondary); text-align: center; }
 /* a word page holds a card or two: one centred column instead of a sparse grid */
 .cards-word { grid-template-columns: minmax(0, 36rem); justify-content: center; }
+/* the 貢獻 row of a card: contributor names as small tag-like links to their pages */
+.card-contributors { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+.card-contributors .tag { padding: 0.125rem 0.625rem; font-size: 0.8125rem; }
