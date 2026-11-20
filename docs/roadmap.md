@@ -23,12 +23,15 @@ Maintainer decisions, 2026-11-20 unless dated otherwise:
 | D7 | The contributor is the commit author (`<id>+<login>@users.noreply.github.com`), so the account appears in the repository's Contributors. Pull requests are merged with a merge commit or rebase, never squash (2026-11-12). |
 | D8 | Romanization is Tâi-lô only and is reviewed by hand; the maintainer's merge is the only gate on its correctness. Automated checks cover format and duplicates (2026-11-12). |
 
+| D9 | One JSON file per entry, in one directory per contributor (about 30 contributors expected). |
+| D10 | Entry identity = (Hanji, Tâi-lô); the category is a field. Different contributors may each submit the same pair — the second is an attestation, not a duplicate. The same contributor cannot submit a pair twice. |
+| D11 | A contributor can edit and withdraw their own entries, in the first version. Both go through a pull request and review like a new entry. |
+
 Defaults chosen by the plan (not yet confirmed by the maintainer):
 
-- **One file per entry** (see Data model) instead of one CSV per category.
-- **Entry identity = (Hanji, Tâi-lô)**; the category is a field, so the same pair cannot be submitted twice under two categories.
 - **A dedicated GitHub App**, installed on this repository only.
-- **Code licence**: open.
+- **No database** — caps are counted from open pull requests.
+- **Code licence** and **repository visibility**: open.
 
 ## Architecture
 
@@ -41,7 +44,7 @@ browser (GitHub Pages, static)            Cloudflare Worker                 GitH
                                             GET /user → id, login
                        ◀── session ─────    signed session (id, login)
 form → POST /submit    ───────────────▶    validate (shared module)
-                                            duplicate check (file exists?)
+                                            duplicate + ownership check
                                             mint installation token
                                             create branch, commit, PR  ───▶  pull request
                        ◀── PR URL ──────
@@ -57,7 +60,7 @@ Verified against GitHub documentation on 2026-11-20: "Generating a user access t
 
 ## Data model
 
-One JSON file per entry: `entries/<key>.json`, where `<key>` is the first 16 hex characters of SHA-256 over `hanji + "\n" + tl` after normalization (NFC, lowercase Tâi-lô, spaces to hyphens).
+One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contributor's GitHub login when the entry was first submitted; `<key>` is the first 16 hex characters of SHA-256 over `hanji + "\n" + tl` after normalization (NFC, lowercase Tâi-lô, spaces to hyphens).
 
 ```json
 {
@@ -70,9 +73,12 @@ One JSON file per entry: `entries/<key>.json`, where `<key>` is the first 16 hex
   "source": "",
   "note": "…the contributor's explanation…",
   "contributor": "octocat",
+  "contributor_id": 583231,
   "submitted": "2026-11-20"
 }
 ```
+
+Ownership is `contributor_id`, never the directory name: a contributor who renames their account keeps editing their old entries, and new entries go to a directory under the new login.
 
 | Field | Categories | Notes |
 |---|---|---|
@@ -80,13 +86,32 @@ One JSON file per entry: `entries/<key>.json`, where `<key>` is the first 16 hex
 | `accents`, `place` | 腔口差 | the ten accents used by the Ministry of Education dictionary, or 其他 with a place name |
 | `meaning`, `source` | 台語新詞 | Mandarin or English equivalent; where the word was seen, or an example sentence |
 
-Why one file per entry:
+Why one file per entry, one directory per contributor:
 
 - Two open pull requests never touch the same file, so submissions never conflict and need no rebase job.
-- The duplicate check is "does `entries/<key>.json` exist on `main` or in an open submission branch" — one API call, no parsing.
+- A contributor's whole contribution is one directory: easy to browse, adopt or exclude as a unit.
+- Two contributors attesting the same pair each keep their own file (D10).
 - A review shows one small file with named fields.
 
-A build step compiles `entries/` into one CSV and the site's search JSON; the compiled files are build output, not tracked.
+Duplicate rules (D10), checked by listing the repository tree and the open submission branches for `<key>`:
+
+| Same `<key>` found | Result |
+|---|---|
+| under the same `contributor_id` | rejected: "already submitted" — edit it instead |
+| under other contributors only | accepted; the form first shows who submitted it and asks for a different accent or an added note |
+
+A build step compiles `entries/` into one CSV and the site's search JSON, merging files with the same key into one row that lists every attesting contributor; the compiled files are build output, not tracked.
+
+### Edit and withdraw (D11)
+
+| Action | Pull request contains |
+|---|---|
+| Edit, pair unchanged | the same file, modified |
+| Edit, Hanji or Tâi-lô changed | new file under the new key + deletion of the old file; duplicate rules run again |
+| Edit while the first pull request is still open | one more commit on that pull request's branch |
+| Withdraw | deletion of the file |
+
+A withdrawn entry leaves the current data; it stays in git history and its CC0 dedication is not revoked. The explanation page says so.
 
 ## Phases
 
@@ -96,22 +121,24 @@ One pull request per phase.
 |---|---|---|
 | 0 | This roadmap, README, licences | In progress |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Pending |
-| 2 | Worker: `/login`, `/callback`, `/submit`, session, caps, pull request creation; tests against a mocked GitHub API | Pending |
-| 3 | Site: home page with the explanation of each category, the submission form, search over accepted entries, "submitted" page with the pull request link; Pages deploy | Pending |
+| 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Pending |
+| 3 | Site: home page with the explanation of each category, the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | Pending |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Pending |
 
 ### Phase 1 — schema and checks
 
 - Limits: Hanji ≤ 20 characters, Tâi-lô ≤ 80, place ≤ 20, meaning ≤ 100, source ≤ 300, note ≤ 1,000; one line per field except `note`.
 - Character whitelists: Hanji field = CJK ideographs plus Tâi-lô letters and hyphen (Hàn-lô mixed writing is allowed); Tâi-lô field = Latin letters, combining tone marks, hyphen, space, tone digits.
-- CI fails when a file name does not match its content's key, when a field breaks a limit, or when a pull request from the App changes anything outside one new `entries/*.json`.
+- CI fails when a file name does not match its content's key, when a field breaks a limit, or when a pull request from the App touches anything outside `entries/`.
+- Ownership in CI: for every file a submission commit adds, modifies or deletes, the commit author's id (from the noreply address) must equal the file's `contributor_id` — a second gate behind the Worker's own check.
 - No check of whether the Tâi-lô is correct (D8).
 
 ### Phase 2 — Worker
 
 - The contributor's `id` and `login` come only from GitHub's `/user` response, never from the form.
 - Form text never reaches a shell or a template: the entry is `JSON.stringify` output, the commit message and pull request body are built from validated fields.
-- Branch `submit/<user id>/<key>`; pull request title `add <hanji> <tl>`; label = category.
+- Branch `submit/<user id>/<key>`; pull request title `add` / `edit` / `withdraw <hanji> <tl>`; label = category.
+- Edit and withdraw: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair is two serial Contents API calls on the branch (create, then delete — the documentation forbids running them in parallel).
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
 
@@ -119,7 +146,8 @@ One pull request per phase.
 
 - Static, built with esbuild like kautian-mirror; fonts and style tokens taken from it.
 - Interface text in Taiwanese (Hanji), with an explanation page: what each category means, what a good entry looks like, how review works, the CC0 notice, and that the contributor's GitHub account becomes public as the commit author.
-- Search over accepted entries; the form warns before submit when the exact (Hanji, Tâi-lô) already exists.
+- Search over accepted entries; before submit the form applies the duplicate rules above from the published search JSON.
+- "My submissions" filters the same JSON by the signed-in id — no extra Worker endpoint — and offers edit and withdraw.
 
 ### Phase 4 — maintainer setup
 
