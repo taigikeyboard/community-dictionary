@@ -96,7 +96,7 @@ async function renderSearch() {
   const dictionaryHeading = h('h2', { class: 'results-heading', hidden: true }, icon('book'), '辭典已收');
   const dictionaryResults = h('ul', { class: 'results compact' });
   view.replaceChildren(
-    hero('揣詞', '社群詞目佮辭典已收的詞。'),
+    hero('揣詞'),
     h('div', { class: 'search' }, icon('search'), input),
     status,
     results,
@@ -237,7 +237,7 @@ function renderSubmit() {
         'label',
         { class: 'consent' },
         h('input', { type: 'checkbox', name: 'consent', id: 'f-consent', 'aria-describedby': 'e-consent' }),
-        h('span', {}, '我同意用 CC0 釋出，並公開我的 GitHub 帳號'),
+        h('span', {}, '我同意用 CC0 釋出'),
       ),
       errorSlot('consent'),
     ),
@@ -290,11 +290,7 @@ function renderSubmit() {
     // Phase 2: sign in through the Worker and POST the entry to its /submit endpoint.
   });
 
-  view.replaceChildren(
-    hero('台語齒盤社群辭典', '提交腔口差、新詞，佮辭典猶未收的詞。'),
-    open ? null : h('p', { class: 'status closed' }, '提交猶未開放，表格會當先試。'),
-    form,
-  );
+  view.replaceChildren(hero('台語齒盤社群辭典'), form);
   sync();
 }
 

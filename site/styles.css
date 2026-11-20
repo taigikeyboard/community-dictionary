@@ -95,7 +95,6 @@ main { flex: 1; display: flex; flex-direction: column; justify-content: center; 
 .search input[type="search"] { height: 56px; padding: 0 1.5rem 0 3.25rem; border-radius: 28px; font-size: 1.125rem; background: var(--card); box-shadow: var(--card-shadow); }
 .search input::-webkit-search-cancel-button { display: none; }
 .cta { margin: 0; text-align: center; }
-.status.closed { margin: -1.25rem 0 2rem; }
 .status { margin: 1rem 0 0; color: var(--secondary); font-size: 0.9375rem; text-align: center; }
 
 .results { list-style: none; width: 100%; max-width: var(--measure); margin: 2.5rem auto 0; padding: 0 2.5rem; border-radius: 28px; background: var(--card); box-shadow: var(--card-shadow); }
