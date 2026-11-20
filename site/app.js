@@ -63,7 +63,7 @@ async function renderSearch() {
   const status = h('p', { class: 'status', role: 'status' });
   const results = h('ul', { class: 'results' });
   view.replaceChildren(
-    hero('台語社群辭典', '腔口差、新詞，佮辭典猶未收的詞。'),
+    hero('台語齒盤社群辭典', '腔口差、新詞，佮辭典猶未收的詞。'),
     h('div', { class: 'search' }, icon('search'), input),
     status,
     results,

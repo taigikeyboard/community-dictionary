@@ -76,10 +76,11 @@ a:hover { text-decoration: underline; }
 .globalnav-mark { color: var(--text) !important; font-weight: 700; }
 .globalnav .icon { font-size: 1rem; }
 
-main { width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padding: 0 1.5rem; }
+/* fills the space between nav and footer and centers the page vertically; taller pages flow normally */
+main { flex: 1; display: flex; flex-direction: column; justify-content: center; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padding: 3rem 1.5rem; }
 
 /* --- page head --- */
-.hero { padding: 5.5rem 0 3rem; text-align: center; }
+.hero { padding: 0 0 2.5rem; text-align: center; }
 .hero h1 { margin: 0; font-size: 3.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
 .hero p { margin: 0.75rem 0 0; color: var(--secondary); font-size: 1.375rem; }
 
@@ -88,7 +89,7 @@ main { width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padd
 .panel + .panel { margin-top: 1.25rem; }
 
 /* --- search --- */
-.search { position: relative; max-width: 680px; margin: 0 auto; }
+.search { position: relative; width: 100%; max-width: 680px; margin: 0 auto; }
 .search .icon { position: absolute; left: 1.25rem; top: 50%; font-size: 1.25rem; color: var(--secondary); transform: translateY(-50%); pointer-events: none; transition: left 0.3s ease, transform 0.3s ease, font-size 0.3s ease; }
 /* empty and unfocused: the icon stands in for a placeholder, centered */
 .search:has(input:placeholder-shown:not(:focus)) .icon { left: 50%; font-size: 1.5rem; transform: translate(-50%, -50%); }
@@ -96,7 +97,7 @@ main { width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padd
 .search input::-webkit-search-cancel-button { display: none; }
 .status { margin: 1rem 0 0; color: var(--secondary); font-size: 0.9375rem; text-align: center; }
 
-.results { list-style: none; max-width: var(--measure); margin: 2.5rem auto 0; padding: 0 2.5rem; border-radius: 28px; background: var(--card); box-shadow: var(--card-shadow); }
+.results { list-style: none; width: 100%; max-width: var(--measure); margin: 2.5rem auto 0; padding: 0 2.5rem; border-radius: 28px; background: var(--card); box-shadow: var(--card-shadow); }
 .results:empty { display: none; }
 .results li { padding: 1.5rem 0; }
 .results li + li { border-top: 1px solid var(--hairline); }
@@ -179,14 +180,14 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .tile p { margin: 0; color: var(--secondary); }
 
 /* --- footer --- */
-.footer { display: flex; justify-content: center; gap: 1.5rem; margin-top: auto; padding: 4rem 1rem 2rem; font-size: 0.8125rem; }
+.footer { display: flex; justify-content: center; gap: 1.5rem; padding: 1.5rem 1rem 2rem; font-size: 0.8125rem; }
 .footer a { color: var(--secondary); }
 .footer a:hover { color: var(--text); text-decoration: none; }
 
 @media (max-width: 734px) {
   .globalnav { gap: 1.5rem; }
   .globalnav-mark { display: none !important; }
-  .hero { padding: 3.5rem 0 2rem; }
+  .hero { padding: 0 0 2rem; }
   .hero h1 { font-size: 2.5rem; }
   .hero p { font-size: 1.125rem; }
   .panel, .tile { padding: 1.5rem; border-radius: 22px; }
