@@ -35,7 +35,7 @@ const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 
 // The one contributor name every iTaigi word carries: iTaigi's own contributor names (often real
 // names) are not republished (maintainer 2026-11-21).
-export const ITAIGI_CONTRIBUTOR = 'iTaigi原站';
+export const ITAIGI_CONTRIBUTOR = 'itaigi';
 
 // itaigi.json rows [hanji, tl, poj, tps, [tag index]] → search index, each credited to ITAIGI_CONTRIBUTOR; folding runs once here, not
 // per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the whole tl.

@@ -67,8 +67,8 @@ const loadContributors = cachedJson('contributors.json');
 // One labelled row of chips on the homepage.
 const chipGroup = (label, chips) => h('section', { class: 'chip-group' }, h('h2', {}, label), chips);
 
-// Contributor chips under the tags, most words first (dist/contributors.json from build-site); each
-// opens the contributor's cards page.
+// Contributors under the tags, drawn like them as #name, most words first (dist/contributors.json
+// from build-site); each opens the contributor's cards page.
 function contributorChips() {
   const row = h('nav', { class: 'tags', 'aria-label': '貢獻者' });
   loadContributors()
@@ -76,6 +76,9 @@ function contributorChips() {
     .catch(() => {});
   return row;
 }
+
+// A card's contributor byline: names as plain links to their cards pages, joined by 、.
+const contributorLinks = (names) => names.flatMap((name, i) => [i > 0 ? '、' : null, h('a', { class: 'person', href: contributorRoute(name) }, name)]).filter(Boolean);
 
 // The search box lists up to 200 matches per source; a word row only the closest few.
 const SEARCH_LIMIT = 200;
@@ -162,7 +165,7 @@ function matchesPopover(root, locate, limit, { isSearch = false } = {}) {
   root.addEventListener('words-changed', update);
 }
 
-// One tag as a link to its cards page.
+// One tag as a link to its cards page, drawn as #name (the # from styles.css).
 const tagLink = (name, reading = null) => h('a', { class: 'tag', href: tagRoute(name), title: reading }, name);
 
 // The tag chips under the search box: the site's tags, then tags contributors made once they are
@@ -443,18 +446,21 @@ function wordCard(row, { headword }) {
     ['例句', pick('example').join('\n')],
     ['說明', pick('note').join('\n')],
   ].filter(([, value]) => value !== '');
-  // contributors are tag-like links to their own card pages
   const contributors = attestations.length > 0 ? pick('contributor') : (row.contributors ?? []);
-  if (contributors.length > 0) {
-    details.push(['貢獻', h('span', { class: 'card-contributors' }, contributors.map((name) => h('a', { class: 'tag', href: contributorRoute(name) }, name)))]);
-  }
+  // the card's foot: tags on the left, the contributors on the right as a byline (linking to their
+  // pages); its 貢獻者 label is read aloud and shown on hover, the corner placement says it to the eye
+  const credit =
+    contributors.length > 0
+      ? h('p', { class: 'card-credit', title: '貢獻者' }, h('span', { class: 'unseen' }, '貢獻者：'), contributorLinks(contributors))
+      : null;
+  const tagList = tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': '標籤' }, tags.map((name) => tagLink(name))) : null;
   return h(
     'article',
     { class: 'word-card' },
     headword ? h('a', { class: 'card-hanji', href: wordRoute(row.hanji, row.tl) }, row.hanji || row.tl) : null,
     h('p', { class: 'card-readings' }, h('span', { class: 'result-tl' }, row.tl), readings(row)),
     details.length > 0 ? h('dl', { class: 'card-details' }, details.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])) : null,
-    tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': '標籤' }, tags.map((name) => tagLink(name))) : null,
+    tagList || credit ? h('footer', { class: 'card-foot' }, tagList, credit) : null,
   );
 }
 

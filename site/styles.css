@@ -68,7 +68,8 @@
 :root[data-font="openhuninn"] { --font: "jf-openhuninn", var(--system-font); }
 :root[data-font="genyomin"] { --font: "GenYoMin2 TW", var(--system-font); }
 :root[data-font="genyogothic"] { --font: "GenYoGothic2 TW", var(--system-font); }
-:root[data-poj="off"] .poj, :root[data-tps="off"] .tps { display: none; }
+/* off by default: shown only once the reader turns 白話字 / 方音符號 on (or kautian-mirror stored "on") */
+:root:not([data-poj="on"]) .poj, :root:not([data-tps="on"]) .tps { display: none; }
 
 * { box-sizing: border-box; }
 /* author display rules must not undo the hidden attribute */
@@ -128,13 +129,19 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .search > .matches { right: 0; }
 
 /* --- tag chips under the search box: wrap onto more lines rather than scroll sideways --- */
-.tags { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-/* homepage chip rows (標籤, 貢獻者), each under a small label */
+.tags { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+/* homepage rows (標籤, 貢獻者), each under a small label */
 .chip-group { margin-bottom: 1.5rem; }
 .chip-group h2 { margin: 0 0 0.625rem; color: var(--secondary); font-size: 0.9375rem; font-weight: 400; }
-.tag { padding: 0.25rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius-round); background: var(--card); color: var(--text); font: inherit; font-size: 0.9375rem; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
-.tag:hover { background: var(--hover); text-decoration: none; }
-.tag:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+/* tags and the homepage's contributors read as plain #name text, no box; a card's byline joins
+   names by 、 */
+.tag { color: var(--secondary); font-size: 0.9375rem; transition: color 0.15s; }
+.tag::before { content: "#"; opacity: 0.6; }
+.tag:hover, .person:hover { color: var(--accent); text-decoration: none; }
+.tag:focus-visible, .person:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
+.person { color: var(--text); transition: color 0.15s; }
+/* read aloud, never drawn */
+.unseen { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; white-space: nowrap; }
 
 /* --- links between the two pages --- */
 /* 貢獻詞 sits at the search box's lower right, above the chips */
@@ -214,11 +221,6 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .form-notice { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; color: var(--secondary); font-size: 0.9375rem; }
 
 
-/* --- footer --- */
-.footer { display: flex; justify-content: center; gap: 1.5rem; padding: 1.5rem 1rem 2rem; font-size: 0.8125rem; }
-.footer a { display: inline-flex; color: var(--secondary); transition: color 0.2s; }
-.footer svg { width: 22px; height: 22px; fill: currentColor; }
-.footer a:hover { color: var(--text); text-decoration: none; }
 
 @media (max-width: 734px) {
   .hero { padding: 0 0 2rem; }
@@ -256,14 +258,22 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
   transform: translateX(-100%);
   transition: transform 0.25s ease, overlay 0.25s allow-discrete, display 0.25s allow-discrete;
 }
-.sidebar:popover-open { transform: none; }
+/* a column, so the footer sits at its foot */
+.sidebar:popover-open { display: flex; flex-direction: column; transform: none; }
 @starting-style { .sidebar:popover-open { transform: translateX(-100%); } }
 .sidebar::backdrop { background: rgba(0, 0, 0, 0.3); }
 .sidebar-close { display: flex; justify-content: flex-end; margin: -0.25rem -0.5rem 0 0; }
+/* social links at the sidebar's foot (after taigikeyboard.tw/web): margin-top auto holds them at
+   the window's foot */
+.sidebar-footer { flex: none; margin-top: auto; padding-top: 2.5rem; }
+.social-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem; }
+.social-links a { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; color: var(--secondary); transition: color 0.2s; }
+.social-links a:hover { color: var(--text); text-decoration: none; }
+.social-links svg { flex: none; width: 15px; height: 15px; }
 @media (min-width: 50rem) {
   /* docked, collapsed by default: slid out and hidden (its controls leave the tab order);
-     display: block overrides the closed popover's display: none so it can slide */
-  .sidebar { position: fixed; display: block; padding-top: 3.5rem; box-shadow: none; visibility: hidden; transition: transform 0.25s ease, visibility 0.25s; }
+     display: flex overrides the closed popover's display: none so it can slide */
+  .sidebar { position: fixed; display: flex; flex-direction: column; padding-top: 3.5rem; box-shadow: none; visibility: hidden; transition: transform 0.25s ease, visibility 0.25s; }
   .sidebar-close { display: none; }
   body { transition: padding-left 0.25s ease; }
   :root[data-sidebar="open"] .sidebar { transform: none; visibility: visible; }
@@ -305,11 +315,13 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .card-details { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0.25rem 0 0; font-size: 0.9375rem; }
 .card-details dt { color: var(--secondary); }
 .card-details dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
-.card-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: auto; padding-top: 0.5rem; }
-.card-tags .tag { padding: 0.125rem 0.625rem; font-size: 0.8125rem; }
+/* the card's foot, held at the bottom: tags left, contributor byline right (wraps to its own line,
+   still right-aligned, when the tags fill the row); line-height 1.5rem keeps each link a 24px target */
+.card-foot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; margin-top: auto; padding-top: 0.5rem; font-size: 0.875rem; line-height: 1.5rem; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 0 0.75rem; }
+.card-tags .tag { font-size: inherit; }
+.card-credit { margin: 0 0 0 auto; color: var(--secondary); text-align: right; }
+.card-credit .person { color: var(--secondary); }
 .empty { color: var(--secondary); text-align: center; }
 /* a word page holds a card or two: one centred column instead of a sparse grid */
 .cards-word { grid-template-columns: minmax(0, 36rem); justify-content: center; }
-/* the 貢獻 row of a card: contributor names as small tag-like links to their pages */
-.card-contributors { display: flex; flex-wrap: wrap; gap: 0.375rem; }
-.card-contributors .tag { padding: 0.125rem 0.625rem; font-size: 0.8125rem; }
