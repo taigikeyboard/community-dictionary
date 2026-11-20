@@ -32,40 +32,56 @@ export function searchRows(rows, query, limit = 50) {
 // "/" joins variant readings in iTaigi; folding it to a syllable break lets each variant match.
 const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 
-// itaigi.json rows [hanji, tl, meaning, poj, tps] → search index; folding runs once here, not per
-// keystroke. `variants` holds each "/"-joined reading on its own, `folded` the whole tl.
+// itaigi.json rows [hanji, tl, poj, tps, [tag index]] → search index; folding runs once here, not
+// per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the whole tl.
 export function indexItaigi(rows) {
-  return rows.map(([hanji, tl, meaning, poj = '', tps = '']) => ({
+  return rows.map(([hanji, tl, poj, tps, tags]) => ({
     hanji,
     tl,
-    meaning,
     poj,
     tps,
+    tags,
     variants: tl.split('/').map(foldReading),
     folded: foldReading(tl),
   }));
 }
 
-// iTaigi rows whose hanji or Mandarin meaning contains the query, or whose tl starts a syllable
-// with it. Exact matches come first, then those starting with the query, then the rest.
-export function searchItaigi(index, query, limit = 50) {
+// iTaigi rows whose hanji contains the query, or whose tl starts a syllable with it; exact
+// matches first, then those starting with the query, then the rest. With a tag (index into
+// TAGS) only that tag's rows count, and an empty query lists them all in file order.
+export function searchItaigi(index, query, limit = 50, tag = null) {
   const q = query.trim();
-  if (q === '') return [];
+  const rows = tag === null ? index : index.filter((row) => row.tags.includes(tag));
+  if (q === '') return tag === null ? [] : rows.slice(0, limit);
   const folded = foldReading(q);
   const hasTl = folded !== '-';
   const exact = [];
   const prefix = [];
   const rest = [];
-  for (const row of index) {
-    if (row.hanji === q || row.meaning === q || (hasTl && (row.folded === folded || row.variants.includes(folded)))) {
+  for (const row of rows) {
+    if (row.hanji === q || (hasTl && (row.folded === folded || row.variants.includes(folded)))) {
       exact.push(row);
-    } else if (row.hanji.startsWith(q) || row.meaning.startsWith(q) || (hasTl && row.variants.some((v) => v.startsWith(folded)))) {
+    } else if (row.hanji.startsWith(q) || (hasTl && row.variants.some((v) => v.startsWith(folded)))) {
       prefix.push(row);
-    } else if (row.hanji.includes(q) || row.meaning.includes(q) || (hasTl && row.folded.includes(folded))) {
+    } else if (row.hanji.includes(q) || (hasTl && row.folded.includes(folded))) {
       rest.push(row);
     }
   }
   return [...exact, ...prefix, ...rest].slice(0, limit);
+}
+
+// Community rows any of whose attestations carries `tag` (a name: from the site's list or a
+// contributor's own), narrowed by the query like searchRows, or all of them when nothing is typed.
+export function searchRowsByTag(rows, query, tag, limit = 50) {
+  const tagged = rows.filter((row) => row.attestations.some((a) => a.tags.includes(tag)));
+  return query.trim() === '' ? tagged.slice(0, limit) : searchRows(tagged, query, limit);
+}
+
+// Tags on community entries that the site's own list lacks, in order of first appearance.
+export function contributedTags(rows, listed) {
+  const found = new Set();
+  for (const row of rows) for (const a of row.attestations) for (const tag of a.tags) if (!listed.includes(tag)) found.add(tag);
+  return [...found];
 }
 
 const pairKey = (hanji, tl) => `${normalizeHanji(hanji)}\n${normalizeTl(tl)}`;
@@ -95,6 +111,7 @@ export function formToRaw(values, identity) {
     hanji: values.hanji ?? '',
     tl: values.tl ?? '',
     accents,
+    tags: values.tags ?? [],
     place: accents.includes(ACCENT_OTHER) ? (values.place ?? '') : '',
     meaning: values.meaning ?? '',
     example: values.example ?? '',
@@ -160,6 +177,7 @@ export const FIELD_LABELS = Object.freeze({
   hanji: '漢字、日語',
   tl: '台羅',
   accents: '腔口',
+  tags: '標籤',
   place: '所在',
   meaning: '意思',
   example: '例句',
@@ -167,6 +185,9 @@ export const FIELD_LABELS = Object.freeze({
 });
 
 const MESSAGE_RULES = [
+  [/^tags: more than (\d+) tags$/, (m) => `上濟 ${m[1]} 个`],
+  [/^tags: "(.+)" longer than (\d+) characters$/, (m) => `「${m[1]}」傷長，上濟 ${m[2]} 字`],
+  [/^tags: "(.+)" only Han characters/, (m) => `「${m[1]}」干焦會當用漢字、假名、台羅字母佮「-」`],
   [/: required$/, () => '愛填'],
   [/: longer than (\d+) characters$/, (m) => `傷長，上濟 ${m[1]} 字`],
   [/: must be one line$/, () => '袂當換逝'],

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from './romanize.js';
 
 // Pulls the iTaigi 華台對照典 (CC0, per the ChhoeTaigiDatabase README) and writes
-// dist/itaigi.json [[hanji, tl, meaning, poj, tps]] for the site's search. Run after build-site
-// (which clears dist/).
+// dist/itaigi.json [[hanji, tl, poj, tps, [tag index]]] for the site's search, tags joined from
+// the committed data/itaigi-tags.json (scripts/classify-itaigi.js). Run after build-site (which
+// clears dist/).
 
 export const ITAIGI_URL =
   'https://raw.githubusercontent.com/ChhoeTaigi/ChhoeTaigiDatabase/master/ChhoeTaigiDatabase/ChhoeTaigi_iTaigiHoataiTuichiautian.csv';
@@ -75,6 +77,27 @@ export function parseItaigi(csv) {
   return rows;
 }
 
+// Parsed rows + data/itaigi-tags.json ({ "hanji\ttl": [tag name] }) → the published rows
+// [hanji, tl, poj, tps, [tag index into TAG_NAMES]], one per (Hanji, Tâi-lô) pair. The Mandarin
+// gloss is dropped (maintainer 2026-11-21: no Mandarin on the site); only the classifier reads it.
+export function buildSearchRows(rows, tagsByPair) {
+  const seen = new Set();
+  const out = [];
+  for (const [hanji, tl] of rows) {
+    const key = `${hanji}\t${tl}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const tags = (tagsByPair[key] ?? []).map((name) => {
+      const index = TAG_NAMES.indexOf(name);
+      if (index === -1) throw new Error(`data/itaigi-tags.json: unknown tag "${name}" on ${JSON.stringify(key)}; restore it in site/tags.js or rerun scripts/classify-itaigi.js`);
+      return index;
+    });
+    const { poj, tps } = romanize(tl);
+    out.push([hanji, tl, poj, tps, tags]);
+  }
+  return out;
+}
+
 async function main() {
   const res = await fetch(ITAIGI_URL);
   if (!res.ok) throw new Error(`fetch-itaigi: ${ITAIGI_URL} → HTTP ${res.status}`);
@@ -82,14 +105,13 @@ async function main() {
   if (rows.length < MIN_ROWS) {
     throw new Error(`fetch-itaigi: only ${rows.length} rows (expected ≥ ${MIN_ROWS}); check ${ITAIGI_URL}`);
   }
-  const withReadings = rows.map((row) => {
-    const { poj, tps } = romanize(row[1]);
-    return [...row, poj, tps];
-  });
+  const tagsByPair = JSON.parse(await readFile(new URL('../data/itaigi-tags.json', import.meta.url), 'utf8'));
+  const searchRows = buildSearchRows(rows, tagsByPair);
   const dist = fileURLToPath(new URL('../dist', import.meta.url));
   await mkdir(dist, { recursive: true });
-  await writeFile(join(dist, 'itaigi.json'), JSON.stringify(withReadings));
-  console.log(`fetch-itaigi: ${rows.length} rows → dist/itaigi.json`);
+  await writeFile(join(dist, 'itaigi.json'), JSON.stringify(searchRows));
+  const tagged = searchRows.filter((row) => row[4].length > 0).length;
+  console.log(`fetch-itaigi: ${searchRows.length} rows (${tagged} tagged) → dist/itaigi.json`);
 }
 
 if (import.meta.main) await main();

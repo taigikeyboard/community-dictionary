@@ -58,6 +58,20 @@ test('accent and place rules', () => {
   assert.deepEqual(errorsFor({ accents: '鹿港偏泉腔' }), ['accents: must be an array of strings']);
 });
 
+test('tag rules: any tag in the Hanji script, at most 5, each at most 10 characters', () => {
+  // a contributor's own tag is as valid as one from the site's list
+  assert.deepEqual(errorsFor({ tags: [] }), []);
+  assert.deepEqual(errorsFor({ tags: ['食食', '夜市仔', 'ラーメン', 'khang-khuè'] }), []);
+  assert.deepEqual(errorsFor({ tags: ['一', '二', '三', '四', '五', '六'] }), ['tags: more than 5 tags']);
+  assert.deepEqual(errorsFor({ tags: ['食食', '食食'] }), ['tags: duplicate tag']);
+  assert.deepEqual(errorsFor({ tags: ['一二三四五六七八九十一'] }), ['tags: "一二三四五六七八九十一" longer than 10 characters']);
+  assert.deepEqual(errorsFor({ tags: ['food!'] }), ['tags: "food!" only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
+  assert.deepEqual(errorsFor({ tags: [' 食食'] }), ['tags: " 食食" not normalized (NFC, trimmed, not empty)']);
+  assert.deepEqual(errorsFor({ tags: '食食' }), ['tags: must be an array of strings']);
+  // prepareEntry trims, drops blanks and repeats
+  assert.deepEqual(prepareEntry(withFields({ tags: [' 食食', '', '食食'] })).entry.tags, ['食食']);
+});
+
 test('character whitelists', () => {
   assert.deepEqual(errorsFor({ hanji: '八 八' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
   assert.deepEqual(errorsFor({ hanji: '八1' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);

@@ -1,9 +1,10 @@
-import { ACCENT_OTHER, ACCENTS } from '../lib/entry.js';
+import { ACCENT_OTHER, ACCENTS, TAG_LIMIT } from '../lib/entry.js';
 import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
-import { checkBatch, duplicateStatus, findExisting, indexItaigi, MAX_WORDS, searchItaigi } from './logic.js';
+import { checkBatch, contributedTags, duplicateStatus, findExisting, indexItaigi, MAX_WORDS, searchItaigi, searchRowsByTag } from './logic.js';
 import { initSettings } from './settings.js';
 import { initSidebar } from './sidebar.js';
+import { TAG_NAMES, TAGS } from './tags.js';
 
 // Two pages: search (community entries and iTaigi) and the submission form, whose word rows show
 // the community entries already collected.
@@ -87,13 +88,23 @@ function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
   let active = null;
   const update = () => {
     if (active && !root.contains(active.anchor)) active = null;
-    const { hanji, tl } = active ? active.values() : { hanji: '', tl: '' };
-    const found = rows ? findExisting(rows, hanji, tl, limit) : [];
-    const foundItaigi = itaigi ? searchItaigi(itaigi, hanji, limit) : [];
+    const { hanji, tl, tag = null } = active ? active.values() : { hanji: '', tl: '' };
+    // a tag is a name; iTaigi rows carry the site's tags only, by index (-1: a contributor's own tag)
+    const tagIndex = tag === null ? null : TAG_NAMES.indexOf(tag);
+    let found = [];
+    if (rows) found = tag === null ? findExisting(rows, hanji, tl, limit) : searchRowsByTag(rows, hanji, tag, limit).map((row) => ({ row, exact: false }));
+    const foundItaigi = itaigi && tagIndex !== -1 ? searchItaigi(itaigi, hanji, limit, tagIndex) : [];
     panel.hidden = found.length === 0 && foundItaigi.length === 0;
     if (panel.hidden) return;
     if (panel.parentElement !== active.anchor) active.anchor.append(panel);
-    results.replaceChildren(...found.map(existingItem), ...foundItaigi.map(itaigiItem));
+    // a tag with nothing typed lists only the first `limit` of each source; say how many there are
+    let more = null;
+    if (tag !== null && hanji.trim() === '') {
+      const total = (rows ? searchRowsByTag(rows, '', tag, Infinity).length : 0) + (itaigi && tagIndex !== -1 ? itaigi.filter((r) => r.tags.includes(tagIndex)).length : 0);
+      const shown = found.length + foundItaigi.length;
+      if (total > shown) more = h('li', { class: 'results-more' }, `攏總 ${total} 个，干焦列頭前 ${shown} 个`);
+    }
+    results.replaceChildren(...found.map(existingItem), ...foundItaigi.map(itaigiItem), ...(more ? [more] : []));
   };
   const load = () => {
     if (!rows) {
@@ -140,10 +151,33 @@ function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
 }
 
 // The page's search box; results open in the same popover as the word rows.
+// The page's search box with the tag chips under it; results open in the same popover as the
+// word rows, below the chips. A chip narrows the results to its tag (pressed again, it lets go)
+// and, with nothing typed, lists the tag's words. Tags contributors made, once in accepted
+// entries, follow the site's own as extra chips.
 function searchBox() {
   const input = h('input', { type: 'search', 'aria-label': '揣詞', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
-  const box = h('div', { class: 'search', role: 'search' }, icon('search'), input);
-  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT, { withItaigi: true });
+  const chipRow = h('div', { class: 'tags', role: 'group', 'aria-label': '標籤' });
+  const box = h('div', { class: 'search', role: 'search' }, icon('search'), input, chipRow);
+  let tag = null;
+  const addChip = (name, reading) => {
+    const chip = h('button', { type: 'button', class: 'tag', 'aria-pressed': 'false', title: reading }, name);
+    chip.addEventListener('click', () => {
+      tag = tag === name ? null : name;
+      for (const other of chipRow.children) other.setAttribute('aria-pressed', String(other.textContent === tag));
+      // focus stays on the chip (keyboard users keep their place); the input event opens or
+      // refreshes the popover for the new tag
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    chipRow.append(chip);
+  };
+  for (const listed of TAGS) addChip(listed.name, listed.tl);
+  loadRows()
+    .then((rows) => {
+      for (const name of contributedTags(rows, TAG_NAMES)) addChip(name, null);
+    })
+    .catch(() => {});
+  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '', tag }) }), SEARCH_LIMIT, { withItaigi: true });
   return box;
 }
 
@@ -180,6 +214,32 @@ function choiceGroup(name, label, options, { type = 'checkbox', style = 'pills' 
     ),
     errorSlot(name),
   );
+}
+
+// 標籤: the site's tags as pills, several may be picked, plus a contributor's own tags. An added
+// tag becomes one more pill, already ticked, so it is read and unticked like the others.
+function tagGroup() {
+  const group = choiceGroup('tags', '標籤', TAGS.map((tag) => [tag.name, tag.name]));
+  const pills = group.querySelector('.pills');
+  const custom = h('input', { type: 'text', 'aria-label': '家己加標籤', autocomplete: 'off', maxlength: TAG_LIMIT });
+  const add = h('button', { class: 'button secondary', type: 'button' }, '加');
+  const addTag = () => {
+    const name = custom.value.normalize('NFC').trim();
+    custom.value = '';
+    if (name === '') return;
+    const existing = [...pills.querySelectorAll('input')].find((box) => box.value === name);
+    if (existing) existing.checked = true;
+    else pills.append(h('label', {}, h('input', { type: 'checkbox', name: 'tags', value: name, checked: true }), h('span', {}, name)));
+  };
+  add.addEventListener('click', addTag);
+  // Enter adds the tag instead of submitting the form
+  custom.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    addTag();
+  });
+  group.querySelector('.error').before(h('div', { class: 'tag-add' }, custom, add));
+  return group;
 }
 
 let nextWordId = 0;
@@ -250,6 +310,7 @@ function readShared(form) {
   const data = new FormData(form);
   return {
     accents: data.getAll('accents'),
+    tags: data.getAll('tags'),
     place: data.get('place') ?? '',
     meaning: data.get('meaning') ?? '',
     example: data.get('example') ?? '',
@@ -298,6 +359,7 @@ function renderSubmit() {
       choiceGroup('accents', '腔口', ACCENTS.map((a) => [a, a])),
       h('div', { 'data-for-accent': true, hidden: true }, field('place', '所在', textInput('place'))),
     ),
+    tagGroup(),
     field('meaning', '意思', textInput('meaning')),
     field('example', '例句', textInput('example')),
     field('note', '說明', textInput('note', { multiline: true })),

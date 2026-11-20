@@ -7,6 +7,7 @@ export const accentEntry = () => ({
   hanji: '八',
   tl: 'pueh',
   accents: ['鹿港偏泉腔'],
+  tags: ['食食'],
   place: '',
   meaning: '',
   example: '',

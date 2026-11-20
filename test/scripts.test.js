@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { NOREPLY_RE, serializeEntry } from '../lib/entry.js';
 import { checkTree } from '../scripts/check-tree.js';
 import { groupEntries, toCsv } from '../scripts/compile.js';
-import { parseCsv, parseItaigi } from '../scripts/fetch-itaigi.js';
+import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/classify-itaigi.js';
+import { buildSearchRows, parseCsv, parseItaigi } from '../scripts/fetch-itaigi.js';
+import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from '../scripts/romanize.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
@@ -128,7 +131,7 @@ test('validatePullRequest (submission): files outside entries/, foreign author, 
 
 test('compile merges attestations of one pair into one row', async () => {
   const octocat = accentEntry();
-  const mallory = { ...accentEntry(), contributor: 'mallory', contributor_id: 999, accents: ['三峽偏泉腔'], note: 'a, "b"', submitted: '2026-11-19' };
+  const mallory = { ...accentEntry(), contributor: 'mallory', contributor_id: 999, accents: ['三峽偏泉腔'], tags: ['食食', '𨑨迌'], note: 'a, "b"', submitted: '2026-11-19' };
   const rows = groupEntries([
     { key: KEY, entry: octocat },
     { key: KEY, entry: mallory },
@@ -137,8 +140,8 @@ test('compile merges attestations of one pair into one row', async () => {
   assert.deepEqual(rows[0].attestations.map((a) => a.contributor), ['mallory', 'octocat']);
   assert.equal(
     toCsv(rows),
-    'key,hanji,tl,accents,place,meaning,example,note,contributors\r\n' +
-      `${KEY},八,pueh,三峽偏泉腔; 鹿港偏泉腔,,,,"a, ""b""\n鹿港講 pueh。",mallory; octocat\r\n`,
+    'key,hanji,tl,accents,tags,place,meaning,example,note,contributors\r\n' +
+      `${KEY},八,pueh,三峽偏泉腔; 鹿港偏泉腔,食食; 𨑨迌,,,,"a, ""b""\n鹿港講 pueh。",mallory; octocat\r\n`,
   );
 });
 
@@ -212,4 +215,37 @@ test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
   assert.deepEqual(romanize('it lí thong,bān lí thiat'), { poj: '', tps: 'ㄧㆵ ㄌㄧˋ ㄊㆲ，ㆠㄢ˫ ㄌㄧˋ ㄊㄧㄚㆵ' });
   assert.equal(romanize('koo-chiáu').tps, '');
   assert.equal(romanize('ti-kut / tu-kut').poj, '');
+});
+
+test('buildSearchRows: one row per pair, gloss dropped, tags as indices, unknown tag fails', () => {
+  const rows = [
+    ['𤺪呢', 'siān-neh', '討厭'],
+    ['𤺪呢', 'siān-neh', '厭煩'],
+    ['閣', 'koh', '又'],
+  ];
+  // trace: 心情 is TAG_NAMES[21]; romanize('koh') → poj "" (same as tl), tps "ㄍㄛㆷ"
+  assert.deepEqual(buildSearchRows(rows, { '𤺪呢\tsiān-neh': ['心情'] }), [
+    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [TAG_NAMES.indexOf('心情')]],
+    ['閣', 'koh', '', 'ㄍㄛㆷ', []],
+  ]);
+  assert.throws(() => buildSearchRows(rows, { '閣\tkoh': ['華語'] }), /unknown tag "華語"/);
+});
+
+test('classify-itaigi: reading fold, place categories, reply parsing', () => {
+  // trace: tone marks drop, ⁿ and the POJ dot (U+0358) stay letters
+  assert.equal(foldTl('Tsa̍p-pueh'), 'tsappueh');
+  assert.notEqual(foldTl('to͘h'), foldTl('toh'));
+  assert.notEqual(foldTl('chheⁿ'), foldTl('chhe'));
+  assert.ok(isPlaceCategory('臺北捷運板南線') && isPlaceCategory('臺南市') && !isPlaceCategory('生活用品'));
+  assert.deepEqual(parseAnswer('note {"0":["食食","華語"],"1":[]} done', 2), [['食食'], []]);
+  assert.throws(() => parseAnswer('{"0":["食食"]}', 2), /no tag list for word 1/);
+  assert.throws(() => parseAnswer('sorry, no JSON', 1), /reply is not JSON/);
+});
+
+test('data/itaigi-tags.json: every key is a hanji/tl pair, every tag is a listed tag', async () => {
+  const data = JSON.parse(await readFile(new URL('../data/itaigi-tags.json', import.meta.url), 'utf8'));
+  for (const [key, tags] of Object.entries(data)) {
+    assert.equal(key.split('\t').length, 2, key);
+    for (const tag of tags) assert.ok(TAG_NAMES.includes(tag), `${key}: ${tag}`);
+  }
 });

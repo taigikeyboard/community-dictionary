@@ -68,6 +68,7 @@ One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contribu
   "hanji": "八",
   "tl": "pueh",
   "accents": ["鹿港偏泉腔"],
+  "tags": ["食食"],
   "place": "",
   "meaning": "",
   "example": "",
@@ -85,6 +86,7 @@ Ownership is `contributor_id`, never the directory name: a contributor who renam
 | `tl` | yes | Tâi-lô |
 | `hanji` | no | Hanji or kana; empty when the word has no Hanji |
 | `accents`, `place` | no; `place` when `accents` has 其他 | the ten accents used by the Ministry of Education dictionary, or 其他 with a place name |
+| `tags` | no | up to 5 semantic tags (maintainer 2026-11-21): the site's list (`site/tags.js`) or the contributor's own, each ≤ 10 characters in the Hanji field's script; whether an own tag is good Taiwanese is checked at review, as with Tâi-lô (D8) |
 | `meaning` | no | Mandarin or English equivalent (no separate source field since 2026-11-20: where the word was seen goes in `note`) |
 | `example` | no | An example sentence (maintainer 2026-11-20) |
 | `note` | no | the contributor's explanation |
@@ -156,7 +158,7 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 - The contributor's `id` and `login` come only from GitHub's `/user` response, never from the form.
 - Form text never reaches a shell or a template: the entry is `JSON.stringify` output, the commit message and pull request body are built from validated fields.
 - Branch `submit/<user id>/<key>`; pull request title `add` / `edit` / `withdraw <hanji> <tl>`; no labels.
-- One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, place, meaning, example and note; each word is its own entry file, all in one pull request (branch named after the first word's key, title `add <n> words`). The cap counts pull requests, not words.
+- One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, tags, place, meaning, example and note; each word is its own entry file, all in one pull request (branch named after the first word's key, title `add <n> words`). The cap counts pull requests, not words.
 - Edit and withdraw: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair is two serial Contents API calls on the branch (create, then delete — the documentation forbids running them in parallel).
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
@@ -168,7 +170,8 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 - Search over accepted entries (maintainer 2026-11-20): a search box on the home page, and the same community results under the word row being typed on the form page. Results open as a popover over the page, so nothing below moves. Before submit the form applies the duplicate rules above from the published search JSON.
 - Dictionary search withdrawn (maintainer 2026-11-20): the daily pull of `taigikeyboard/taigikeyboard` dictionary data into the site was removed, along with its pre-submit "already in a dictionary" notice. Search covers community entries only.
 - Sidebar (maintainer 2026-11-21), after kautian-mirror's: a toggle at the top left opens a sidebar docked on wide screens and a drawer on narrow ones, holding 外觀 (自動 / 淺色 / 暗色), 字型 (系統 / 粉圓 / 芫荽 / 源樣明體 / 源樣烏體, served by kautian-mirror on the same origin) and 選單顯示 白話字 / 方音符號 (on by default). Choices are `<html data-*>` attributes saved in `localStorage` and restored before first paint. Result rows in both popovers show Pe̍h-ōe-jī (where it differs from Tâi-lô) and 方音符號, converted from Tâi-lô at build time by `scripts/romanize.js` (`vendor/taigi-converter`; its 1.5 MB dictionary module stays out of the browser) into `search.json` and `itaigi.json`.
-- iTaigi in search (maintainer 2026-11-21): the search box also lists matches from iTaigi 華台對照典 (CC0 per the ChhoeTaigiDatabase README), listed after the community entries with no source heading (maintainer 2026-11-21; CC0 needs no attribution). `scripts/fetch-itaigi.js` pulls ChhoeTaigi's `ChhoeTaigi_iTaigiHoataiTuichiautian.csv` on every Pages deploy into `dist/itaigi.json` (distinct Hanji, Tâi-lô, Mandarin meaning); nothing is committed. A failed fetch, or fewer than 15,000 rows, fails the deploy. Search matches Hanji, the Mandarin meaning, or the start of a Tâi-lô syllable (each `/`-joined variant reading on its own); exact matches first, then prefixes. iTaigi rows never enter `entries/` and play no part in the form's duplicate rules; the word rows do not show them.
+- iTaigi in search (maintainer 2026-11-21): the search box also lists matches from iTaigi 華台對照典 (CC0 per the ChhoeTaigiDatabase README), listed after the community entries with no source heading (maintainer 2026-11-21; CC0 needs no attribution). `scripts/fetch-itaigi.js` pulls ChhoeTaigi's `ChhoeTaigi_iTaigiHoataiTuichiautian.csv` on every Pages deploy into `dist/itaigi.json` (one row per Hanji + Tâi-lô pair, with Pe̍h-ōe-jī, 方音符號 and tags; the Mandarin gloss is dropped — no Mandarin on the site, maintainer 2026-11-21); the CSV itself is not committed. A failed fetch, or fewer than 15,000 rows, fails the deploy. Search matches Hanji or the start of a Tâi-lô syllable (each `/`-joined variant reading on its own); exact matches first, then prefixes. iTaigi rows never enter `entries/` and play no part in the form's duplicate rules; the word rows do not show them.
+- Tags (maintainer 2026-11-21): 27 semantic tags named with 教典 headwords (`site/tags.js`, e.g. 身軀、食食、厝宅、𨑨迌、外來語), shown as chips under the search box. A chip narrows the results to its tag and, with nothing typed, lists its words (the first 200 per source, with the total). The form offers the same tags as pills (several may be picked) and an input for the contributor's own; own tags in accepted entries appear as extra chips after the listed ones. `scripts/classify-itaigi.js` (run by hand, not in CI) tags each iTaigi pair: pairs the 教典 also lists take their 教典 categories mapped to tags (about 15%), the rest are classified by Claude through the `claude` CLI from Hanji, Tâi-lô and the Mandarin gloss, 1–2 tags each or none. The result is committed as `data/itaigi-tags.json` and joined on every deploy; iTaigi words added upstream later stay untagged until the script is rerun.
 - "My submissions" filters the same JSON by the signed-in id — no extra Worker endpoint — and offers edit and withdraw.
 
 ### Phase 4 — maintainer setup

@@ -13,6 +13,7 @@ import {
   searchItaigi,
   searchRows,
 } from '../site/logic.js';
+import { TAG_NAMES } from '../site/tags.js';
 import { accentEntry, KEY } from './fixtures.js';
 
 // Tests for the browser-free site logic.
@@ -49,6 +50,14 @@ test('checkForm + describeErrors give Taiwanese messages per field', () => {
   assert.equal(ok.entry.hanji, '八');
   // only Tâi-lô is required
   assert.deepEqual(checkForm({ tl: 'pueh' }).errors, []);
+  // tags: listed and own tags alike, with Taiwanese messages naming the bad tag
+  assert.deepEqual(checkForm({ tl: 'pueh', tags: ['食食', '夜市仔'] }).entry.tags, ['食食', '夜市仔']);
+  assert.deepEqual(describeErrors(checkForm({ tl: 'pueh', tags: ['food!'] }).errors), [
+    { field: 'tags', text: '標籤：「food!」干焦會當用漢字、假名、台羅字母佮「-」' },
+  ]);
+  assert.deepEqual(describeErrors(checkForm({ tl: 'pueh', tags: ['一', '二', '三', '四', '五', '六'] }).errors), [
+    { field: 'tags', text: '標籤：上濟 5 个' },
+  ]);
 });
 
 test('duplicateStatus: new, attested by others, mine', async () => {
@@ -92,19 +101,24 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
   assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '台羅：愛填' }]);
 });
 
-test('searchItaigi: hanji, meaning, each variant reading; exact, then prefix, then the rest', () => {
+test('searchItaigi: hanji, each variant reading, tag filter; exact, then prefix, then the rest', () => {
+  const [food, plant, feeling] = ['食食', '植物', '心情'].map((name) => TAG_NAMES.indexOf(name));
   const index = indexItaigi([
-    ['青花', 'tshenn-hue/tshinn-hue', '青花菜'],
-    ['花蕊', 'hue-luí', '花蕊'],
-    ['花', 'hue', '花'],
-    ['𤺪呢', 'siān-neh', '討厭'],
+    ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant]],
+    ['花蕊', 'hue-luí', 'hoe-luí', 'ㄏㄨㆤ ㄌㄨㄧˋ', [plant]],
+    ['花', 'hue', 'hoe', 'ㄏㄨㆤ', [plant]],
+    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling]],
   ]);
-  const hanji = (query) => searchItaigi(index, query).map((r) => r.hanji);
+  const hanji = (query, tag = null) => searchItaigi(index, query, 50, tag).map((r) => r.hanji);
   assert.deepEqual(hanji('花'), ['花', '花蕊', '青花']);
   assert.deepEqual(hanji('hue'), ['花', '花蕊', '青花']);
-  assert.deepEqual(hanji('討厭'), ['𤺪呢']);
   // a later variant typed in full, and the whole slash-joined reading, are exact matches
   assert.deepEqual(hanji('tshinn-hue'), ['青花']);
   assert.deepEqual(hanji('tshenn-hue/tshinn-hue'), ['青花']);
   assert.deepEqual(hanji(' '), []);
+  // the Mandarin gloss is no longer published, so it matches nothing
+  assert.deepEqual(hanji('討厭'), []);
+  // a tag alone lists its rows in file order; with a query it narrows the matches
+  assert.deepEqual(hanji('', plant), ['青花', '花蕊', '花']);
+  assert.deepEqual(hanji('花', food), ['青花']);
 });

@@ -118,6 +118,16 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .search input::-webkit-search-cancel-button { display: none; }
 .search > .matches { right: 0; }
 
+/* --- tag chips under the search box: wrap onto more lines rather than scroll sideways --- */
+.tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.875rem; }
+.tag { padding: 0.25rem 0.875rem; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text); font: inherit; font-size: 0.9375rem; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
+.tag:hover { background: var(--hover); }
+.tag:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+/* text on page colours, like the sidebar switches: readable in both themes */
+.tag[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: var(--bg); }
+.results .results-more { color: var(--secondary); font-size: 0.8125rem; }
+.results .results-more:hover { background: none; }
+
 /* --- links between the two pages --- */
 .cta { margin: 0; text-align: center; }
 .text-link { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.5rem; font-size: 1.25rem; }
@@ -188,6 +198,10 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
   cursor: pointer;
 }
 .button:focus-visible { outline: none; box-shadow: 0 0 0 4px var(--ring); }
+.button.secondary { padding: 0 1.25rem; border: 1px solid var(--border); background: var(--field); color: var(--text); }
+/* 家己加標籤: a short input and its 加 button under the tag pills */
+.tag-add { display: flex; gap: 0.5rem; max-width: 20rem; margin-top: 0.75rem; }
+.tag-add input { flex: 1; min-width: 0; }
 .form-notice { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; color: var(--secondary); font-size: 0.9375rem; }
 
 
