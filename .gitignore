@@ -1,0 +1,13 @@
+# Secrets — Worker local variables and any environment file
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.pem
+*.key
+
+# Tooling output
+node_modules/
+dist/
+.wrangler/
+.DS_Store
