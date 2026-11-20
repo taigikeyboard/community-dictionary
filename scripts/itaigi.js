@@ -19,7 +19,9 @@ export const MIN_ROWS = 15000;
 const cleanTl = (text) => text.replaceAll('\u3000', ' ').replace(/ {2,}/g, ' ').trim().normalize('NFC');
 
 // itaigi.tw export JSON ({ 資料: [{ 華語, 來源, 漢字, 羅馬字 }] }) → distinct
-// [[hanji, tl, meaning, contributor]] of crowdsourced rows (contributor: a name or 匿名). Rows whose Tâi-lô holds no Latin letter (empty, or Hanji typed in the
+// [[hanji, tl, meaning]] of crowdsourced rows. 來源 (the contributor's name, often a real name)
+// only filters out the imported dictionaries and is not kept: the site credits every iTaigi word
+// to ITAIGI_CONTRIBUTOR (site/logic.js). Rows whose Tâi-lô holds no Latin letter (empty, or Hanji typed in the
 // wrong field) are dropped. Variant readings stay joined by "/" as contributors wrote them.
 export function parseItaigi(json) {
   const data = JSON.parse(json)['資料'];
@@ -28,7 +30,7 @@ export function parseItaigi(json) {
   const rows = [];
   for (const entry of data) {
     if (IMPORTED_SOURCES.includes(entry['來源'])) continue;
-    const row = [(entry['漢字'] ?? '').trim().normalize('NFC'), cleanTl(entry['羅馬字'] ?? ''), (entry['華語'] ?? '').trim().normalize('NFC'), (entry['來源'] ?? '').trim().normalize('NFC')];
+    const row = [(entry['漢字'] ?? '').trim().normalize('NFC'), cleanTl(entry['羅馬字'] ?? ''), (entry['華語'] ?? '').trim().normalize('NFC')];
     const id = row.join('\n');
     if (!/[A-Za-z]/.test(row[1]) || seen.has(id)) continue;
     seen.add(id);
@@ -37,11 +39,11 @@ export function parseItaigi(json) {
   return rows;
 }
 
-// Snapshot pairs from data/itaigi.json ([[hanji, tl, [tag name], [contributor]]], written by
+// Snapshot pairs from data/itaigi.json ([[hanji, tl, [tag name]]], written by
 // scripts/import-itaigi.js) → the published rows
-// [hanji, tl, poj, tps, [tag index into TAG_NAMES], [contributor]].
+// [hanji, tl, poj, tps, [tag index into TAG_NAMES]].
 export function buildSearchRows(pairs) {
-  return pairs.map(([hanji, tl, names, contributors]) => {
+  return pairs.map(([hanji, tl, names]) => {
     const tags = names.map((name) => {
       const index = TAG_NAMES.indexOf(name);
       if (index === -1) {
@@ -50,6 +52,6 @@ export function buildSearchRows(pairs) {
       return index;
     });
     const { poj, tps } = romanize(tl);
-    return [hanji, tl, poj, tps, tags, contributors];
+    return [hanji, tl, poj, tps, tags];
   });
 }

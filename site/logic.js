@@ -33,16 +33,20 @@ export function searchRows(rows, query, limit = 50) {
 // "/" joins variant readings in iTaigi; folding it to a syllable break lets each variant match.
 const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 
-// itaigi.json rows [hanji, tl, poj, tps, [tag index], [contributor]] → search index; folding runs once here, not
+// The one contributor name every iTaigi word carries: iTaigi's own contributor names (often real
+// names) are not republished (maintainer 2026-11-21).
+export const ITAIGI_CONTRIBUTOR = 'iTaigi原站';
+
+// itaigi.json rows [hanji, tl, poj, tps, [tag index]] → search index, each credited to ITAIGI_CONTRIBUTOR; folding runs once here, not
 // per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the whole tl.
 export function indexItaigi(rows) {
-  return rows.map(([hanji, tl, poj, tps, tags, contributors = []]) => ({
+  return rows.map(([hanji, tl, poj, tps, tags]) => ({
     hanji,
     tl,
     poj,
     tps,
     tags,
-    contributors,
+    contributors: [ITAIGI_CONTRIBUTOR],
     variants: tl.split('/').map(foldReading),
     folded: foldReading(tl),
   }));
@@ -82,7 +86,7 @@ export function wordsWithTag(rows, itaigi, tag) {
 }
 
 // Every word one contributor gave, for the contributor's card page: community rows any of whose
-// attestations is theirs (GitHub login), and iTaigi rows naming them (iTaigi name, or 匿名).
+// attestations is theirs (GitHub login), and every iTaigi row for ITAIGI_CONTRIBUTOR.
 export function wordsByContributor(rows, itaigi, name) {
   return {
     community: rows.filter((row) => row.attestations.some((a) => a.contributor === name)),
@@ -123,6 +127,14 @@ export function parseRoute(hash) {
 }
 
 // Tags on community entries that the site's own list lacks, in order of first appearance.
+// Contributor names, most words first (ties keep first-seen order); each element of `lists` is
+// one word's contributors. build-site ranks the homepage's contributor chips with it.
+export function rankContributors(lists) {
+  const count = new Map();
+  for (const names of lists) for (const name of new Set(names)) count.set(name, (count.get(name) ?? 0) + 1);
+  return [...count.keys()].sort((a, b) => count.get(b) - count.get(a));
+}
+
 export function contributedTags(rows, listed) {
   const found = new Set();
   for (const row of rows) for (const a of row.attestations) for (const tag of a.tags) if (!listed.includes(tag)) found.add(tag);

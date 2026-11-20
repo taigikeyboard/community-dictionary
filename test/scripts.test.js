@@ -193,9 +193,9 @@ test('CSV neutralizes formula-like cells', () => {
 test('parseItaigi: crowdsourced rows only, Tâi-lô cleaned, repeats and non-Tâi-lô dropped', () => {
   const json = JSON.stringify({
     資料: [
-      { 華語: '討厭', 來源: 'Liz Lin', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
-      // an identical row is dropped; the same word from another contributor is its own row
-      { 華語: '討厭', 來源: 'Liz Lin', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
+      { 華語: '討厭', 來源: '阿明', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
+      // an identical row is dropped, also one differing only in contributor
+      { 華語: '討厭', 來源: '阿明', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
       { 華語: '討厭', 來源: '匿名', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
       // imported dictionaries are not iTaigi's own content
       { 華語: '討厭', 來源: '臺灣閩南語常用詞辭典', 漢字: '討厭', 羅馬字: 'thó-ià' },
@@ -207,10 +207,10 @@ test('parseItaigi: crowdsourced rows only, Tâi-lô cleaned, repeats and non-Tâ
       { 華語: '空', 來源: '匿名', 漢字: '空', 羅馬字: '' },
     ],
   });
+  // trace: 來源 is not kept, so the 匿名 row repeats the 阿明 row and is dropped too
   assert.deepEqual(parseItaigi(json), [
-    ['𤺪呢', 'siān-neh', '討厭', 'Liz Lin'],
-    ['𤺪呢', 'siān-neh', '討厭', '匿名'],
-    ['一人', 'tsit8 lang5', '一人', '匿名'],
+    ['𤺪呢', 'siān-neh', '討厭'],
+    ['一人', 'tsit8 lang5', '一人'],
   ]);
   assert.throws(() => parseItaigi('{"rows":[]}'), /no 資料 array/);
 });
@@ -227,17 +227,17 @@ test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
   assert.equal(romanize('ti-kut / tu-kut').poj, '');
 });
 
-test('buildSearchRows: readings added, tags as indices, contributors kept, unknown tag fails', () => {
+test('buildSearchRows: readings added, tags as indices, unknown tag fails', () => {
   const pairs = [
-    ['𤺪呢', 'siān-neh', ['心情'], ['Liz Lin', '匿名']],
-    ['閣', 'koh', [], ['匿名']],
+    ['𤺪呢', 'siān-neh', ['心情']],
+    ['閣', 'koh', []],
   ];
   // trace: romanize('koh') → poj "" (same as tl), tps "ㄍㄛㆷ"
   assert.deepEqual(buildSearchRows(pairs), [
-    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [TAG_NAMES.indexOf('心情')], ['Liz Lin', '匿名']],
-    ['閣', 'koh', '', 'ㄍㄛㆷ', [], ['匿名']],
+    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [TAG_NAMES.indexOf('心情')]],
+    ['閣', 'koh', '', 'ㄍㄛㆷ', []],
   ]);
-  assert.throws(() => buildSearchRows([['閣', 'koh', ['華語'], []]]), /unknown tag "華語"/);
+  assert.throws(() => buildSearchRows([['閣', 'koh', ['華語']]]), /unknown tag "華語"/);
 });
 
 test('import-itaigi: reading fold, place categories, reply parsing', () => {
@@ -251,13 +251,12 @@ test('import-itaigi: reading fold, place categories, reply parsing', () => {
   assert.throws(() => parseAnswer('sorry, no JSON', 1), /reply is not JSON/);
 });
 
-test('data/itaigi.json: every row is [hanji, tl, [listed tag], [contributor]]', async () => {
+test('data/itaigi.json: every row is [hanji, tl, [listed tag]], no contributor names', async () => {
   const data = JSON.parse(await readFile(new URL('../data/itaigi.json', import.meta.url), 'utf8'));
   for (const row of data) {
-    const [hanji, tl, tags, contributors] = row;
-    assert.equal(row.length, 4, JSON.stringify(row));
+    const [hanji, tl, tags] = row;
+    assert.equal(row.length, 3, JSON.stringify(row));
     assert.ok(typeof hanji === 'string' && /[A-Za-z]/.test(tl), JSON.stringify(row));
     for (const tag of tags) assert.ok(TAG_NAMES.includes(tag), `${hanji} ${tl}: ${tag}`);
-    assert.ok(contributors.length > 0 && contributors.every((c) => typeof c === 'string' && c !== ''), JSON.stringify(row));
   }
 });

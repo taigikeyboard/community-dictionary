@@ -62,6 +62,20 @@ function cachedJson(path) {
 
 const loadRows = cachedJson('search.json');
 const loadItaigi = cachedJson('itaigi.json');
+const loadContributors = cachedJson('contributors.json');
+
+// One labelled row of chips on the homepage.
+const chipGroup = (label, chips) => h('section', { class: 'chip-group' }, h('h2', {}, label), chips);
+
+// Contributor chips under the tags, most words first (dist/contributors.json from build-site); each
+// opens the contributor's cards page.
+function contributorChips() {
+  const row = h('nav', { class: 'tags', 'aria-label': '貢獻者' });
+  loadContributors()
+    .then((names) => row.append(...names.map((name) => h('a', { class: 'tag', href: contributorRoute(name) }, name))))
+    .catch(() => {});
+  return row;
+}
 
 // The search box lists up to 200 matches per source; a word row only the closest few.
 const SEARCH_LIMIT = 200;
@@ -406,15 +420,16 @@ function renderSearch() {
   view.replaceChildren(
     hero(SITE_TITLE),
     searchBox(),
-    tagChips(),
     h('p', { class: 'cta' }, h('a', { class: 'text-link', href: SUBMIT_ROUTE }, '貢獻詞', icon('chevron'))),
+    chipGroup('標籤', tagChips()),
+    chipGroup('貢獻者', contributorChips()),
   );
 }
 
 const unique = (values) => [...new Set(values.filter((v) => v !== ''))];
 
 // One word card. Community rows merge their attestations (accents, meaning, example, note,
-// contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
+// contributors); iTaigi rows have readings, tags and ITAIGI_CONTRIBUTOR. With `headword`
 // the card leads with the word, linked to its own page (tag pages); a word page already names it
 // in the heading.
 function wordCard(row, { headword }) {
@@ -446,7 +461,8 @@ function wordCard(row, { headword }) {
 const CARD_PAGE_SIZE = 60;
 
 // Fills `list` with cards for `words` (community rows first, then iTaigi), CARD_PAGE_SIZE at a
-// time behind a 閣看 button, since one tag can hold a few thousand words.
+// time, since one tag can hold a few thousand words: the next batch loads as the reader scrolls
+// near the end of the list.
 function cardList(list, words, options) {
   const all = [...words.community, ...words.itaigi];
   if (all.length === 0) {
@@ -454,21 +470,29 @@ function cardList(list, words, options) {
     return;
   }
   let shown = 0;
-  const more = h('button', { class: 'button secondary more', type: 'button' }, '閣看');
   const showMore = () => {
-    const cards = all.slice(shown, shown + CARD_PAGE_SIZE).map((row) => wordCard(row, options));
-    list.append(...cards);
+    list.append(...all.slice(shown, shown + CARD_PAGE_SIZE).map((row) => wordCard(row, options)));
     shown = Math.min(shown + CARD_PAGE_SIZE, all.length);
-    // the last page hides the button; if it had focus, focus moves to the first new card
-    if (shown === all.length && document.activeElement === more) {
-      cards[0].setAttribute('tabindex', '-1');
-      cards[0].focus();
-    }
-    more.hidden = shown === all.length;
   };
-  more.addEventListener('click', showMore);
-  list.after(more);
   showMore();
+  if (shown === all.length) return;
+  // a marker after the list; once it nears the viewport the next batch is added, and the observer
+  // stops when every card is in (or the page was replaced, taking the marker with it)
+  const end = h('div', { class: 'cards-end', 'aria-hidden': 'true' });
+  list.after(end);
+  const observer = new IntersectionObserver(
+    (seen) => {
+      if (!end.isConnected) return observer.disconnect();
+      if (!seen.some((e) => e.isIntersecting)) return;
+      showMore();
+      if (shown === all.length) {
+        observer.disconnect();
+        end.remove();
+      }
+    },
+    { rootMargin: '0px 0px 800px 0px' },
+  );
+  observer.observe(end);
 }
 
 const loadItaigiIndex = (() => {
