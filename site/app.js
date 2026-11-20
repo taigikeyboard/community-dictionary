@@ -1,13 +1,26 @@
 import { ACCENT_OTHER, ACCENTS, TAG_LIMIT } from '../lib/entry.js';
 import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
-import { checkBatch, contributedTags, duplicateStatus, findExisting, indexItaigi, MAX_WORDS, searchItaigi, searchRowsByTag } from './logic.js';
+import {
+  checkBatch,
+  contributedTags,
+  duplicateStatus,
+  findExisting,
+  indexItaigi,
+  MAX_WORDS,
+  parseRoute,
+  searchItaigi,
+  tagRoute,
+  wordRoute,
+  wordsSpelled,
+  wordsWithTag,
+} from './logic.js';
 import { initSettings } from './settings.js';
 import { initSidebar } from './sidebar.js';
 import { TAG_NAMES, TAGS } from './tags.js';
 
-// Two pages: search (community entries and iTaigi) and the submission form, whose word rows show
-// the community entries already collected.
+// Pages: search (community entries and iTaigi) with tag chips, the submission form, whose word rows
+// show the community entries already collected, and card pages for a tag or a word.
 
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
@@ -52,59 +65,42 @@ const loadItaigi = cachedJson('itaigi.json');
 const SEARCH_LIMIT = 200;
 const WORD_ROW_LIMIT = 5;
 
-// One result row: Hanji, Tâi-lô, then Pe̍h-ōe-jī (only where it differs) and 方音符號, which the
-// sidebar's 選單顯示 switches hide through <html data-poj / data-tps>.
-function resultItem(row, className = null) {
-  return h(
-    'li',
-    { class: className },
-    h(
-      'div',
-      { class: 'result-head' },
-      h('span', { class: 'result-hanji' }, row.hanji),
-      h('span', { class: 'result-tl' }, row.tl),
-      row.poj ? h('span', { class: 'poj' }, row.poj) : null,
-      row.tps ? h('span', { class: 'tps' }, row.tps) : null,
-    ),
-  );
+// Pe̍h-ōe-jī (only where it differs) and 方音符號, which the sidebar's 選單顯示 switches hide
+// through <html data-poj / data-tps>.
+const readings = (row) => [row.poj ? h('span', { class: 'poj' }, row.poj) : null, row.tps ? h('span', { class: 'tps' }, row.tps) : null];
+
+// One result row: Hanji, Tâi-lô and the readings. In the search box it links to the word's cards;
+// under a word row of the form it does not, since leaving would drop what was typed.
+function resultItem(row, { exact = false, linked = false } = {}) {
+  const head = h('span', { class: 'result-head' }, h('span', { class: 'result-hanji' }, row.hanji), h('span', { class: 'result-tl' }, row.tl), readings(row));
+  return h('li', { class: exact ? 'exact' : null }, linked ? h('a', { class: 'result-link', href: wordRoute(row.hanji, row.tl) }, head) : head);
 }
-
-const existingItem = ({ row, exact }) => resultItem(row, exact ? 'exact' : null);
-
-// iTaigi rows (CC0, no attribution required) follow the community entries without a heading.
-const itaigiItem = (row) => resultItem(row);
 
 // Popover of words already collected, under whatever field `locate` picks inside `root`:
 // locate(element) → { anchor, values() → { hanji, tl } } or null. It floats over the page, so
 // opening it never moves anything below, and it stays closed while nothing matches. Loads the
-// community entries (and, with `withItaigi`, the iTaigi rows below them) on first use; a failed
-// load is retried on the next keystroke.
-function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
+// community entries on first use; the search box (`isSearch`) also lists iTaigi rows below them
+// (CC0, no attribution required) and links every row to its cards. A failed load is retried on
+// the next keystroke.
+function matchesPopover(root, locate, limit, { isSearch = false } = {}) {
   const results = h('ul', { class: 'results' });
-  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': withItaigi ? '揣詞結果' : '已經有的詞' }, results);
+  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': isSearch ? '揣詞結果' : '已經有的詞' }, results);
 
   let rows = null;
   let itaigi = null;
   let active = null;
   const update = () => {
     if (active && !root.contains(active.anchor)) active = null;
-    const { hanji, tl, tag = null } = active ? active.values() : { hanji: '', tl: '' };
-    // a tag is a name; iTaigi rows carry the site's tags only, by index (-1: a contributor's own tag)
-    const tagIndex = tag === null ? null : TAG_NAMES.indexOf(tag);
-    let found = [];
-    if (rows) found = tag === null ? findExisting(rows, hanji, tl, limit) : searchRowsByTag(rows, hanji, tag, limit).map((row) => ({ row, exact: false }));
-    const foundItaigi = itaigi && tagIndex !== -1 ? searchItaigi(itaigi, hanji, limit, tagIndex) : [];
+    const { hanji, tl } = active ? active.values() : { hanji: '', tl: '' };
+    const found = rows ? findExisting(rows, hanji, tl, limit) : [];
+    const foundItaigi = itaigi ? searchItaigi(itaigi, hanji, limit) : [];
     panel.hidden = found.length === 0 && foundItaigi.length === 0;
     if (panel.hidden) return;
     if (panel.parentElement !== active.anchor) active.anchor.append(panel);
-    // a tag with nothing typed lists only the first `limit` of each source; say how many there are
-    let more = null;
-    if (tag !== null && hanji.trim() === '') {
-      const total = (rows ? searchRowsByTag(rows, '', tag, Infinity).length : 0) + (itaigi && tagIndex !== -1 ? itaigi.filter((r) => r.tags.includes(tagIndex)).length : 0);
-      const shown = found.length + foundItaigi.length;
-      if (total > shown) more = h('li', { class: 'results-more' }, `攏總 ${total} 个，干焦列頭前 ${shown} 个`);
-    }
-    results.replaceChildren(...found.map(existingItem), ...foundItaigi.map(itaigiItem), ...(more ? [more] : []));
+    results.replaceChildren(
+      ...found.map(({ row, exact }) => resultItem(row, { exact, linked: isSearch })),
+      ...foundItaigi.map((row) => resultItem(row, { linked: true })),
+    );
   };
   const load = () => {
     if (!rows) {
@@ -115,10 +111,10 @@ function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
         })
         .catch(() => {});
     }
-    if (withItaigi && !itaigi) {
-      loadItaigi()
+    if (isSearch && !itaigi) {
+      loadItaigiIndex()
         .then((loaded) => {
-          itaigi ??= indexItaigi(loaded);
+          itaigi = loaded;
           update();
         })
         .catch(() => {});
@@ -145,39 +141,29 @@ function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
   root.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') close();
   });
-  // keep focus in the input while clicking inside the popover
+  // keep focus in the input while clicking inside the popover (a row's link still follows)
   panel.addEventListener('pointerdown', (event) => event.preventDefault());
   root.addEventListener('words-changed', update);
 }
 
+// One tag as a link to its cards page.
+const tagLink = (name, reading = null) => h('a', { class: 'tag', href: tagRoute(name), title: reading }, name);
+
+// The tag chips under the search box: the site's tags, then tags contributors made once they are
+// in accepted entries. Each opens the tag's cards page.
+function tagChips() {
+  const row = h('nav', { class: 'tags', 'aria-label': '標籤' }, TAGS.map((tag) => tagLink(tag.name, tag.tl)));
+  loadRows()
+    .then((rows) => row.append(...contributedTags(rows, TAG_NAMES).map((name) => tagLink(name))))
+    .catch(() => {});
+  return row;
+}
+
 // The page's search box; results open in the same popover as the word rows.
-// The page's search box with the tag chips under it; results open in the same popover as the
-// word rows, below the chips. A chip narrows the results to its tag (pressed again, it lets go)
-// and, with nothing typed, lists the tag's words. Tags contributors made, once in accepted
-// entries, follow the site's own as extra chips.
 function searchBox() {
   const input = h('input', { type: 'search', 'aria-label': '揣詞', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
-  const chipRow = h('div', { class: 'tags', role: 'group', 'aria-label': '標籤' });
-  const box = h('div', { class: 'search', role: 'search' }, icon('search'), input, chipRow);
-  let tag = null;
-  const addChip = (name, reading) => {
-    const chip = h('button', { type: 'button', class: 'tag', 'aria-pressed': 'false', title: reading }, name);
-    chip.addEventListener('click', () => {
-      tag = tag === name ? null : name;
-      for (const other of chipRow.children) other.setAttribute('aria-pressed', String(other.textContent === tag));
-      // focus stays on the chip (keyboard users keep their place); the input event opens or
-      // refreshes the popover for the new tag
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    });
-    chipRow.append(chip);
-  };
-  for (const listed of TAGS) addChip(listed.name, listed.tl);
-  loadRows()
-    .then((rows) => {
-      for (const name of contributedTags(rows, TAG_NAMES)) addChip(name, null);
-    })
-    .catch(() => {});
-  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '', tag }) }), SEARCH_LIMIT, { withItaigi: true });
+  const box = h('div', { class: 'search', role: 'search' }, icon('search'), input);
+  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT, { isSearch: true });
   return box;
 }
 
@@ -418,13 +404,104 @@ function renderSearch() {
   view.replaceChildren(
     hero(SITE_TITLE),
     searchBox(),
+    tagChips(),
     h('p', { class: 'cta' }, h('a', { class: 'text-link', href: SUBMIT_ROUTE }, '提交一个詞', icon('chevron'))),
   );
 }
 
-// Two pages on hash routes: search at #/ (and any unknown hash), the submission form at #/submit.
+const unique = (values) => [...new Set(values.filter((v) => v !== ''))];
+
+// One word card. Community rows merge their attestations (accents, meaning, example, note,
+// contributors); iTaigi rows have readings and tags only. With `headword` the card leads with the
+// word, linked to its own page (tag pages); a word page already names it in the heading.
+function wordCard(row, { headword }) {
+  const attestations = row.attestations ?? [];
+  const pick = (field) => unique(attestations.map((a) => a[field]));
+  const tags = attestations.length > 0 ? unique(attestations.flatMap((a) => a.tags)) : (row.tags ?? []).map((index) => TAG_NAMES[index]);
+  const accents = unique(attestations.flatMap((a) => a.accents.map((accent) => (accent === ACCENT_OTHER && a.place ? a.place : accent))));
+  const details = [
+    ['腔口', accents.join('、')],
+    ['意思', pick('meaning').join('\n')],
+    ['例句', pick('example').join('\n')],
+    ['說明', pick('note').join('\n')],
+    ['投稿', pick('contributor').join('、')],
+  ].filter(([, value]) => value !== '');
+  return h(
+    'article',
+    { class: 'word-card' },
+    headword ? h('a', { class: 'card-hanji', href: wordRoute(row.hanji, row.tl) }, row.hanji || row.tl) : null,
+    h('p', { class: 'card-readings' }, h('span', { class: 'result-tl' }, row.tl), readings(row)),
+    details.length > 0 ? h('dl', { class: 'card-details' }, details.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])) : null,
+    tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': '標籤' }, tags.map((name) => tagLink(name))) : null,
+  );
+}
+
+const CARD_PAGE_SIZE = 60;
+
+// Fills `list` with cards for `words` (community rows first, then iTaigi), CARD_PAGE_SIZE at a
+// time behind a 閣看 button, since one tag can hold a few thousand words.
+function cardList(list, words, options) {
+  const all = [...words.community, ...words.itaigi];
+  if (all.length === 0) {
+    list.replaceWith(h('p', { class: 'empty' }, '無資料'));
+    return;
+  }
+  let shown = 0;
+  const more = h('button', { class: 'button secondary more', type: 'button' }, '閣看');
+  const showMore = () => {
+    const cards = all.slice(shown, shown + CARD_PAGE_SIZE).map((row) => wordCard(row, options));
+    list.append(...cards);
+    shown = Math.min(shown + CARD_PAGE_SIZE, all.length);
+    // the last page hides the button; if it had focus, focus moves to the first new card
+    if (shown === all.length && document.activeElement === more) {
+      cards[0].setAttribute('tabindex', '-1');
+      cards[0].focus();
+    }
+    more.hidden = shown === all.length;
+  };
+  more.addEventListener('click', showMore);
+  list.after(more);
+  showMore();
+}
+
+const loadItaigiIndex = (() => {
+  let index = null;
+  return () => loadItaigi().then((rows) => (index ??= indexItaigi(rows)));
+})();
+
+// Loads both sources, then hands them to `fill`; a failed load says so in place of the cards.
+function withWords(list, fill) {
+  Promise.all([loadRows(), loadItaigiIndex()])
+    .then(([rows, itaigi]) => fill(rows, itaigi))
+    .catch(() => list.replaceWith(h('p', { class: 'empty' }, LOAD_ERROR)));
+}
+
+const backToSearch = () => h('a', { class: 'back-link', href: '#/' }, icon('back'), '揣詞');
+
+// A tag's page: every word carrying it, as cards.
+function renderTag(tag) {
+  document.title = `${tag} · ${SITE_TITLE}`;
+  const reading = TAGS.find((listed) => listed.name === tag)?.tl;
+  const list = h('div', { class: 'cards' });
+  view.replaceChildren(backToSearch(), hero(tag, reading), list);
+  withWords(list, (rows, itaigi) => cardList(list, wordsWithTag(rows, itaigi, tag), { headword: true }));
+}
+
+// A word's page: its cards from each source, under the word itself.
+function renderWord(hanji, tl) {
+  document.title = `${hanji || tl} · ${SITE_TITLE}`;
+  const list = h('div', { class: 'cards cards-word' });
+  view.replaceChildren(backToSearch(), hero(hanji || tl), list);
+  withWords(list, (rows, itaigi) => cardList(list, wordsSpelled(rows, itaigi, hanji, tl), { headword: false }));
+}
+
+// Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit,
+// cards at #/tag/<name> and #/word/<hanji>/<tl>.
 function route() {
-  if (location.hash === SUBMIT_ROUTE) renderSubmit();
+  const target = parseRoute(location.hash);
+  if (target.page === 'submit') renderSubmit();
+  else if (target.page === 'tag') renderTag(target.tag);
+  else if (target.page === 'word') renderWord(target.hanji, target.tl);
   else renderSearch();
 }
 

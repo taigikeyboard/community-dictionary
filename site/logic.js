@@ -5,6 +5,7 @@ import {
   normalizeTl,
   prepareEntry,
 } from '../lib/entry.js';
+import { TAG_NAMES } from './tags.js';
 
 // Browser-free site logic: search, form → entry, duplicate rules, Taiwanese error messages.
 
@@ -47,18 +48,16 @@ export function indexItaigi(rows) {
 }
 
 // iTaigi rows whose hanji contains the query, or whose tl starts a syllable with it; exact
-// matches first, then those starting with the query, then the rest. With a tag (index into
-// TAGS) only that tag's rows count, and an empty query lists them all in file order.
-export function searchItaigi(index, query, limit = 50, tag = null) {
+// matches first, then those starting with the query, then the rest.
+export function searchItaigi(index, query, limit = 50) {
   const q = query.trim();
-  const rows = tag === null ? index : index.filter((row) => row.tags.includes(tag));
-  if (q === '') return tag === null ? [] : rows.slice(0, limit);
+  if (q === '') return [];
   const folded = foldReading(q);
   const hasTl = folded !== '-';
   const exact = [];
   const prefix = [];
   const rest = [];
-  for (const row of rows) {
+  for (const row of index) {
     if (row.hanji === q || (hasTl && (row.folded === folded || row.variants.includes(folded)))) {
       exact.push(row);
     } else if (row.hanji.startsWith(q) || (hasTl && row.variants.some((v) => v.startsWith(folded)))) {
@@ -70,11 +69,43 @@ export function searchItaigi(index, query, limit = 50, tag = null) {
   return [...exact, ...prefix, ...rest].slice(0, limit);
 }
 
-// Community rows any of whose attestations carries `tag` (a name: from the site's list or a
-// contributor's own), narrowed by the query like searchRows, or all of them when nothing is typed.
-export function searchRowsByTag(rows, query, tag, limit = 50) {
-  const tagged = rows.filter((row) => row.attestations.some((a) => a.tags.includes(tag)));
-  return query.trim() === '' ? tagged.slice(0, limit) : searchRows(tagged, query, limit);
+// Every word carrying `tag` (a name: from the site's list or a contributor's own), for the tag's
+// card page: community rows any of whose attestations has it, and iTaigi rows, which carry the
+// site's tags only (by index), in file order.
+export function wordsWithTag(rows, itaigi, tag) {
+  const index = TAG_NAMES.indexOf(tag);
+  return {
+    community: rows.filter((row) => row.attestations.some((a) => a.tags.includes(tag))),
+    itaigi: index === -1 ? [] : itaigi.filter((row) => row.tags.includes(index)),
+  };
+}
+
+// The community and iTaigi rows spelled exactly (hanji, tl), for a word's card page.
+export function wordsSpelled(rows, itaigi, hanji, tl) {
+  const same = (row) => row.hanji === hanji && row.tl === tl;
+  return { community: rows.filter(same), itaigi: itaigi.filter(same) };
+}
+
+// Hash routes: #/ search, #/submit the form, #/tag/<name> a tag's cards, #/word/<hanji>/<tl> one
+// word's cards. Parts are URI-encoded, so a "/" inside a reading never splits the route.
+export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
+export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${encodeURIComponent(tl)}`;
+
+// location.hash → { page, ... }; anything unknown or undecodable is the search page.
+export function parseRoute(hash) {
+  if (hash === '#/submit') return { page: 'submit' };
+  const parts = hash.split('/');
+  try {
+    if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {
+      return { page: 'tag', tag: decodeURIComponent(parts[2]) };
+    }
+    if (parts[0] === '#' && parts[1] === 'word' && parts.length === 4 && parts[3] !== '') {
+      return { page: 'word', hanji: decodeURIComponent(parts[2]), tl: decodeURIComponent(parts[3]) };
+    }
+  } catch {
+    // a malformed %-escape: fall through to search
+  }
+  return { page: 'search' };
 }
 
 // Tags on community entries that the site's own list lacks, in order of first appearance.

@@ -108,6 +108,9 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .results li { padding: 0.5rem 0.75rem; border-radius: 8px; transition: background 0.15s; }
 .results li:hover { background: var(--hover); }
 .result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
+/* a search result row is a link to the word's cards; it fills the row and keeps the row's colours */
+.result-link { display: block; margin: -0.5rem -0.75rem; padding: 0.5rem 0.75rem; color: inherit; }
+.result-link:hover { text-decoration: none; }
 .result-hanji { overflow-wrap: anywhere; }
 .result-tl, .result-head .poj, .result-head .tps { color: var(--secondary); font-size: 0.9375rem; overflow-wrap: anywhere; }
 .exact .result-hanji { color: var(--accent); }
@@ -119,14 +122,10 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .search > .matches { right: 0; }
 
 /* --- tag chips under the search box: wrap onto more lines rather than scroll sideways --- */
-.tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.875rem; }
+.tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: -0.375rem 0 1.25rem; }
 .tag { padding: 0.25rem 0.875rem; border: 1px solid var(--border); border-radius: 999px; background: var(--card); color: var(--text); font: inherit; font-size: 0.9375rem; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
-.tag:hover { background: var(--hover); }
+.tag:hover { background: var(--hover); text-decoration: none; }
 .tag:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
-/* text on page colours, like the sidebar switches: readable in both themes */
-.tag[aria-pressed="true"] { border-color: var(--text); background: var(--text); color: var(--bg); }
-.results .results-more { color: var(--secondary); font-size: 0.8125rem; }
-.results .results-more:hover { background: none; }
 
 /* --- links between the two pages --- */
 .cta { margin: 0; text-align: center; }
@@ -285,3 +284,20 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .setting input[type="checkbox"]:checked { background: var(--text); }
 .setting input[type="checkbox"]:checked::before { transform: translateX(18px); }
 .setting input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+
+/* --- card pages (#/tag/…, #/word/…): a grid of word cards, more behind a button --- */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 1rem; }
+.word-card { display: flex; flex-direction: column; gap: 0.5rem; padding: 1.5rem; border: 1px solid var(--border); border-radius: 12px; background: var(--card); }
+.card-hanji { color: var(--text); font-size: 1.75rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+.card-hanji:hover { color: var(--accent); text-decoration: none; }
+.card-readings { display: flex; flex-wrap: wrap; gap: 0.125rem 0.75rem; margin: 0; }
+.card-readings .poj, .card-readings .tps { color: var(--secondary); font-size: 0.9375rem; }
+.card-details { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0.25rem 0 0; font-size: 0.9375rem; }
+.card-details dt { color: var(--secondary); }
+.card-details dd { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.card-tags { display: flex; flex-wrap: wrap; gap: 0.375rem; margin-top: auto; padding-top: 0.5rem; }
+.card-tags .tag { padding: 0.125rem 0.625rem; font-size: 0.8125rem; }
+.more { display: flex; margin: 1.5rem auto 0; }
+.empty { color: var(--secondary); text-align: center; }
+/* a word page holds a card or two: one centred column instead of a sparse grid */
+.cards-word { grid-template-columns: minmax(0, 36rem); justify-content: center; }

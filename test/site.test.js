@@ -11,7 +11,12 @@ import {
   formToRaw,
   indexItaigi,
   searchItaigi,
+  parseRoute,
   searchRows,
+  tagRoute,
+  wordRoute,
+  wordsSpelled,
+  wordsWithTag,
 } from '../site/logic.js';
 import { TAG_NAMES } from '../site/tags.js';
 import { accentEntry, KEY } from './fixtures.js';
@@ -101,7 +106,7 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
   assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '台羅：愛填' }]);
 });
 
-test('searchItaigi: hanji, each variant reading, tag filter; exact, then prefix, then the rest', () => {
+test('searchItaigi: hanji, each variant reading; exact, then prefix, then the rest', () => {
   const [food, plant, feeling] = ['食食', '植物', '心情'].map((name) => TAG_NAMES.indexOf(name));
   const index = indexItaigi([
     ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant]],
@@ -109,7 +114,7 @@ test('searchItaigi: hanji, each variant reading, tag filter; exact, then prefix,
     ['花', 'hue', 'hoe', 'ㄏㄨㆤ', [plant]],
     ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling]],
   ]);
-  const hanji = (query, tag = null) => searchItaigi(index, query, 50, tag).map((r) => r.hanji);
+  const hanji = (query) => searchItaigi(index, query).map((r) => r.hanji);
   assert.deepEqual(hanji('花'), ['花', '花蕊', '青花']);
   assert.deepEqual(hanji('hue'), ['花', '花蕊', '青花']);
   // a later variant typed in full, and the whole slash-joined reading, are exact matches
@@ -118,7 +123,26 @@ test('searchItaigi: hanji, each variant reading, tag filter; exact, then prefix,
   assert.deepEqual(hanji(' '), []);
   // the Mandarin gloss is no longer published, so it matches nothing
   assert.deepEqual(hanji('討厭'), []);
-  // a tag alone lists its rows in file order; with a query it narrows the matches
-  assert.deepEqual(hanji('', plant), ['青花', '花蕊', '花']);
-  assert.deepEqual(hanji('花', food), ['青花']);
+
+  // a tag's page: community rows by tag name (the fixture carries 食食), iTaigi rows by tag index
+  const tagged = wordsWithTag(rows, index, '植物');
+  assert.deepEqual([tagged.community.length, tagged.itaigi.map((r) => r.hanji)], [0, ['青花', '花蕊', '花']]);
+  assert.deepEqual(wordsWithTag(rows, index, '食食').community.map((r) => r.key), [KEY]);
+  assert.deepEqual(wordsWithTag(rows, index, '食食').itaigi.map((r) => r.hanji), ['青花']);
+  // a contributor's own tag matches no iTaigi row
+  assert.deepEqual(wordsWithTag(rows, index, '夜市仔').itaigi, []);
+  // a word's page: exact spelling only
+  assert.deepEqual(wordsSpelled(rows, index, '花', 'hue').itaigi.map((r) => r.tl), ['hue']);
+  assert.deepEqual(wordsSpelled(rows, index, '八', 'pueh').community.map((r) => r.key), [KEY]);
+  assert.deepEqual(wordsSpelled(rows, index, '花', 'hoe').itaigi, []);
+});
+
+test('routes: tag and word pages round-trip, anything else is search', () => {
+  assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
+  assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });
+  // a "/" inside a reading stays inside the tl part
+  assert.deepEqual(parseRoute(wordRoute('青花', 'tshenn-hue/tshinn-hue')), { page: 'word', hanji: '青花', tl: 'tshenn-hue/tshinn-hue' });
+  // community words may have no Hanji
+  assert.deepEqual(parseRoute(wordRoute('', 'pueh')), { page: 'word', hanji: '', tl: 'pueh' });
+  for (const hash of ['', '#/', '#/tag/', '#/tag/%E0', '#/word/x', '#/nothing']) assert.deepEqual(parseRoute(hash), { page: 'search' });
 });
