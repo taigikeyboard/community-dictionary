@@ -1,9 +1,10 @@
 import { ACCENT_OTHER, ACCENTS } from '../lib/entry.js';
 import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
-import { checkBatch, duplicateStatus, findExisting, MAX_WORDS } from './logic.js';
+import { checkBatch, duplicateStatus, findExisting, indexItaigi, MAX_WORDS, searchItaigi } from './logic.js';
 
-// The site is one page: the submission form, with a live list of words already collected.
+// The site is one page: a search box (community entries and iTaigi) above the submission form,
+// whose word rows show the community entries already collected.
 
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
@@ -40,8 +41,9 @@ function cachedJson(path) {
 }
 
 const loadRows = cachedJson('search.json');
+const loadItaigi = cachedJson('itaigi.json');
 
-// The search box lists up to 200 matches; a word row only the closest few.
+// The search box lists up to 200 matches per source; a word row only the closest few.
 const SEARCH_LIMIT = 200;
 const WORD_ROW_LIMIT = 5;
 
@@ -60,33 +62,73 @@ function existingItem({ row, exact }) {
   );
 }
 
+// iTaigi results sit under their own heading naming the source and its licence (CC0).
+function itaigiHeading() {
+  return h(
+    'li',
+    { class: 'results-source' },
+    h('a', { href: 'https://itaigi.tw/', target: '_blank', rel: 'noopener' }, 'iTaigi 華台對照典'),
+    ' · ',
+    h('a', { href: 'https://creativecommons.org/publicdomain/zero/1.0/', target: '_blank', rel: 'noopener' }, 'CC0'),
+  );
+}
+
+function itaigiItem(row) {
+  return h(
+    'li',
+    {},
+    h(
+      'div',
+      { class: 'result-head' },
+      h('span', { class: 'result-hanji' }, row.hanji),
+      h('span', { class: 'result-tl' }, row.tl),
+      row.meaning !== row.hanji ? h('span', { class: 'meta' }, row.meaning) : null,
+    ),
+  );
+}
+
 // Popover of words already collected, under whatever field `locate` picks inside `root`:
 // locate(element) → { anchor, values() → { hanji, tl } } or null. It floats over the page, so
 // opening it never moves anything below, and it stays closed while nothing matches. Loads the
-// community entries on first use; a failed load is retried on the next keystroke.
-function matchesPopover(root, locate, limit) {
+// community entries (and, with `withItaigi`, the iTaigi rows below them) on first use; a failed
+// load is retried on the next keystroke.
+function matchesPopover(root, locate, limit, { withItaigi = false } = {}) {
   const results = h('ul', { class: 'results' });
-  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': '已經有的詞' }, results);
+  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': withItaigi ? '揣詞結果' : '已經有的詞' }, results);
 
   let rows = null;
+  let itaigi = null;
   let active = null;
   const update = () => {
     if (active && !root.contains(active.anchor)) active = null;
     const { hanji, tl } = active ? active.values() : { hanji: '', tl: '' };
     const found = rows ? findExisting(rows, hanji, tl, limit) : [];
-    panel.hidden = found.length === 0;
+    const foundItaigi = itaigi ? searchItaigi(itaigi, hanji, limit) : [];
+    panel.hidden = found.length === 0 && foundItaigi.length === 0;
     if (panel.hidden) return;
     if (panel.parentElement !== active.anchor) active.anchor.append(panel);
-    results.replaceChildren(...found.map(existingItem));
+    results.replaceChildren(
+      ...found.map(existingItem),
+      ...(foundItaigi.length > 0 ? [itaigiHeading(), ...foundItaigi.map(itaigiItem)] : []),
+    );
   };
   const load = () => {
-    if (rows) return;
-    loadRows()
-      .then((loaded) => {
-        rows = loaded;
-        update();
-      })
-      .catch(() => {});
+    if (!rows) {
+      loadRows()
+        .then((loaded) => {
+          rows = loaded;
+          update();
+        })
+        .catch(() => {});
+    }
+    if (withItaigi && !itaigi) {
+      loadItaigi()
+        .then((loaded) => {
+          itaigi ??= indexItaigi(loaded);
+          update();
+        })
+        .catch(() => {});
+    }
   };
   root.addEventListener('input', (event) => {
     active = locate(event.target);
@@ -118,7 +160,7 @@ function matchesPopover(root, locate, limit) {
 function searchBox() {
   const input = h('input', { type: 'search', 'aria-label': '揣詞', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
   const box = h('div', { class: 'search', role: 'search' }, icon('search'), input);
-  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT);
+  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT, { withItaigi: true });
   return box;
 }
 

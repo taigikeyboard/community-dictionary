@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import { NOREPLY_RE, serializeEntry } from '../lib/entry.js';
 import { checkTree } from '../scripts/check-tree.js';
 import { groupEntries, toCsv } from '../scripts/compile.js';
+import { parseCsv, parseItaigi } from '../scripts/fetch-itaigi.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
 
@@ -183,4 +184,19 @@ test('NOREPLY_RE rejects a zero-padded id', () => {
 test('CSV neutralizes formula-like cells', () => {
   const rows = groupEntries([{ key: KEY, entry: { ...accentEntry(), note: '=HYPERLINK("x")' } }]);
   assert.match(toCsv(rows), /,"'=HYPERLINK\(""x""\)",octocat\r\n$/);
+});
+
+test('parseCsv: BOM, quoted commas, doubled quotes, CRLF, blank lines', () => {
+  assert.deepEqual(parseCsv('\uFEFF"a","b,c"\r\n\r\n"say ""hi""",d\n\n'), [['a', 'b,c'], ['say "hi"', 'd']]);
+});
+
+test('parseItaigi keeps hanji, tl, meaning; drops rows without tl and repeats', () => {
+  const csv = [
+    '\uFEFF"DictWordID","PojUnicode","PojInput","KipUnicode","KipInput","HanLoTaibunPoj","HanLoTaibunKip","HoaBun","DataProvidedBy"',
+    '"1","siān-neh","sian7-neh","siān-neh","sian7-neh","𤺪呢","𤺪呢","討厭","Liz Lin"',
+    '"2","","","","","空","空","空","匿名"',
+    '"3","siān-neh","sian7-neh","siān-neh","sian7-neh","𤺪呢","𤺪呢","討厭","匿名"',
+  ].join('\n');
+  assert.deepEqual(parseItaigi(csv), [['𤺪呢', 'siān-neh', '討厭']]);
+  assert.throws(() => parseItaigi('"a"\n"b"'), /column "HanLoTaibunKip" missing/);
 });

@@ -29,6 +29,43 @@ export function searchRows(rows, query, limit = 50) {
     .slice(0, limit);
 }
 
+// "/" joins variant readings in iTaigi; folding it to a syllable break lets each variant match.
+const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
+
+// itaigi.json rows [hanji, tl, meaning] → search index; folding runs once here, not per keystroke.
+// `variants` holds each "/"-joined reading on its own, `folded` the whole tl.
+export function indexItaigi(rows) {
+  return rows.map(([hanji, tl, meaning]) => ({
+    hanji,
+    tl,
+    meaning,
+    variants: tl.split('/').map(foldReading),
+    folded: foldReading(tl),
+  }));
+}
+
+// iTaigi rows whose hanji or Mandarin meaning contains the query, or whose tl starts a syllable
+// with it. Exact matches come first, then those starting with the query, then the rest.
+export function searchItaigi(index, query, limit = 50) {
+  const q = query.trim();
+  if (q === '') return [];
+  const folded = foldReading(q);
+  const hasTl = folded !== '-';
+  const exact = [];
+  const prefix = [];
+  const rest = [];
+  for (const row of index) {
+    if (row.hanji === q || row.meaning === q || (hasTl && (row.folded === folded || row.variants.includes(folded)))) {
+      exact.push(row);
+    } else if (row.hanji.startsWith(q) || row.meaning.startsWith(q) || (hasTl && row.variants.some((v) => v.startsWith(folded)))) {
+      prefix.push(row);
+    } else if (row.hanji.includes(q) || row.meaning.includes(q) || (hasTl && row.folded.includes(folded))) {
+      rest.push(row);
+    }
+  }
+  return [...exact, ...prefix, ...rest].slice(0, limit);
+}
+
 const pairKey = (hanji, tl) => `${normalizeHanji(hanji)}\n${normalizeTl(tl)}`;
 
 // Community entries matching what the form's hanji and tl fields hold, each field searched;

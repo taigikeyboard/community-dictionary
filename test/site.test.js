@@ -9,6 +9,8 @@ import {
   findExisting,
   foldSearch,
   formToRaw,
+  indexItaigi,
+  searchItaigi,
   searchRows,
 } from '../site/logic.js';
 import { accentEntry, KEY } from './fixtures.js';
@@ -88,4 +90,21 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
   // a lone blank row still reports the missing Tâi-lô
   const blank = await checkBatch({ ...shared, place: '澎湖' }, [{ hanji: '', tl: '' }]);
   assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '台羅：愛填' }]);
+});
+
+test('searchItaigi: hanji, meaning, each variant reading; exact, then prefix, then the rest', () => {
+  const index = indexItaigi([
+    ['青花', 'tshenn-hue/tshinn-hue', '青花菜'],
+    ['花蕊', 'hue-luí', '花蕊'],
+    ['花', 'hue', '花'],
+    ['𤺪呢', 'siān-neh', '討厭'],
+  ]);
+  const hanji = (query) => searchItaigi(index, query).map((r) => r.hanji);
+  assert.deepEqual(hanji('花'), ['花', '花蕊', '青花']);
+  assert.deepEqual(hanji('hue'), ['花', '花蕊', '青花']);
+  assert.deepEqual(hanji('討厭'), ['𤺪呢']);
+  // a later variant typed in full, and the whole slash-joined reading, are exact matches
+  assert.deepEqual(hanji('tshinn-hue'), ['青花']);
+  assert.deepEqual(hanji('tshenn-hue/tshinn-hue'), ['青花']);
+  assert.deepEqual(hanji(' '), []);
 });
