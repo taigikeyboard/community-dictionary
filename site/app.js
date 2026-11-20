@@ -394,8 +394,8 @@ function renderSubmit() {
     // Phase 2: sign in through the Worker and POST the entries to its /submit endpoint.
   });
 
-  document.title = `提交一个詞 · ${SITE_TITLE}`;
-  view.replaceChildren(h('a', { class: 'back-link', href: '#/' }, icon('back'), '揣詞'), hero('提交一个詞'), form);
+  document.title = `貢獻詞 · ${SITE_TITLE}`;
+  view.replaceChildren(h('a', { class: 'back-link', href: '#/' }, icon('back'), '揣詞'), hero('貢獻詞'), form);
   sync();
 }
 
@@ -405,7 +405,7 @@ function renderSearch() {
     hero(SITE_TITLE),
     searchBox(),
     tagChips(),
-    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: SUBMIT_ROUTE }, '提交一个詞', icon('chevron'))),
+    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: SUBMIT_ROUTE }, '貢獻詞', icon('chevron'))),
   );
 }
 
@@ -425,7 +425,7 @@ function wordCard(row, { headword }) {
     ['意思', pick('meaning').join('\n')],
     ['例句', pick('example').join('\n')],
     ['說明', pick('note').join('\n')],
-    ['投稿', (attestations.length > 0 ? pick('contributor') : (row.contributors ?? [])).join('、')],
+    ['貢獻', (attestations.length > 0 ? pick('contributor') : (row.contributors ?? [])).join('、')],
   ].filter(([, value]) => value !== '');
   return h(
     'article',
