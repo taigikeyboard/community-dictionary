@@ -15,18 +15,18 @@ Maintainer decisions, 2026-11-20 unless dated otherwise:
 | # | Decision |
 |---|---|
 | D1 | Repository `taigikeyboard/community-dictionary`, site at `taigikeyboard.tw/community-dictionary/`, styled like `taigikeyboard.tw/kautian-mirror/`. Data, site and Worker live in this one repository. |
-| D2 | Replaces the paused accent-variation contribution plan in the TaigiKeyboard repository; accent variation is one category here. |
-| D3 | Categories in the first version: 腔口差 (accent variation), 台語新詞 (new words), 一般詞目補充 (missing words), 其他 (other). The site explains each one. |
-| D4 | Contributed data is CC0. The form carries a required consent checkbox. |
+| D2 | Replaces the paused accent-variation contribution plan in the TaigiKeyboard repository; accent variation is one kind of entry here. |
+| D3 | No categories (2026-11-20, replacing an earlier list of 腔口差 / 台語新詞 / 一般詞目補充 / 其他): one form holds all fields, and only Tâi-lô is required. An accent variation fills the accents, a new word the meaning (where it was heard goes in the note), a missing word only Hanji and Tâi-lô. |
+| D4 | Contributed data is CC0. No consent checkbox (maintainer 2026-11-20); the CC0 terms must still reach contributors another way before Phase 2 opens submissions (sign-in screen or PR body). |
 | D5 | A GitHub account is required for every submission (2026-11-12). No anonymous path. |
 | D6 | Submit path = Cloudflare Worker + GitHub sign-in (2026-11-12): contributors are speakers, not developers. |
 | D7 | The contributor is the commit author (`<id>+<login>@users.noreply.github.com`), so the account appears in the repository's Contributors. Pull requests are merged with a merge commit or rebase, never squash (2026-11-12). |
 | D8 | Romanization is Tâi-lô only and is reviewed by hand; the maintainer's merge is the only gate on its correctness. Automated checks cover format and duplicates (2026-11-12). |
 
 | D9 | One JSON file per entry, in one directory per contributor (about 30 contributors expected). |
-| D10 | Entry identity = (Hanji, Tâi-lô); the category is a field. Different contributors may each submit the same pair — the second is an attestation, not a duplicate. The same contributor cannot submit a pair twice. |
+| D10 | Entry identity = (Hanji, Tâi-lô); accents, meaning and the rest are fields. Different contributors may each submit the same pair — the second is an attestation, not a duplicate. The same contributor cannot submit a pair twice. |
 | D11 | A contributor can edit and withdraw their own entries, in the first version. Both go through a pull request and review like a new entry. |
-| D12 | 腔口差 entries carry a multiple-choice kind, after the Ministry of Education dictionary's 方言差 appendix: 語音差異, 詞彙差異, and 其他 for a difference the contributor cannot classify (2026-11-20). |
+| D12 | (Withdrawn 2026-11-20.) A multiple-choice 腔口差 kind (語音差異 / 詞彙差異 / 其他) was added and then removed the same day; categories were later removed altogether (D3). |
 
 Defaults chosen by the plan (not yet confirmed by the maintainer):
 
@@ -67,12 +67,10 @@ One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contribu
 {
   "hanji": "八",
   "tl": "pueh",
-  "category": "khiunn-khau",
-  "variation_types": ["gi-im"],
   "accents": ["鹿港偏泉腔"],
   "place": "",
   "meaning": "",
-  "source": "",
+  "example": "",
   "note": "…the contributor's explanation…",
   "contributor": "octocat",
   "contributor_id": 583231,
@@ -82,12 +80,14 @@ One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contribu
 
 Ownership is `contributor_id`, never the directory name: a contributor who renames their account keeps editing their old entries, and new entries go to a directory under the new login.
 
-| Field | Categories | Notes |
+| Field | Required | Notes |
 |---|---|---|
-| `hanji`, `tl`, `category`, `note` | all | `note` is the contributor's explanation |
-| `variation_types` | 腔口差 | multiple choice, after the Ministry of Education dictionary's 方言差 appendix (語音差異表 / 詞彙比較表): `gi-im` 語音差異 (same word, different reading), `su-lui` 詞彙差異 (different word for the same meaning), or `ki-thann` 其他 when the contributor cannot classify it (其他 stands alone) |
-| `accents`, `place` | 腔口差 | the ten accents used by the Ministry of Education dictionary, or 其他 with a place name |
-| `meaning`, `source` | 台語新詞 | Mandarin or English equivalent; where the word was seen, or an example sentence |
+| `tl` | yes | Tâi-lô |
+| `hanji` | no | Hanji or kana; empty when the word has no Hanji |
+| `accents`, `place` | no; `place` when `accents` has 其他 | the ten accents used by the Ministry of Education dictionary, or 其他 with a place name |
+| `meaning` | no | Mandarin or English equivalent (no separate source field since 2026-11-20: where the word was seen goes in `note`) |
+| `example` | no | An example sentence (maintainer 2026-11-20) |
+| `note` | no | the contributor's explanation |
 
 Why one file per entry, one directory per contributor:
 
@@ -125,13 +125,13 @@ One pull request per phase.
 | 0 | This roadmap, README, licences | In progress |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
 | 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Pending |
-| 3 | Site: home page with the explanation of each category, the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — first slice live; sign-in, submit, "My submissions" and "submitted" wait for Phase 2 |
+| 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — first slice live; sign-in, submit, "My submissions" and "submitted" wait for Phase 2 |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Pending |
 
 ### Phase 1 — schema and checks
 
-- Limits: Hanji ≤ 20 characters, Tâi-lô ≤ 80, place ≤ 20, meaning ≤ 100, source ≤ 300, note ≤ 1,000; one line per field except `note`.
-- Character whitelists: Hanji field = CJK ideographs plus Tâi-lô letters and hyphen (Hàn-lô mixed writing is allowed); Tâi-lô field = Latin letters, combining tone marks, hyphen, space, tone digits.
+- Limits: Hanji ≤ 20 characters, Tâi-lô ≤ 80, place ≤ 20, meaning ≤ 100, example ≤ 300, note ≤ 1,000; one line per field except `note`.
+- Character whitelists: Hanji field (labelled 漢字、日語) = CJK ideographs, kana for Japanese loanwords (added 2026-11-20), Tâi-lô letters and hyphen (Hàn-lô mixed writing is allowed); Tâi-lô field = Latin letters, combining tone marks, hyphen, space, tone digits.
 - CI fails when a file name does not match its content's key, when a field breaks a limit, or when a pull request from the App touches anything outside `entries/`.
 - Ownership in CI: for every file a submission commit adds, modifies or deletes, the commit author's id (from the noreply address) must equal the file's `contributor_id` — a second gate behind the Worker's own check.
 - No check of whether the Tâi-lô is correct (D8).
@@ -140,8 +140,7 @@ Built (2026-11-20). Implementation choices the roadmap did not fix (defaults, op
 
 | Choice | Value |
 |---|---|
-| Category slugs | `khiunn-khau` 腔口差, `sin-su` 台語新詞, `poo-tshiong` 一般詞目補充, `ki-thann` 其他 |
-| Required fields | `hanji`, `tl`, `category` always; `variation_types` (≥ 1) and `accents` (≥ 1) for `khiunn-khau`; `place` when `accents` contains 其他; `meaning` for `sin-su`. `note` and `source` optional. Fields of another category must be empty. |
+| Required fields | `tl` only (2026-11-20); `place` when `accents` contains 其他. `hanji` may be empty (many Taiwanese words have no Hanji). |
 | Stored text | NFC, LF line endings, trimmed; no control, format or line-separator characters except ZWJ. Hanji allows Han ideographs (not radicals), letters with tone marks, hyphens. The site and the Worker take form input through `prepareEntry` (clean, then validate); CI runs the strict `validateEntry`, which rejects unclean files. |
 | Stored `tl` | Keeps the contributor's case and spaces; only the key normalizes it. |
 | File format | `serializeEntry`: fixed field order, two-space indent, final newline. CI rejects any other formatting. |
@@ -156,7 +155,8 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 
 - The contributor's `id` and `login` come only from GitHub's `/user` response, never from the form.
 - Form text never reaches a shell or a template: the entry is `JSON.stringify` output, the commit message and pull request body are built from validated fields.
-- Branch `submit/<user id>/<key>`; pull request title `add` / `edit` / `withdraw <hanji> <tl>`; label = category.
+- Branch `submit/<user id>/<key>`; pull request title `add` / `edit` / `withdraw <hanji> <tl>`; no labels.
+- One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, place, meaning, example and note; each word is its own entry file, all in one pull request (branch named after the first word's key, title `add <n> words`). The cap counts pull requests, not words.
 - Edit and withdraw: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair is two serial Contents API calls on the branch (create, then delete — the documentation forbids running them in parallel).
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
@@ -164,9 +164,9 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 ### Phase 3 — site
 
 - Static; style tokens taken from kautian-mirror. Built (2026-11-20) without a bundler: native ES modules, `dist/` mirrors the repo so `site/*.js` imports `../lib/entry.js` directly (`npm run build`). The Iansui font is loaded from kautian-mirror on the same origin (`/kautian-mirror/fonts/`) instead of committing a 2.7 MB copy; without it the system font is used.
-- Interface text in Taiwanese (Hanji), with an explanation page: what each category means, what a good entry looks like, how review works, the CC0 notice, and that the contributor's GitHub account becomes public as the commit author.
-- Search over accepted entries; before submit the form applies the duplicate rules above from the published search JSON.
-- Dictionary search (2026-11-20, maintainer: all sources, per-row attribution; search plus a pre-submit notice): the Pages workflow runs daily and on every push, and `scripts/fetch-dictionary.js` pulls `taigikeyboard/taigikeyboard` `dictionary/output/dictionary.csv` (about 170k Hanji–Tâi-lô pairs from 12 sources, licences in that repo's `dictionary/LICENSE`) into `dist/dictionary.json` (hanji, tl, source bitmask; 4.5 MB, 1.4 MB gzipped, loaded on the first keystroke). Results list their sources; the form warns, without blocking, when the pair is already in a dictionary. A failed fetch fails the deploy, so the live site keeps the last good copy.
+- Interface text in Taiwanese (Hanji), kept to field labels; no explanation page and no navigation (maintainer 2026-11-20). Licence and account notices still need a place before submissions open.
+- Search over accepted entries (maintainer 2026-11-20): one page — a search box above the form, and the same results under the word row being typed. Results open as a popover over the page, so nothing below moves. Before submit the form applies the duplicate rules above from the published search JSON.
+- Dictionary search withdrawn (maintainer 2026-11-20): the daily pull of `taigikeyboard/taigikeyboard` dictionary data into the site was removed, along with its pre-submit "already in a dictionary" notice. Search covers community entries only.
 - "My submissions" filters the same JSON by the signed-in id — no extra Worker endpoint — and offers edit and withdraw.
 
 ### Phase 4 — maintainer setup

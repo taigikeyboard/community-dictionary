@@ -9,6 +9,7 @@
     "test": "node --test",
     "validate": "node scripts/validate.js",
     "compile": "node scripts/compile.js",
-    "build": "node scripts/build-site.js"
+    "build": "node scripts/build-site.js",
+    "preview": "node scripts/build-site.js && python3 -m http.server 8000 --bind 127.0.0.1 -d dist"
   }
 }

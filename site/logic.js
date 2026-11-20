@@ -1,8 +1,6 @@
 import {
   ACCENT_OTHER,
-  CATEGORIES,
   entryKey,
-  LIMITS,
   normalizeHanji,
   normalizeTl,
   prepareEntry,
@@ -33,52 +31,34 @@ export function searchRows(rows, query, limit = 50) {
 
 const pairKey = (hanji, tl) => `${normalizeHanji(hanji)}\n${normalizeTl(tl)}`;
 
-// dictionary.json (scripts/fetch-dictionary.js) → searchable rows with folded tl and a pair index.
-export function prepareDictionary({ sources, rows }) {
-  const prepared = rows.map(([hanji, tl, mask]) => ({ hanji, tl, folded: foldSearch(tl), mask }));
-  const byPair = new Map(prepared.map((row) => [pairKey(row.hanji, row.tl), row]));
-  return { sources, rows: prepared, byPair };
-}
-
-export function sourceLabels(dictionary, mask) {
-  return dictionary.sources.filter((_, bit) => mask & (1 << bit)).map((s) => s.label);
-}
-
-// Same matching as searchRows; exact hanji or exact folded tl first.
-export function searchDictionary(dictionary, query, limit = 50) {
-  const q = query.trim();
-  if (q === '') return [];
-  const folded = foldSearch(q);
-  const exact = [];
-  const partial = [];
-  for (const row of dictionary.rows) {
-    if (row.hanji === q || (folded !== '' && row.folded === folded)) exact.push(row);
-    else if (row.hanji.includes(q) || (folded !== '' && `-${row.folded}`.includes(`-${folded}`))) partial.push(row);
-    if (exact.length >= limit) break;
+// Community entries matching what the form's hanji and tl fields hold, each field searched;
+// the exact (Hanji, Tâi-lô) pair comes first, the rest in search order.
+export function findExisting(rows, hanji, tl, limit = 50) {
+  const exactKey = hanji.trim() !== '' && tl.trim() !== '' ? pairKey(hanji, tl) : null;
+  const seen = new Set();
+  const found = [];
+  for (const query of [hanji, tl]) {
+    if (query.trim() === '') continue;
+    for (const row of searchRows(rows, query, limit)) {
+      if (seen.has(row.key)) continue;
+      seen.add(row.key);
+      found.push({ row, exact: pairKey(row.hanji, row.tl) === exactKey });
+    }
   }
-  return [...exact, ...partial].slice(0, limit);
+  return found.sort((x, y) => Number(y.exact) - Number(x.exact)).slice(0, limit);
 }
 
-// Dictionary row with this exact (Hanji, Tâi-lô) pair under key normalization, or undefined.
-export function dictionaryMatch(dictionary, hanji, tl) {
-  return dictionary.byPair.get(pairKey(hanji, tl));
-}
-
-// Form values → raw entry with every field present; fields of other categories stay empty so
-// switching category on the form never leaves stale values behind.
+// Form values → raw entry with every field present; place stays empty unless 其他 is among the
+// accents, so unticking it never leaves a stale place behind.
 export function formToRaw(values, identity) {
-  const { category } = values;
-  const accent = category === 'khiunn-khau';
-  const newWord = category === 'sin-su';
+  const accents = values.accents ?? [];
   return {
     hanji: values.hanji ?? '',
     tl: values.tl ?? '',
-    category,
-    variation_types: accent ? (values.variation_types ?? []) : [],
-    accents: accent ? (values.accents ?? []) : [],
-    place: accent && values.accents?.includes(ACCENT_OTHER) ? (values.place ?? '') : '',
-    meaning: newWord ? (values.meaning ?? '') : '',
-    source: newWord ? (values.source ?? '') : '',
+    accents,
+    place: accents.includes(ACCENT_OTHER) ? (values.place ?? '') : '',
+    meaning: values.meaning ?? '',
+    example: values.example ?? '',
     note: values.note ?? '',
     contributor: identity.login,
     contributor_id: identity.id,
@@ -94,6 +74,38 @@ export function checkForm(values, identity = PLACEHOLDER_IDENTITY) {
   return prepareEntry(formToRaw(values, identity));
 }
 
+// One submission may carry several words; each becomes its own entry file in one pull request.
+export const MAX_WORDS = 20;
+
+const isBlankWord = (word) => word.hanji.trim() === '' && word.tl.trim() === '';
+
+// Shared form values plus [{ hanji, tl }] → { entries, errors }. Errors on hanji or tl carry the
+// word's row index; shared-field errors appear once. Blank extra rows are ignored; a pair
+// repeated within the batch is an error on the later row.
+export async function checkBatch(shared, words, identity = PLACEHOLDER_IDENTITY) {
+  const entries = [];
+  const errors = [];
+  const firstRowOfKey = new Map();
+  const filled = words.filter((word) => !isBlankWord(word));
+  for (const [row, word] of words.entries()) {
+    if (isBlankWord(word) && (filled.length > 0 || row > 0)) continue;
+    const { entry, errors: raw } = checkForm({ ...shared, ...word }, identity);
+    for (const error of describeErrors(raw)) {
+      if (error.field === 'hanji' || error.field === 'tl') errors.push({ ...error, row });
+      else if (!errors.some((e) => e.field === error.field)) errors.push(error);
+    }
+    if (raw.length > 0) continue;
+    const key = await entryKey(entry.hanji, entry.tl);
+    if (firstRowOfKey.has(key)) {
+      errors.push({ field: 'tl', row, text: `佮第 ${firstRowOfKey.get(key) + 1} 个詞仝款` });
+      continue;
+    }
+    firstRowOfKey.set(key, row);
+    entries.push({ entry, key, row });
+  }
+  return { entries, errors };
+}
+
 // D10 on the form: one's own pair is refused; another contributor's pair is an attestation.
 export async function duplicateStatus(rows, hanji, tl, contributorId) {
   const key = await entryKey(hanji, tl);
@@ -106,14 +118,12 @@ export async function duplicateStatus(rows, hanji, tl, contributorId) {
 }
 
 export const FIELD_LABELS = Object.freeze({
-  hanji: '漢字',
+  hanji: '漢字、日語',
   tl: '台羅',
-  category: '分類',
-  variation_types: '腔口差類型',
   accents: '腔口',
   place: '所在',
   meaning: '意思',
-  source: '出處',
+  example: '例句',
   note: '說明',
 });
 
@@ -121,14 +131,12 @@ const MESSAGE_RULES = [
   [/: required$/, () => '愛填'],
   [/: longer than (\d+) characters$/, (m) => `傷長，上濟 ${m[1]} 字`],
   [/: must be one line$/, () => '袂當換逝'],
-  [/: only Han characters/, () => '干焦會當用漢字、台羅字母佮「-」'],
+  [/: only Han characters/, () => '干焦會當用漢字、假名、台羅字母佮「-」'],
   [/: only Latin letters/, () => '干焦會當用台羅字母、調符、數字、空格佮「-」'],
-  [/: must contain a Han character or a letter$/, () => '愛有漢字抑是字母'],
+  [/: must contain a Han character, kana or a letter$/, () => '愛有漢字、假名抑是字母'],
   [/: must contain a letter$/, () => '愛有字母'],
-  [/: cannot be combined with other types$/, () => '「其他」袂當佮別項做伙揀'],
   [/: only with accent /, () => '揀「其他」腔口才需要填所在'],
   [/: contains a control character/, () => '有袂當用的特殊字元'],
-  [/^category: must be one of /, () => '愛揀'],
   [/: unknown /, () => '選項無效'],
 ];
 
@@ -144,4 +152,3 @@ export function describeErrors(errors) {
     });
 }
 
-export { CATEGORIES, LIMITS };

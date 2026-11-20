@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { compile } from './compile.js';
 
 // Builds the static site into dist/: the pages, the shared lib/ (native ES modules, no bundler)
 // and the compiled data. dist/ mirrors the repo layout so site/*.js can import ../lib/entry.js.
 
-const root = process.cwd();
+// repo root from this file's location, so the build works from any working directory
+const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(root, 'dist');
 
 rmSync(dist, { recursive: true, force: true });

@@ -36,52 +36,46 @@ test('normalizeTl keeps the double hyphen of the neutral tone', () => {
   assert.equal(normalizeTl('tsáu  khì'), 'tsáu-khì');
 });
 
-test('valid entries per category', () => {
+test('valid entries: every field but tl is optional', () => {
   assert.deepEqual(validateEntry(accentEntry()), []);
   assert.deepEqual(errorsFor({ accents: ['其他'], place: '澎湖白沙' }), []);
-  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], variation_types: [], meaning: '手機', source: '新聞' }), []);
-  assert.deepEqual(errorsFor({ category: 'poo-tshiong', accents: [], variation_types: [], note: '' }), []);
-  assert.deepEqual(errorsFor({ category: 'ki-thann', accents: [], variation_types: [] }), []);
+  // a missing word: Hanji and Tâi-lô only
+  assert.deepEqual(errorsFor({ accents: [], note: '' }), []);
+  // a new word that is also an accent variation
+  assert.deepEqual(errorsFor({ meaning: '網紅', example: '伊是網紅。' }), []);
   assert.deepEqual(errorsFor({ hanji: '做khang-khuè', tl: 'tsò-khang-khuè' }), []);
   assert.deepEqual(errorsFor({ tl: 'tsau2-khi3' }), []);
-  assert.deepEqual(errorsFor({ tl: 'o\u0358' }), []);
+  assert.deepEqual(errorsFor({ tl: 'o͘' }), []);
   assert.deepEqual(errorsFor({ note: 'line one\nline two' }), []);
 });
 
-test('category rules', () => {
-  assert.deepEqual(errorsFor({ category: 'other' }), ['category: must be one of khiunn-khau, sin-su, poo-tshiong, ki-thann']);
-  assert.deepEqual(errorsFor({ accents: [] }), ['accents: required']);
-  assert.deepEqual(errorsFor({ variation_types: [] }), ['variation_types: required']);
-  assert.deepEqual(errorsFor({ variation_types: ['gi-im', 'su-lui'] }), []);
-  assert.deepEqual(errorsFor({ variation_types: ['ki-thann'] }), []);
-  assert.deepEqual(errorsFor({ variation_types: ['gi-im', 'ki-thann'] }), ['variation_types: ki-thann cannot be combined with other types']);
-  assert.deepEqual(errorsFor({ variation_types: ['siann-tiau'] }), ['variation_types: unknown variation type "siann-tiau"']);
-  assert.deepEqual(errorsFor({ variation_types: ['gi-im', 'gi-im'] }), ['variation_types: duplicate variation type']);
-  assert.deepEqual(errorsFor({ variation_types: ['ki-thann', 'ki-thann'] }), ['variation_types: duplicate variation type']);
-  assert.deepEqual(errorsFor({ variation_types: 'gi-im' }), ['variation_types: must be an array of strings']);
-  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], meaning: '手機' }), ['variation_types: must be empty for sin-su']);
+test('accent and place rules', () => {
+  assert.deepEqual(errorsFor({ tl: '' }), ['tl: required']);
   assert.deepEqual(errorsFor({ accents: ['其他'] }), ['place: required']);
   assert.deepEqual(errorsFor({ place: '鹿港' }), ['place: only with accent 其他']);
-  assert.deepEqual(errorsFor({ meaning: '八' }), ['meaning: must be empty for khiunn-khau']);
-  assert.deepEqual(errorsFor({ category: 'sin-su', variation_types: [], meaning: '手機' }), ['accents: must be empty for sin-su']);
-  assert.deepEqual(errorsFor({ category: 'sin-su', accents: [], variation_types: [] }), ['meaning: required']);
   assert.deepEqual(errorsFor({ accents: ['台北腔'] }), ['accents: unknown accent "台北腔"']);
   assert.deepEqual(errorsFor({ accents: ['鹿港偏泉腔', '鹿港偏泉腔'] }), ['accents: duplicate accent']);
+  assert.deepEqual(errorsFor({ accents: '鹿港偏泉腔' }), ['accents: must be an array of strings']);
 });
 
 test('character whitelists', () => {
-  assert.deepEqual(errorsFor({ hanji: '八 八' }), ['hanji: only Han characters, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '八1' }), ['hanji: only Han characters, Tâi-lô letters and hyphens are allowed']);
+  assert.deepEqual(errorsFor({ hanji: '八 八' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
+  assert.deepEqual(errorsFor({ hanji: '八1' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
   assert.deepEqual(errorsFor({ tl: 'peh8' }), []);
   assert.deepEqual(errorsFor({ tl: 'pueh!' }), ['tl: only Latin letters, tone marks, tone digits, hyphens and spaces are allowed']);
   assert.deepEqual(errorsFor({ tl: 'pʉeh' }), ['tl: only Latin letters, tone marks, tone digits, hyphens and spaces are allowed']);
   assert.deepEqual(errorsFor({ tl: '8-8' }), ['tl: must contain a letter']);
   // ⼋ U+2F0B is the Kangxi radical that looks like 八
-  assert.deepEqual(errorsFor({ hanji: '\u2F0B' }), ['hanji: only Han characters, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '八\u0301' }), ['hanji: only Han characters, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '-' }), ['hanji: must contain a Han character or a letter']);
+  assert.deepEqual(errorsFor({ hanji: '\u2F0B' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
+  assert.deepEqual(errorsFor({ hanji: '八\u0301' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
+  assert.deepEqual(errorsFor({ hanji: '-' }), ['hanji: must contain a Han character, kana or a letter']);
   assert.deepEqual(errorsFor({ tl: '\u0301a' }), ['tl: only Latin letters, tone marks, tone digits, hyphens and spaces are allowed']);
   assert.deepEqual(errorsFor({ hanji: '〇' }), []);
+  // kana for Japanese loanwords; ガ NFD-splits into カ + U+3099
+  assert.deepEqual(errorsFor({ hanji: 'オートバイ', tl: 'oo-tó-bái' }), []);
+  assert.deepEqual(errorsFor({ hanji: 'ガス', tl: 'gá-suh' }), []);
+  // many Taiwanese words have no Hanji
+  assert.deepEqual(errorsFor({ hanji: '' }), []);
 });
 
 test('limits count code points, not UTF-16 units', () => {
@@ -94,7 +88,7 @@ test('limits count code points, not UTF-16 units', () => {
 test('text must be clean, single-line and free of control characters', () => {
   assert.deepEqual(errorsFor({ hanji: ' 八' }), [
     'hanji: not normalized (NFC, LF, trimmed)',
-    'hanji: only Han characters, Tâi-lô letters and hyphens are allowed',
+    'hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed',
   ]);
   assert.deepEqual(errorsFor({ tl: 'pue\u0301h' }), ['tl: not normalized (NFC, LF, trimmed)']);
   assert.deepEqual(errorsFor({ accents: ['其他'], place: 'a\nb' }), ['place: must be one line']);
@@ -103,7 +97,7 @@ test('text must be clean, single-line and free of control characters', () => {
     'note: contains a control character U+000D',
   ]);
   assert.deepEqual(errorsFor({ note: 'a\u202Eb' }), ['note: contains a control character U+202E']);
-  assert.deepEqual(errorsFor({ meaning: 'a\u2028b', category: 'sin-su', accents: [], variation_types: [] }), ['meaning: contains a control character U+2028']);
+  assert.deepEqual(errorsFor({ meaning: 'a\u2028b' }), ['meaning: contains a control character U+2028']);
   assert.deepEqual(errorsFor({ note: '👩\u200D💻' }), []);
 });
 
@@ -119,12 +113,11 @@ test('shape: missing, unknown and mistyped fields', () => {
 });
 
 test('prepareEntry cleans raw form input', () => {
-  const raw = withFields({ hanji: ' 八 ', tl: 'pue\u0301h ', note: 'a\r\nb ', accents: ['鹿港偏泉腔', '鹿港偏泉腔'], variation_types: [' gi-im', 'gi-im', 'su-lui'] });
+  const raw = withFields({ hanji: ' 八 ', tl: 'pue\u0301h ', note: 'a\r\nb ', accents: ['鹿港偏泉腔', '鹿港偏泉腔'] });
   const { entry: clean, errors } = prepareEntry(raw);
   assert.deepEqual(errors, []);
   assert.equal(clean.tl, 'puéh');
   assert.equal(clean.note, 'a\nb');
-  assert.deepEqual(clean.variation_types, ['gi-im', 'su-lui']);
 });
 
 test('parseEntryPath', () => {
