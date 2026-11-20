@@ -1,6 +1,6 @@
 # Community dictionary — roadmap
 
-> **Status**: Draft 2026-11-20 — Phase 0 (this document). Nothing is built yet.
+> **Status**: 2026-11-20 — Phase 1 (schema and checks) built; Phases 2–4 pending.
 
 ## Goal
 
@@ -120,7 +120,7 @@ One pull request per phase.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | This roadmap, README, licences | In progress |
-| 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Pending |
+| 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
 | 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Pending |
 | 3 | Site: home page with the explanation of each category, the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | Pending |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Pending |
@@ -132,6 +132,22 @@ One pull request per phase.
 - CI fails when a file name does not match its content's key, when a field breaks a limit, or when a pull request from the App touches anything outside `entries/`.
 - Ownership in CI: for every file a submission commit adds, modifies or deletes, the commit author's id (from the noreply address) must equal the file's `contributor_id` — a second gate behind the Worker's own check.
 - No check of whether the Tâi-lô is correct (D8).
+
+Built (2026-11-20). Implementation choices the roadmap did not fix (defaults, open to change):
+
+| Choice | Value |
+|---|---|
+| Category slugs | `khiunn-khau` 腔口差, `sin-su` 台語新詞, `poo-tshiong` 一般詞目補充, `ki-thann` 其他 |
+| Required fields | `hanji`, `tl`, `category` always; `accents` (≥ 1) for `khiunn-khau`; `place` when `accents` contains 其他; `meaning` for `sin-su`. `note` and `source` optional. Fields of another category must be empty. |
+| Stored text | NFC, LF line endings, trimmed; no control, format or line-separator characters except ZWJ. Hanji allows Han ideographs (not radicals), letters with tone marks, hyphens. The site and the Worker take form input through `prepareEntry` (clean, then validate); CI runs the strict `validateEntry`, which rejects unclean files. |
+| Stored `tl` | Keeps the contributor's case and spaces; only the key normalizes it. |
+| File format | `serializeEntry`: fixed field order, two-space indent, final newline. CI rejects any other formatting. |
+| Pull request modes | **submission** = opened by the App's bot login (repository variable `SUBMIT_APP_LOGIN`, set in Phase 4) from a branch of this repository: only `entries/`, no merge commits, ownership checked on both the old and new version of each touched file. **member** (owner, member, collaborator) = whole-tree check only. **outside** = anyone else: may not change `entries/`. |
+| Validator trust | CI runs `scripts/validate.js` from the base revision against the head checkout, so a pull request cannot change its own gate; a change to the validator takes effect after it merges. |
+| Directory | Must be a valid GitHub login. A submission that adds a file must put it under `entries/<contributor>/`; existing files stay put after an account rename. One `contributor_id` may hold a key only once across all directories. |
+| Compiled CSV | One row per key; list columns joined with `; `, free-text columns join distinct values with a newline; cells starting with `= + - @` get a leading `'`. `search.json` keeps every attestation in full, including `contributor_id`. |
+
+Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`, `.github/workflows/validate.yml`, tests in `test/`. Node.js ≥ 24.2, no dependencies: `npm test`, `npm run validate`, `npm run compile`.
 
 ### Phase 2 — Worker
 
@@ -152,6 +168,7 @@ One pull request per phase.
 ### Phase 4 — maintainer setup
 
 1. Create the GitHub App (callback URL = the Worker's `/callback`; permissions `contents: write`, `pull_requests: write`; install on this repository only).
+   Set the repository variable `SUBMIT_APP_LOGIN` to its bot login (`<app-slug>[bot]`) so CI treats its pull requests as submissions.
 2. Convert the private key to PKCS#8 and store the three secrets with `wrangler secret put`.
 3. Point a subdomain of `taigikeyboard.tw` at the Worker.
 4. Enable Pages; protect `main` with a ruleset that requires a pull request and does not put the App on the bypass list.

@@ -1,0 +1,55 @@
+# Validates entries on every pull request and push to main. The validator runs from the base
+# revision against the head checkout, so a pull request cannot rewrite the code that judges it.
+name: validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the validator (base revision)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          path: tools
+          persist-credentials: false
+      - name: Check out the tree under test (head revision)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: tree
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+      - name: Unit tests (head revision)
+        working-directory: tree
+        run: npm test
+      - name: Validate entries
+        if: ${{ github.event_name != 'pull_request' }}
+        working-directory: tree
+        run: node ../tools/scripts/validate.js
+      - name: Validate pull request
+        if: ${{ github.event_name == 'pull_request' }}
+        working-directory: tree
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_ASSOCIATION: ${{ github.event.pull_request.author_association }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          # Set in Phase 4 to the App's bot login, e.g. "<app-slug>[bot]"; until then no pull
+          # request counts as a submission.
+          SUBMIT_APP_LOGIN: ${{ vars.SUBMIT_APP_LOGIN }}
+        run: node ../tools/scripts/validate.js --base "$BASE_SHA" --head "$HEAD_SHA"
+      - name: Compile
+        working-directory: tree
+        run: node ../tools/scripts/compile.js
