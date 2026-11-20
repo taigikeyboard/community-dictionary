@@ -2,9 +2,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { romanize } from './romanize.js';
 
 // Pulls the iTaigi 華台對照典 (CC0, per the ChhoeTaigiDatabase README) and writes
-// dist/itaigi.json for the site's search. Run after build-site (which clears dist/).
+// dist/itaigi.json [[hanji, tl, meaning, poj, tps]] for the site's search. Run after build-site
+// (which clears dist/).
 
 export const ITAIGI_URL =
   'https://raw.githubusercontent.com/ChhoeTaigi/ChhoeTaigiDatabase/master/ChhoeTaigiDatabase/ChhoeTaigi_iTaigiHoataiTuichiautian.csv';
@@ -80,9 +82,13 @@ async function main() {
   if (rows.length < MIN_ROWS) {
     throw new Error(`fetch-itaigi: only ${rows.length} rows (expected ≥ ${MIN_ROWS}); check ${ITAIGI_URL}`);
   }
+  const withReadings = rows.map((row) => {
+    const { poj, tps } = romanize(row[1]);
+    return [...row, poj, tps];
+  });
   const dist = fileURLToPath(new URL('../dist', import.meta.url));
   await mkdir(dist, { recursive: true });
-  await writeFile(join(dist, 'itaigi.json'), JSON.stringify(rows));
+  await writeFile(join(dist, 'itaigi.json'), JSON.stringify(withReadings));
   console.log(`fetch-itaigi: ${rows.length} rows → dist/itaigi.json`);
 }
 

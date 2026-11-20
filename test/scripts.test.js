@@ -8,6 +8,7 @@ import { NOREPLY_RE, serializeEntry } from '../lib/entry.js';
 import { checkTree } from '../scripts/check-tree.js';
 import { groupEntries, toCsv } from '../scripts/compile.js';
 import { parseCsv, parseItaigi } from '../scripts/fetch-itaigi.js';
+import { romanize } from '../scripts/romanize.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
 
@@ -199,4 +200,16 @@ test('parseItaigi keeps hanji, tl, meaning; drops rows without tl and repeats', 
   ].join('\n');
   assert.deepEqual(parseItaigi(csv), [['𤺪呢', 'siān-neh', '討厭']]);
   assert.throws(() => parseItaigi('"a"\n"b"'), /column "HanLoTaibunKip" missing/);
+});
+
+test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
+  // trace: converter output for each reading, run 2026-11-21
+  assert.deepEqual(romanize('siān-neh'), { poj: '', tps: 'ㄒㄧㄢ˫ ㄋㆤㆷ' });
+  assert.deepEqual(romanize('tiám-lu-îng-bōo'), { poj: 'tiám-lu-êng-bō͘', tps: 'ㄉㄧㆰˋ ㄌㄨ ㄧㄥˊ ㆠㆦ˫' });
+  assert.deepEqual(romanize('tshenn-hue/tshinn-hue'), { poj: 'chheⁿ-hoe/chhiⁿ-hoe', tps: 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ' });
+  // trace: "thong,bān" gets a space so bān converts; "koo-chiáu" leaves "chiau2" unconverted → no tps;
+  // "ti-kut / tu-kut" POJ equals the trimmed variants → no poj
+  assert.deepEqual(romanize('it lí thong,bān lí thiat'), { poj: '', tps: 'ㄧㆵ ㄌㄧˋ ㄊㆲ，ㆠㄢ˫ ㄌㄧˋ ㄊㄧㄚㆵ' });
+  assert.equal(romanize('koo-chiáu').tps, '');
+  assert.equal(romanize('ti-kut / tu-kut').poj, '');
 });

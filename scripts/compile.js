@@ -60,7 +60,9 @@ export function toCsv(rows) {
 }
 
 // Writes dist/dictionary.csv and dist/search.json; returns false (after logging) on invalid entries.
-export async function compile(root) {
+// `romanize` (tl → { poj, tps }) adds display readings to search.json; build-site passes it, while
+// CI's compile check runs without it so it needs no vendor/ submodule.
+export async function compile(root, { romanize } = {}) {
   const { checked, errors, count } = await checkTree(root);
   if (errors.length > 0) {
     for (const e of errors) console.error(e);
@@ -71,7 +73,8 @@ export async function compile(root) {
   const outDir = join(root, 'dist');
   await mkdir(outDir, { recursive: true });
   await writeFile(join(outDir, 'dictionary.csv'), toCsv(rows));
-  await writeFile(join(outDir, 'search.json'), `${JSON.stringify(rows)}\n`);
+  const searchRows = romanize ? rows.map((row) => ({ ...row, ...romanize(row.tl) })) : rows;
+  await writeFile(join(outDir, 'search.json'), `${JSON.stringify(searchRows)}\n`);
   console.log(`compile: ${count} entry files → ${rows.length} rows in dist/`);
   return true;
 }

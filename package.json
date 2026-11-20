@@ -6,7 +6,7 @@
     "node": ">=24.2"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test 'test/*.test.js'",
     "validate": "node scripts/validate.js",
     "compile": "node scripts/compile.js",
     "build": "node scripts/build-site.js",

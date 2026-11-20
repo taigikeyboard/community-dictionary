@@ -2,6 +2,8 @@ import { ACCENT_OTHER, ACCENTS } from '../lib/entry.js';
 import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
 import { checkBatch, duplicateStatus, findExisting, indexItaigi, MAX_WORDS, searchItaigi } from './logic.js';
+import { initSettings } from './settings.js';
+import { initSidebar } from './sidebar.js';
 
 // Two pages: search (community entries and iTaigi) and the submission form, whose word rows show
 // the community entries already collected.
@@ -49,35 +51,27 @@ const loadItaigi = cachedJson('itaigi.json');
 const SEARCH_LIMIT = 200;
 const WORD_ROW_LIMIT = 5;
 
-function existingItem({ row, exact }) {
-  const meta = [...new Set(row.attestations.flatMap((a) => a.accents)), row.attestations.map((a) => a.contributor).join('、')].join(' · ');
+// One result row: Hanji, Tâi-lô, then Pe̍h-ōe-jī (only where it differs) and 方音符號, which the
+// sidebar's 選單顯示 switches hide through <html data-poj / data-tps>.
+function resultItem(row, className = null) {
   return h(
     'li',
-    { class: exact ? 'exact' : null },
+    { class: className },
     h(
       'div',
       { class: 'result-head' },
       h('span', { class: 'result-hanji' }, row.hanji),
       h('span', { class: 'result-tl' }, row.tl),
-      h('span', { class: 'meta' }, meta),
+      row.poj ? h('span', { class: 'poj' }, row.poj) : null,
+      row.tps ? h('span', { class: 'tps' }, row.tps) : null,
     ),
   );
 }
 
+const existingItem = ({ row, exact }) => resultItem(row, exact ? 'exact' : null);
+
 // iTaigi rows (CC0, no attribution required) follow the community entries without a heading.
-function itaigiItem(row) {
-  return h(
-    'li',
-    {},
-    h(
-      'div',
-      { class: 'result-head' },
-      h('span', { class: 'result-hanji' }, row.hanji),
-      h('span', { class: 'result-tl' }, row.tl),
-      row.meaning !== row.hanji ? h('span', { class: 'meta' }, row.meaning) : null,
-    ),
-  );
-}
+const itaigiItem = (row) => resultItem(row);
 
 // Popover of words already collected, under whatever field `locate` picks inside `root`:
 // locate(element) → { anchor, values() → { hanji, tl } } or null. It floats over the page, so
@@ -372,8 +366,12 @@ function route() {
   else renderSearch();
 }
 
+initSettings(document.getElementById('settings'));
+initSidebar(document.querySelector('.sidebar-toggle'), document.getElementById('sidebar'));
+
 // The focused link is replaced along with the page, so focus moves to the new heading instead of
 // falling back to <body>, keeping keyboard and screen-reader users in place.
+
 window.addEventListener('hashchange', () => {
   route();
   window.scrollTo(0, 0);

@@ -12,11 +12,65 @@
   <meta property="og:description" content="腔口差、新詞，佮辭典猶未收的詞。">
   <meta property="og:url" content="https://taigikeyboard.tw/community-dictionary/">
   <meta property="og:locale" content="zh_TW">
+  <script>
+    // apply the display settings and sidebar state before first paint (site/settings.js, site/sidebar.js)
+    try {
+      const root = document.documentElement;
+      if (JSON.parse(localStorage.getItem("sidebar")) === "open") root.dataset.sidebar = "open";
+      const settings = JSON.parse(localStorage.getItem("settings")) || {};
+      for (const [name, value] of Object.entries(settings)) {
+        if (typeof value === "string") root.dataset[name] = value;
+      }
+    } catch {}
+  </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
   <script type="module" src="site/app.js"></script>
 </head>
 <body>
+  <button class="corner-button sidebar-toggle" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄">
+    <svg viewBox="0 0 20 20" aria-hidden="true">
+      <rect x="2.75" y="4" width="14.5" height="12" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M7.75 4v12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </svg>
+  </button>
+  <!-- left sidebar: docked on wide screens (site/sidebar.js slides it away); on narrow ones a popover,
+       so outside click / Esc close it -->
+  <aside id="sidebar" class="sidebar" popover aria-label="側邊欄">
+    <div class="sidebar-close">
+      <button class="corner-button" type="button" popovertarget="sidebar" popovertargetaction="hide" aria-label="關" title="關">
+        <svg viewBox="0 0 20 20" aria-hidden="true">
+          <path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </button>
+    </div>
+    <!-- the markup's selected / checked values are the defaults (site/settings.js) -->
+    <form id="settings" aria-label="設定">
+      <label class="setting">外觀
+        <select name="theme">
+          <option value="auto" selected>自動</option>
+          <option value="light">淺色</option>
+          <option value="dark">暗色</option>
+        </select>
+      </label>
+      <label class="setting">字型
+        <select name="font">
+          <option value="system">系統</option>
+          <option value="openhuninn">粉圓</option>
+          <option value="iansui" selected>芫荽</option>
+          <option value="genyomin">源樣明體</option>
+          <option value="genyogothic">源樣烏體</option>
+        </select>
+      </label>
+      <div class="settings-heading">選單顯示</div>
+      <label class="setting">白話字
+        <input type="checkbox" name="poj" role="switch" checked>
+      </label>
+      <label class="setting">方音符號
+        <input type="checkbox" name="tps" role="switch" checked>
+      </label>
+    </form>
+  </aside>
   <main id="view">
     <noscript>這个網站愛開 JavaScript 才會當用。</noscript>
   </main>

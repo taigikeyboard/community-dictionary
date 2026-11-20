@@ -26,6 +26,8 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           path: tree
           fetch-depth: 0
+          # the unit tests import vendor/taigi-converter (build-time romanization)
+          submodules: true
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:

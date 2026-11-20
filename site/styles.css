@@ -10,6 +10,29 @@
     U+F900-FAFF, U+FF00-FFEF, U+20000-2FFFF;
 }
 
+/* settings-panel typefaces, also served by kautian-mirror; a browser fetches one only once it is in use */
+@font-face {
+  font-family: "jf-openhuninn";
+  src: local("jf-openhuninn-2.1"), url("/kautian-mirror/fonts/jf-openhuninn-2.1.ttf") format("truetype");
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3100-312F, U+31A0-31BF, U+3400-4DBF, U+4E00-9FFF,
+    U+F900-FAFF, U+FF00-FFEF, U+20000-2FFFF;
+}
+@font-face {
+  font-family: "GenYoMin2 TW";
+  src: local("GenYoMin2 TW R"), local("GenYoMin2TW-R"), url("/kautian-mirror/fonts/genyomin2tw_r.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3100-312F, U+31A0-31BF, U+3400-4DBF, U+4E00-9FFF,
+    U+F900-FAFF, U+FF00-FFEF, U+20000-2FFFF;
+}
+@font-face {
+  font-family: "GenYoGothic2 TW";
+  src: local("GenYoGothic2 TW R"), local("GenYoGothic2TW-R"), url("/kautian-mirror/fonts/genyogothic2tw_r.woff2") format("woff2");
+  font-display: swap;
+  unicode-range: U+3000-303F, U+3100-312F, U+31A0-31BF, U+3400-4DBF, U+4E00-9FFF,
+    U+F900-FAFF, U+FF00-FFEF, U+20000-2FFFF;
+}
+
 :root {
   color-scheme: light dark;
   --bg: light-dark(#f5f5f7, #000000);
@@ -28,7 +51,18 @@
     "PingFang TC", "Noto Sans TC", Arial, sans-serif;
   --font: "Iansui", var(--system-font);
   --measure: 980px;
+  --sidebar-width: 18.75rem;
 }
+
+/* --- display settings (site/settings.js sets these <html> attributes) --- */
+/* follows the system theme unless 外觀 pins one ("auto" pins none) */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+:root[data-font="system"] { --font: var(--system-font); }
+:root[data-font="openhuninn"] { --font: "jf-openhuninn", var(--system-font); }
+:root[data-font="genyomin"] { --font: "GenYoMin2 TW", var(--system-font); }
+:root[data-font="genyogothic"] { --font: "GenYoGothic2 TW", var(--system-font); }
+:root[data-poj="off"] .poj, :root[data-tps="off"] .tps { display: none; }
 
 * { box-sizing: border-box; }
 /* author display rules must not undo the hidden attribute */
@@ -75,8 +109,7 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .results li:hover { background: var(--hover); }
 .result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
 .result-hanji { overflow-wrap: anywhere; }
-.result-tl { color: var(--secondary); font-size: 0.9375rem; overflow-wrap: anywhere; }
-.meta { margin-left: auto; color: var(--secondary); font-size: 0.8125rem; }
+.result-tl, .result-head .poj, .result-head .tps { color: var(--secondary); font-size: 0.9375rem; overflow-wrap: anywhere; }
 .exact .result-hanji { color: var(--accent); }
 /* --- search: same shape as the form fields, icon on the left, popover below --- */
 .search { position: relative; margin-bottom: 1.25rem; }
@@ -174,3 +207,67 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* --- sidebar (after kautian-mirror): toggle top left; docked on wide screens, a popover drawer on
+   narrow ones (site/sidebar.js) --- */
+.corner-button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--secondary); cursor: pointer; transition: color 0.2s, background 0.2s; }
+.corner-button:hover { background: var(--hover); color: var(--text); }
+.corner-button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.corner-button svg { width: 18px; height: 18px; }
+/* page-coloured so it stays legible over form fields scrolled beneath it on narrow screens */
+.sidebar-toggle { position: fixed; top: 0.75rem; left: 0.75rem; z-index: 20; background: var(--bg); }
+
+.sidebar {
+  inset: 0 auto 0 0;
+  width: min(var(--sidebar-width), 85vw);
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 1rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  border: 0;
+  border-right: 1px solid var(--hairline);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--menu-shadow);
+  transform: translateX(-100%);
+  transition: transform 0.25s ease, overlay 0.25s allow-discrete, display 0.25s allow-discrete;
+}
+.sidebar:popover-open { transform: none; }
+@starting-style { .sidebar:popover-open { transform: translateX(-100%); } }
+.sidebar::backdrop { background: rgba(0, 0, 0, 0.3); }
+.sidebar-close { display: flex; justify-content: flex-end; margin: -0.25rem -0.5rem 0 0; }
+@media (min-width: 50rem) {
+  /* docked, collapsed by default: slid out and hidden (its controls leave the tab order);
+     display: block overrides the closed popover's display: none so it can slide */
+  .sidebar { position: fixed; display: block; padding-top: 3.5rem; box-shadow: none; visibility: hidden; transition: transform 0.25s ease, visibility 0.25s; }
+  .sidebar-close { display: none; }
+  body { transition: padding-left 0.25s ease; }
+  :root[data-sidebar="open"] .sidebar { transform: none; visibility: visible; }
+  :root[data-sidebar="open"] body { padding-left: calc(var(--sidebar-width) + 1.5rem); }
+}
+
+/* settings rows: label left, control right, hairlines between */
+.setting { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 2.75rem; font-size: 0.9375rem; }
+.setting + .setting { border-top: 1px solid var(--hairline); }
+.settings-heading { margin-top: 1.25rem; padding-bottom: 0.25rem; color: var(--secondary); font-size: 0.8125rem; }
+.setting select {
+  padding: 0.25rem 1.125rem 0.25rem 0.25rem;
+  border: 0;
+  border-radius: 6px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.5 4l2.5 2.5L7.5 4' fill='none' stroke='%236e6e73' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right center / 10px no-repeat;
+  color: var(--secondary);
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.setting select:hover { color: var(--text); }
+.setting select:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+/* iOS-style switch */
+.setting input[type="checkbox"] { position: relative; flex: none; width: 44px; height: 26px; margin: 0; border-radius: 13px; background: var(--border); cursor: pointer; transition: background 0.2s; -webkit-appearance: none; appearance: none; }
+.setting input[type="checkbox"]::before { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); transition: transform 0.2s; }
+.setting input[type="checkbox"]:checked { background: var(--text); }
+.setting input[type="checkbox"]:checked::before { transform: translateX(18px); }
+.setting input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
