@@ -8,6 +8,7 @@ import {
   duplicateStatus,
   findExisting,
   indexItaigi,
+  isBlankWord,
   MAX_WORDS,
   parseRoute,
   searchItaigi,
@@ -204,47 +205,69 @@ function textInput(name, { multiline = false, romanized = false } = {}) {
   });
 }
 
-// options: [value, label, iconName?]
-function choiceGroup(name, label, options, { type = 'checkbox', style = 'pills' } = {}) {
-  return h(
-    'fieldset',
-    { class: 'field', id: `f-${name}`, 'aria-describedby': `e-${name}` },
-    h('legend', {}, label),
-    h(
-      'div',
-      { class: style },
-      options.map(([value, text, iconName]) =>
-        h('label', {}, h('input', { type, name, value }), iconName ? icon(iconName) : null, h('span', {}, text)),
-      ),
-    ),
-    errorSlot(name),
-  );
+// One checkbox pill.
+const pill = (name, value, text, { checked = false } = {}) =>
+  h('label', {}, h('input', { type: 'checkbox', name, value, checked }), h('span', {}, text));
+
+function choiceGroup(name, label, content) {
+  return h('fieldset', { class: 'field', id: `f-${name}`, 'aria-describedby': `e-${name}` }, h('legend', {}, label), content, errorSlot(name));
 }
 
-// 標籤: the site's tags as pills, several may be picked, plus a contributor's own tags. An added
-// tag becomes one more pill, already ticked, so it is read and unticked like the others.
+// 腔口: one pill per accent, full names, 其他 last as lib/entry.js lists them.
+const accentGroup = () => choiceGroup('accents', '腔口', h('div', { class: 'pills' }, ACCENTS.map((a) => pill('accents', a, a))));
+
+// A key pressed while an IME is composing (or the Enter that commits a candidate in Safari, which
+// reports keyCode 229 with isComposing already false) belongs to the IME, not the form.
+const imeKey = (event) => event.isComposing || event.keyCode === 229;
+
+// 標籤: the site's tags as pills, several may be picked, and a ＋ pill after the last one. ＋ opens
+// an input floating under it, so opening it never reflows the pills; an added tag becomes one more
+// pill before ＋, already ticked, read and unticked like the others.
 function tagGroup() {
-  const group = choiceGroup('tags', '標籤', TAGS.map((tag) => [tag.name, tag.name]));
-  const pills = group.querySelector('.pills');
-  const custom = h('input', { type: 'text', 'aria-label': '家己加標籤', autocomplete: 'off', maxlength: TAG_LIMIT });
-  const add = h('button', { class: 'button secondary', type: 'button' }, '加');
+  const add = h('button', { class: 'pill-add', type: 'button', 'aria-label': '家己加標籤', 'aria-expanded': 'false', title: '家己加標籤' }, icon('plus'));
+  const custom = h('input', { type: 'text', class: 'pill-input', 'aria-label': '家己加標籤', autocomplete: 'off', maxlength: TAG_LIMIT, hidden: true });
+  const slot = h('span', { class: 'tag-add' }, add, custom);
+  const pills = h('div', { class: 'pills' }, TAGS.map((tag) => pill('tags', tag.name, tag.name)), slot);
+  // a ＋ near the right edge opens its input leftward, so it stays inside the column; ＋ moves each
+  // time a tag is added before it, so this runs then too
+  const place = () => {
+    custom.classList.remove('align-end');
+    custom.classList.toggle('align-end', slot.offsetLeft + custom.offsetWidth > pills.clientWidth);
+  };
+  const editing = (on) => {
+    add.setAttribute('aria-expanded', String(on));
+    custom.hidden = !on;
+    if (!on) return;
+    place();
+    custom.focus();
+  };
   const addTag = () => {
     const name = custom.value.normalize('NFC').trim();
     custom.value = '';
     if (name === '') return;
-    const existing = [...pills.querySelectorAll('input')].find((box) => box.value === name);
+    const existing = [...pills.querySelectorAll('input[type="checkbox"]')].find((box) => box.value === name);
     if (existing) existing.checked = true;
-    else pills.append(h('label', {}, h('input', { type: 'checkbox', name: 'tags', value: name, checked: true }), h('span', {}, name)));
+    else slot.before(pill('tags', name, name, { checked: true }));
+    if (!custom.hidden) place();
   };
-  add.addEventListener('click', addTag);
-  // Enter adds the tag instead of submitting the form
+  add.addEventListener('click', () => editing(true));
   custom.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter') return;
-    event.preventDefault();
-    addTag();
+    if (imeKey(event)) return;
+    if (event.key === 'Escape') {
+      custom.value = '';
+      editing(false);
+      add.focus();
+    } else if (event.key === 'Enter') {
+      // Enter adds the tag instead of submitting the form, and stays ready for the next one
+      event.preventDefault();
+      addTag();
+    }
   });
-  group.querySelector('.error').before(h('div', { class: 'tag-add' }, custom, add));
-  return group;
+  custom.addEventListener('blur', () => {
+    addTag();
+    editing(false);
+  });
+  return choiceGroup('tags', '標籤', pills);
 }
 
 let nextWordId = 0;
@@ -254,59 +277,129 @@ const wordValues = (row) => ({
   tl: row.querySelector('[name="tl"]').value,
 });
 
-// One word: Hanji/Japanese and Tâi-lô inputs, a remove button, and the row's error line.
+// One word: Hanji/Japanese and Tâi-lô inputs, the row's button and its error line. The button
+// removes the word, or on the slot row (see wordList) shows ＋ and moves the caret into it.
 function wordRow(list) {
   const n = nextWordId++;
-  const remove = h('button', { class: 'icon-button', type: 'button', 'aria-label': '提掉這个詞', title: '提掉' }, icon('close'));
+  const button = h('button', { class: 'icon-button', type: 'button' }, icon('close', 'icon icon-remove'), icon('plus', 'icon icon-add'));
+  const hanji = h('input', { type: 'text', name: 'hanji', 'aria-label': '漢字、日語', 'aria-describedby': `e-word-${n}` });
   const row = h(
     'div',
     { class: 'word' },
     h(
       'div',
       { class: 'word-fields' },
-      h('input', { type: 'text', name: 'hanji', 'aria-label': '漢字、日語', 'aria-describedby': `e-word-${n}` }),
+      hanji,
       h('input', { type: 'text', name: 'tl', class: 'romanized', spellcheck: 'false', autocapitalize: 'off', 'aria-label': '台羅', 'aria-describedby': `e-word-${n}` }),
-      remove,
+      button,
     ),
     h('div', { class: 'error', id: `e-word-${n}`, hidden: true }),
   );
-  remove.addEventListener('click', () => {
+  button.addEventListener('click', () => {
+    if (row.classList.contains('word-slot')) {
+      hanji.focus();
+      return;
+    }
     row.remove();
     list.dispatchEvent(new Event('words-changed'));
   });
   return row;
 }
 
-const isBlankRow = (row) => {
-  const { hanji, tl } = wordValues(row);
-  return hanji.trim() === '' && tl.trim() === '';
-};
+const isBlankRow = (row) => isBlankWord(wordValues(row));
 
-// Words grow on their own: there is always one empty row at the end, and typing into it adds the
-// next one (up to MAX_WORDS). A filled row can be removed; the trailing empty row cannot.
-function wordList() {
+// The row the next pasted line goes into: the empty row below `row`, else a new row inserted there.
+// At the limit the empty slot row at the end gives up its place; past it, null.
+function nextPasteRow(list, row) {
+  const next = row.nextElementSibling;
+  if (next && isBlankRow(next)) return next;
+  const spare = list.lastElementChild;
+  if (list.children.length >= MAX_WORDS && spare !== row && isBlankRow(spare)) spare.remove();
+  if (list.children.length >= MAX_WORDS) return null;
+  const inserted = wordRow(list);
+  row.after(inserted);
+  return inserted;
+}
+
+// Pasted lines fill one row each: the first the row pasted into, the rest the empty row below or a
+// new row inserted there, so words already typed further down stay. Tab-separated cells (a
+// spreadsheet's copy) fill the Hanji and Tâi-lô columns from the column pasted into. Returns how
+// many lines did not fit under MAX_WORDS.
+function pasteWords(list, input, text) {
+  const names = ['hanji', 'tl'];
+  const firstColumn = names.indexOf(input.name);
+  const lines = text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((line) => line.split('\t').slice(0, names.length - firstColumn).map((cell) => cell.trim()))
+    .filter((cells) => cells.some((cell) => cell !== ''));
+  let row = input.closest('.word');
+  let placed = 0;
+  for (const cells of lines) {
+    if (placed > 0) row = nextPasteRow(list, row);
+    if (!row) break;
+    cells.forEach((cell, i) => {
+      row.querySelector(`[name="${names[firstColumn + i]}"]`).value = cell;
+    });
+    placed += 1;
+  }
+  list.dispatchEvent(new Event('words-changed'));
+  return lines.length - placed;
+}
+
+// Words grow on their own: below the filled rows there is always one empty slot row, drawn
+// faint with a ＋, and typing into it adds the next one (up to MAX_WORDS). The first row is a
+// plain row even while empty, so a fresh form shows the first word and the slot below it.
+// Enter moves on (Hanji → Tâi-lô → next row) instead of submitting the form. `onFilled(count)`
+// hears the number of filled rows after every change; `onDropped(count)` about pasted lines past
+// MAX_WORDS.
+function wordList({ onFilled, onDropped }) {
   const list = h('div', { class: 'words' });
   const section = h(
     'div',
-    { class: 'field' },
+    { class: 'field words-block' },
     h('div', { class: 'word-fields words-head', 'aria-hidden': 'true' }, h('span', {}, '漢字、日語'), h('span', {}, '台羅'), h('span')),
     list,
   );
   const refresh = () => {
     // clearing the second-to-last row leaves two empty rows at the end; keep one
-    while (list.children.length > 1) {
+    while (list.children.length > 2) {
       const last = list.lastElementChild;
       if (!isBlankRow(last) || !isBlankRow(last.previousElementSibling) || last.contains(document.activeElement)) break;
       last.remove();
     }
-    const last = list.lastElementChild;
-    if (!last || (!isBlankRow(last) && list.children.length < MAX_WORDS)) {
-      list.append(wordRow(list));
+    while (list.children.length < 2) list.append(wordRow(list));
+    if (!isBlankRow(list.lastElementChild) && list.children.length < MAX_WORDS) list.append(wordRow(list));
+    let filled = 0;
+    for (const row of list.children) {
+      const blank = isBlankRow(row);
+      if (!blank) filled += 1;
+      const slot = blank && row === list.lastElementChild && row !== list.firstElementChild;
+      row.classList.toggle('word-slot', slot);
+      const button = row.querySelector('.icon-button');
+      button.setAttribute('aria-label', slot ? '加一个詞' : '提掉這个詞');
+      button.title = slot ? '加一个詞' : '提掉';
+      // an empty first row has nothing to remove
+      button.hidden = blank && row === list.firstElementChild;
     }
-    for (const row of list.children) row.querySelector('.icon-button').hidden = row === list.lastElementChild && isBlankRow(row);
+    onFilled(filled);
   };
   list.addEventListener('input', refresh);
   list.addEventListener('words-changed', refresh);
+  list.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' || imeKey(event) || event.target.tagName !== 'INPUT') return;
+    event.preventDefault();
+    const row = event.target.closest('.word');
+    const next = event.target.name === 'hanji' ? row.querySelector('[name="tl"]') : row.nextElementSibling?.querySelector('[name="hanji"]');
+    next?.focus();
+  });
+  list.addEventListener('paste', (event) => {
+    const text = event.clipboardData?.getData('text/plain') ?? '';
+    if (event.target.tagName !== 'INPUT' || !/[\n\t]/.test(text.trim())) return;
+    event.preventDefault();
+    const dropped = pasteWords(list, event.target, text);
+    if (dropped > 0) onDropped(dropped);
+  });
   refresh();
   return { section, list };
 }
@@ -349,26 +442,41 @@ function showErrors(form, rowElements, errors) {
 function renderSubmit() {
   const open = WORKER_URL !== '';
   const notice = h('p', { class: 'form-notice', role: 'status', hidden: true });
-  const words = wordList();
+  const say = (text) => {
+    notice.textContent = text;
+    notice.hidden = false;
+  };
+  // The label grows with the count ("檢查 3 个詞"); a hidden copy of its longest form, stacked in the
+  // same grid cell, holds the button at that width so it never changes size while typing.
+  const submitBase = open ? '登入 GitHub 送出' : '檢查';
+  const submitLabel = h('span');
+  const submit = h(
+    'button',
+    { class: 'button button-steady', type: 'submit' },
+    h('span', { class: 'button-sizer', 'aria-hidden': 'true' }, `${submitBase} ${MAX_WORDS} 个詞`),
+    submitLabel,
+  );
+  const words = wordList({
+    onFilled: (count) => {
+      submitLabel.textContent = `${submitBase}${count > 0 ? ` ${count} 个詞` : ''}`;
+    },
+    onDropped: (dropped) => say(`一擺上濟 ${MAX_WORDS} 个詞，有 ${dropped} 个無貼入去。`),
+  });
   matchesPopover(words.list, (el) => {
     const row = el.closest('.word');
     return row && { anchor: row.querySelector('.word-fields'), values: () => wordValues(row) };
   }, WORD_ROW_LIMIT);
+  // the words share every field below them; the box around the words says so
   const form = h(
     'form',
-    { class: 'form panel', novalidate: true },
+    { class: 'form submit-form', novalidate: true },
     words.section,
-    h(
-      'div',
-      { class: 'form' },
-      choiceGroup('accents', '腔口', ACCENTS.map((a) => [a, a])),
-      h('div', { 'data-for-accent': true, hidden: true }, field('place', '所在', textInput('place'))),
-    ),
-    tagGroup(),
     field('meaning', '意思', textInput('meaning')),
     field('example', '例句', textInput('example')),
+    h('div', { class: 'form' }, accentGroup(), h('div', { 'data-for-accent': true, hidden: true }, field('place', '所在', textInput('place')))),
+    tagGroup(),
     field('note', '說明', textInput('note', { multiline: true })),
-    h('div', { class: 'actions' }, h('button', { class: 'button', type: 'submit' }, icon('check'), open ? '登入 GitHub 送出' : '檢查'), notice),
+    h('div', { class: 'actions' }, submit, notice),
   );
 
   const sync = () => {
@@ -377,10 +485,6 @@ function renderSubmit() {
   };
   form.addEventListener('change', sync);
 
-  const say = (text) => {
-    notice.textContent = text;
-    notice.hidden = false;
-  };
   let confirmedKeys = null;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -414,7 +518,7 @@ function renderSubmit() {
   });
 
   document.title = `貢獻詞 · ${SITE_TITLE}`;
-  view.replaceChildren(h('a', { class: 'back-link', href: '#/' }, icon('back'), '揣詞'), hero('貢獻詞'), form);
+  view.replaceChildren(backToSearch(), hero('貢獻詞'), form);
   sync();
 }
 

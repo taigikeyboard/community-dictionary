@@ -190,7 +190,7 @@ export function checkForm(values, identity = PLACEHOLDER_IDENTITY) {
 // One submission may carry several words; each becomes its own entry file in one pull request.
 export const MAX_WORDS = 20;
 
-const isBlankWord = (word) => word.hanji.trim() === '' && word.tl.trim() === '';
+export const isBlankWord = (word) => word.hanji.trim() === '' && word.tl.trim() === '';
 
 // Shared form values plus [{ hanji, tl }] → { entries, errors }. Errors on hanji or tl carry the
 // word's row index; shared-field errors appear once. Blank extra rows are ignored; a pair
