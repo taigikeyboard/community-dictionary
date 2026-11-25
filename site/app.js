@@ -35,6 +35,21 @@ const SITE_TITLE = '台語齒盤社群辭典';
 const hero = (title, lead, { isReading = false } = {}) =>
   h('header', { class: 'hero' }, h('h1', {}, title), lead ? h('p', { class: isReading ? 'tl' : null }, lead) : null);
 
+// whether the reader has moved between this site's pages since it loaded (the back button can then
+// step back through them)
+let navigatedInside = false;
+
+// The 「‹ 轉去」 button above a subpage's title (the top bar has no links): back to the page the reader
+// came from on this site, or the homepage when the page was opened directly.
+function backButton() {
+  const button = h('button', { class: 'back-link', type: 'button' }, icon('back'), '轉去');
+  button.addEventListener('click', () => {
+    if (navigatedInside) history.back();
+    else location.hash = '#/';
+  });
+  return button;
+}
+
 // A word's Tâi-lô: hidden with the 台羅 switch (class tl), unless the word has no Hanji, when it is
 // the word itself.
 const tlSpan = (row) => h('span', { class: row.hanji ? 'result-tl tl' : 'result-tl' }, row.tl);
@@ -565,7 +580,7 @@ function renderSubmit() {
   const building = open
     ? null
     : h('p', { class: 'construction-note', role: 'note' }, icon('cone'), '網站當咧做');
-  view.replaceChildren(hero('提交新詞'), building, form);
+  view.replaceChildren(backButton(), hero('提交新詞'), building, form);
   sync();
 }
 
@@ -794,7 +809,7 @@ function renderTag(tag) {
   document.title = `${tag} · ${SITE_TITLE}`;
   const reading = TAGS.find((listed) => listed.name === tag)?.tl;
   const list = h('div', { class: 'cards' });
-  view.replaceChildren(hero(tag, reading, { isReading: true }), list);
+  view.replaceChildren(backButton(), hero(tag, reading, { isReading: true }), list);
   withWords(list, (rows, itaigi) => cardList(list, wordsWithTag(rows, itaigi, tag), { headword: true }));
 }
 
@@ -802,7 +817,7 @@ function renderTag(tag) {
 function renderContributor(name) {
   document.title = `${name} · ${SITE_TITLE}`;
   const list = h('div', { class: 'cards' });
-  view.replaceChildren(hero(name), list);
+  view.replaceChildren(backButton(), hero(name), list);
   withWords(list, (rows, itaigi) => cardList(list, wordsByContributor(rows, itaigi, name), { headword: true }));
 }
 
@@ -810,7 +825,7 @@ function renderContributor(name) {
 function renderWord(hanji, tl) {
   document.title = `${hanji || tl} · ${SITE_TITLE}`;
   const list = h('div', { class: 'cards cards-word' });
-  view.replaceChildren(hero(hanji || tl), list);
+  view.replaceChildren(backButton(), hero(hanji || tl), list);
   withWords(list, (rows, itaigi) => cardList(list, wordsSpelled(rows, itaigi, hanji, tl), { headword: false }));
 }
 
@@ -848,6 +863,7 @@ initSidebar(document.querySelectorAll('button[aria-controls="sidebar"]'), docume
 // falling back to <body>, keeping keyboard and screen-reader users in place.
 
 window.addEventListener('hashchange', () => {
+  navigatedInside = true;
   closeWordTip();
   // a new page starts with an empty search box and its menu closed
   if (searchInput.value !== '') {

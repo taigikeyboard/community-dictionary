@@ -175,6 +175,14 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .hero { padding: 0 0 2.5rem; text-align: center; }
 .hero h1 { margin: 0; color: var(--heading); font-size: 3.5rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .hero h1:focus { outline: none; }
+/* a subpage's 「‹ 轉去」 (app.js backButton) takes a fixed row above the title; the homepage, which has
+   none, leaves the same row empty, so every page's title sits at the same height */
+.back-link { display: inline-flex; align-items: center; gap: 0.125rem; height: 1.75rem; margin: 0 0 1rem; padding: 0 0.375rem 0 0.125rem; border: 0; border-radius: var(--radius-inner); background: none; color: var(--accent); font: inherit; font-size: 1.0625rem; cursor: pointer; transition: var(--button-transition); }
+.back-link:hover { background: var(--ghost-hover); }
+.back-link:active { transform: var(--button-press); }
+.back-link:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.back-link .icon { font-size: 1.125rem; }
+main > .hero:first-child { margin-top: 2.75rem; }
 .hero p { max-width: 30rem; margin: 1rem auto 0; color: var(--secondary); font-size: 1.375rem; line-height: 1.45; }
 
 /* --- existing words: popover under the active word, floating over the form --- */
