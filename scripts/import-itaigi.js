@@ -9,8 +9,8 @@ import { TAG_NAMES, TAGS } from '../site/tags.js';
 import { ITAIGI_URL, MIN_ROWS, parseItaigi } from './itaigi.js';
 
 // One-off, run by the maintainer: downloads itaigi.tw's export, tags every (Hanji, Tâi-lô) pair
-// and writes the committed snapshot data/itaigi.json [[hanji, tl, [tag name]]] in export order
-// (no contributor names: the site credits iTaigi as a whole), which build-site turns into the site's search data. iTaigi no longer changes, so this runs only
+// and writes the committed snapshot data/itaigi.json [[hanji, tl, [tag name], [contributor]]] in
+// export order (contributors as itaigi.tw names them, first seen first), which build-site turns into the site's search data. iTaigi no longer changes, so this runs only
 // when the tags or the cleaning rules change. A pair the 教典 also lists takes the tags of its
 // 教典 categories; the rest are classified by Claude through the `claude` CLI in batches from
 // Hanji, Tâi-lô and the Mandarin gloss (which the snapshot leaves out). Answers are cached per
@@ -163,9 +163,10 @@ async function main() {
   const parsed = parseItaigi(await res.text());
   if (parsed.length < MIN_ROWS) throw new Error(`import-itaigi: only ${parsed.length} rows (expected ≥ ${MIN_ROWS}); check ${ITAIGI_URL}`);
   const words = new Map();
-  for (const [hanji, tl, meaning] of parsed) {
-    const word = words.get(pairKey(hanji, tl)) ?? { hanji, tl, meanings: [] };
+  for (const [hanji, tl, meaning, contributor] of parsed) {
+    const word = words.get(pairKey(hanji, tl)) ?? { hanji, tl, meanings: [], contributors: [] };
     if (meaning && !word.meanings.includes(meaning)) word.meanings.push(meaning);
+    if (contributor && !word.contributors.includes(contributor)) word.contributors.push(contributor);
     words.set(pairKey(hanji, tl), word);
   }
 
@@ -213,7 +214,7 @@ async function main() {
     return;
   }
   // one pair per line, so a rerun's diff shows which words or tags changed
-  const snapshot = [...words.values()].map((w) => JSON.stringify([w.hanji, w.tl, tags.get(pairKey(w.hanji, w.tl)) ?? []]));
+  const snapshot = [...words.values()].map((w) => JSON.stringify([w.hanji, w.tl, tags.get(pairKey(w.hanji, w.tl)) ?? [], w.contributors]));
   await mkdir(join(root, 'data'), { recursive: true });
   await writeFile(join(root, 'data', 'itaigi.json'), `[\n${snapshot.join(',\n')}\n]\n`);
   console.log(`import-itaigi: ${snapshot.length} pairs → data/itaigi.json`);

@@ -20,6 +20,7 @@ import {
 import { h } from './dom.js';
 import { initSettings } from './settings.js';
 import { initSidebar } from './sidebar.js';
+import { storySections } from './story.js';
 import { tagMap } from './tag-map.js';
 import { TAG_NAMES, TAGS } from './tags.js';
 
@@ -62,6 +63,7 @@ function cachedJson(path) {
 const loadRows = cachedJson('search.json');
 const loadItaigi = cachedJson('itaigi.json');
 const loadTagMap = cachedJson('tag-map.json');
+const loadStats = cachedJson('stats.json');
 
 // A card's contributor byline: names as plain links to their cards pages, joined by 、.
 const contributorLinks = (names) => names.flatMap((name, i) => [i > 0 ? '、' : null, h('a', { class: 'person', href: contributorRoute(name) }, name)]).filter(Boolean);
@@ -565,12 +567,70 @@ function renderSubmit() {
   sync();
 }
 
+// The card a word bubble opens (tag-map.js onWord): the word's cards as its word page shows them
+// (readings, meaning, tags, contributors, 複製詞目 / 分享連結), in a panel beside the bubble. Escape,
+// a click outside it, another word or leaving the page closes it; focus moves into it once it is
+// filled and back to the bubble on Escape.
+let closeWordTip = () => {};
+function openWordTip({ hanji, tl }, link) {
+  closeWordTip();
+  const section = link.closest('.tag-map-section');
+  const tip = h('div', { class: 'word-tip', role: 'dialog', 'aria-label': hanji || tl, tabindex: '-1' }, h('p', { class: 'word-tip-note' }, '載入中…'));
+  // beside the bubble (right if it fits, else left), centred on it, kept inside the map section
+  const place = () => {
+    const area = section.getBoundingClientRect();
+    const at = link.getBoundingClientRect();
+    const gap = 12;
+    let left = at.right - area.left + gap;
+    if (left + tip.offsetWidth > area.width) left = at.left - area.left - gap - tip.offsetWidth;
+    const top = at.top - area.top + at.height / 2 - tip.offsetHeight / 2;
+    tip.style.left = `${Math.max(0, Math.min(area.width - tip.offsetWidth, left))}px`;
+    tip.style.top = `${Math.max(0, Math.min(area.height - tip.offsetHeight, top))}px`;
+  };
+  const outside = (event) => {
+    if (!tip.contains(event.target)) close();
+  };
+  // Escape closes the card before the map would zoom out on the same key
+  const onKey = (event) => {
+    if (event.key !== 'Escape') return;
+    event.stopPropagation();
+    close();
+    link.focus({ preventScroll: true });
+  };
+  const close = () => {
+    tip.remove();
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('keydown', onKey, true);
+    closeWordTip = () => {};
+  };
+  closeWordTip = close;
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('keydown', onKey, true);
+  section.append(tip);
+  place();
+  Promise.all([loadRows(), loadItaigiIndex()])
+    .then(([rows, itaigi]) => {
+      if (!tip.isConnected) return;
+      const words = wordsSpelled(rows, itaigi, hanji, tl);
+      tip.replaceChildren(...[...words.community, ...words.itaigi].map((row) => wordCard(row, { headword: true })));
+      place();
+      tip.focus({ preventScroll: true });
+    })
+    .catch(() => tip.isConnected && tip.replaceChildren(h('p', { class: 'word-tip-note' }, LOAD_ERROR)));
+}
+
 function renderSearch() {
   document.title = SITE_TITLE;
   view.replaceChildren(
-    // the slogan as the title's lead; the rest of the page is the tag bubbles
+    // the subtitle as the title's lead, then the tag bubbles
     hero(SITE_TITLE, SUBTITLE),
-    tagMap(loadTagMap, () => h('div', { class: 'tags' }, TAGS.map((tag) => tagLink(tag.name, tag.tl)))),
+    tagMap(loadTagMap, () => h('div', { class: 'tags' }, TAGS.map((tag) => tagLink(tag.name, tag.tl))), {
+      onWord: openWordTip,
+      // a zoomed-in tag shows words whose cards need iTaigi: start loading it (1.5 MB) now
+      onZoomIn: () => loadItaigiIndex().catch(() => {}),
+    }),
+    // scrolling down: the statistics, section by section
+    storySections(loadStats),
   );
 }
 
@@ -634,7 +694,7 @@ function cardActions(row, route) {
 }
 
 // One word card. Community rows merge their attestations (accents, meaning, example, note,
-// contributors); iTaigi rows have readings, tags and ITAIGI_CONTRIBUTOR. With `headword`
+// contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
 // the card leads with the word, linked to its own page (tag pages); a word page already names it
 // in the heading.
 function wordCard(row, { headword }) {
@@ -653,7 +713,14 @@ function wordCard(row, { headword }) {
   // pages); its 貢獻者 label is read aloud and shown on hover, the corner placement says it to the eye
   const credit =
     contributors.length > 0
-      ? h('p', { class: 'card-credit', title: '貢獻者' }, h('span', { class: 'unseen' }, '貢獻者：'), contributorLinks(contributors))
+      ? h(
+          'p',
+          { class: 'card-credit', title: '貢獻者' },
+          h('span', { class: 'unseen' }, '貢獻者：'),
+          contributorLinks(contributors),
+          // an iTaigi word names its source after its contributors, as a link to iTaigi
+          attestations.length === 0 ? [' · ', h('a', { class: 'card-source', href: 'https://itaigi.tw/', rel: 'noopener' }, 'iTaigi')] : null,
+        )
       : null;
   const tagList = tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': '標籤' }, tags.map((name) => tagLink(name))) : null;
   const readingLine = h('p', { class: 'card-readings' }, tlSpan(row), readings(row));
@@ -842,6 +909,7 @@ initSidebar(document.querySelectorAll('button[aria-controls="sidebar"]'), docume
 // falling back to <body>, keeping keyboard and screen-reader users in place.
 
 window.addEventListener('hashchange', () => {
+  closeWordTip();
   // a new page starts with an empty search box and its menu closed
   if (searchInput.value !== '') {
     searchInput.value = '';

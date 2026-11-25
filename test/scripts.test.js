@@ -12,6 +12,7 @@ import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/import-itaigi.j
 import { buildSearchRows, parseItaigi } from '../scripts/itaigi.js';
 import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from '../scripts/romanize.js';
+import { buildStats, LONGEST } from '../scripts/stats.js';
 import { buildTagMap, sampleWords } from '../scripts/tag-map.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
@@ -195,7 +196,7 @@ test('parseItaigi: crowdsourced rows only, Tâi-lô cleaned, repeats and non-Tâ
   const json = JSON.stringify({
     資料: [
       { 華語: '討厭', 來源: '阿明', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
-      // an identical row is dropped, also one differing only in contributor
+      // an identical row is dropped; one from another contributor is kept (its credit)
       { 華語: '討厭', 來源: '阿明', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
       { 華語: '討厭', 來源: '匿名', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
       // imported dictionaries are not iTaigi's own content
@@ -208,10 +209,11 @@ test('parseItaigi: crowdsourced rows only, Tâi-lô cleaned, repeats and non-Tâ
       { 華語: '空', 來源: '匿名', 漢字: '空', 羅馬字: '' },
     ],
   });
-  // trace: 來源 is not kept, so the 匿名 row repeats the 阿明 row and is dropped too
+  // trace: rows are distinct on all four fields, so the second 阿明 row goes and the 匿名 one stays
   assert.deepEqual(parseItaigi(json), [
-    ['𤺪呢', 'siān-neh', '討厭'],
-    ['一人', 'tsit8 lang5', '一人'],
+    ['𤺪呢', 'siān-neh', '討厭', '阿明'],
+    ['𤺪呢', 'siān-neh', '討厭', '匿名'],
+    ['一人', 'tsit8 lang5', '一人', '匿名'],
   ]);
   assert.throws(() => parseItaigi('{"rows":[]}'), /no 資料 array/);
 });
@@ -228,17 +230,19 @@ test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
   assert.equal(romanize('ti-kut / tu-kut').poj, '');
 });
 
-test('buildSearchRows: readings added, tags as indices, unknown tag fails', () => {
+test('buildSearchRows: readings added, tags as indices, contributors kept, bad rows fail', () => {
   const pairs = [
-    ['𤺪呢', 'siān-neh', ['心情']],
-    ['閣', 'koh', []],
+    ['𤺪呢', 'siān-neh', ['心情'], ['阿明']],
+    ['閣', 'koh', [], ['阿明', '阿珠']],
   ];
   // trace: romanize('koh') → poj "" (same as tl), tps "ㄍㄛㆷ"
   assert.deepEqual(buildSearchRows(pairs), [
-    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [TAG_NAMES.indexOf('心情')]],
-    ['閣', 'koh', '', 'ㄍㄛㆷ', []],
+    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [TAG_NAMES.indexOf('心情')], ['阿明']],
+    ['閣', 'koh', '', 'ㄍㄛㆷ', [], ['阿明', '阿珠']],
   ]);
-  assert.throws(() => buildSearchRows([['閣', 'koh', ['華語']]]), /unknown tag "華語"/);
+  assert.throws(() => buildSearchRows([['閣', 'koh', ['華語'], ['阿明']]]), /unknown tag "華語"/);
+  assert.throws(() => buildSearchRows([['閣', 'koh', []]]), /no contributor names/);
+  assert.throws(() => buildSearchRows([['閣', 'koh', [], []]]), /no contributor names/);
 });
 
 test('import-itaigi: reading fold, place categories, reply parsing', () => {
@@ -252,13 +256,14 @@ test('import-itaigi: reading fold, place categories, reply parsing', () => {
   assert.throws(() => parseAnswer('sorry, no JSON', 1), /reply is not JSON/);
 });
 
-test('data/itaigi.json: every row is [hanji, tl, [listed tag]], no contributor names', async () => {
+test('data/itaigi.json: every row is [hanji, tl, [listed tag], [contributor]]', async () => {
   const data = JSON.parse(await readFile(new URL('../data/itaigi.json', import.meta.url), 'utf8'));
   for (const row of data) {
-    const [hanji, tl, tags] = row;
-    assert.equal(row.length, 3, JSON.stringify(row));
+    const [hanji, tl, tags, contributors] = row;
+    assert.equal(row.length, 4, JSON.stringify(row));
     assert.ok(typeof hanji === 'string' && /[A-Za-z]/.test(tl), JSON.stringify(row));
     for (const tag of tags) assert.ok(TAG_NAMES.includes(tag), `${hanji} ${tl}: ${tag}`);
+    assert.ok(contributors.length > 0 && contributors.every((name) => typeof name === 'string' && name !== ''), JSON.stringify(row));
   }
 });
 
@@ -288,4 +293,35 @@ test('tag-map buildTagMap: counts and samples are the words of the tag page', ()
   const food = buildTagMap(community, itaigi).find((tag) => tag.name === '食食');
   assert.equal(food.count, 3);
   assert.deepEqual(food.words.map(([hanji]) => hanji).sort(), ['米粉', '食飯', '鹹粿'].sort());
+});
+
+test('stats buildStats: counts from the served rows, both sources', () => {
+  const [food, plant, body] = ['食食', '植物', '身軀'].map((name) => TAG_NAMES.indexOf(name));
+  const itaigi = [
+    ['青花', 'tshenn-hue/tshinn-hue', '', '', [food, plant], ['阿明']],
+    ['米粉', 'bí-hún', '', '', [plant, food], ['阿明', '阿珠']],
+    ['跤頭趺', 'kha-thâu-u', '', '', [body], ['阿明']],
+    ['大人𤆬囡仔去𨑨迌', 'tuā-lâng tshuā gín-á khì tshit-thô', '', '', [], ['阿華']],
+  ];
+  const community = [{ hanji: '鹹粿', tl: 'kiâm-kué', attestations: [{ tags: ['食食', '夜市仔'], contributor: 'octocat' }, { tags: ['食食'], contributor: 'octocat' }] }];
+  const tagMap = [{ name: '植物', tl: 'si̍t-bu̍t', hue: 'leaf', count: 2 }, { name: '食食', tl: 'tsia̍h-si̍t', hue: 'cobalt', count: 3 }];
+  const stats = buildStats(community, itaigi, tagMap);
+  // trace: 5 words; 鹹粿 counts once for octocat (two attestations); 米粉 credits 阿明 and 阿珠
+  assert.equal(stats.words, 5);
+  assert.equal(stats.contributors, 4);
+  assert.deepEqual(stats.topContributors[0], { name: '阿明', count: 3 });
+  // trace: credits 阿明 3 + 阿珠 1 + 阿華 1 + octocat 1 = 6; all four are in the top 10 → share 1
+  assert.equal(stats.topShare, 1);
+  assert.equal(stats.singleWordContributors, 3);
+  // trace: 青花, 米粉 (two site tags each) and 鹹粿 (食食 + its own 夜市仔) carry more than one tag
+  assert.equal(stats.multiTag, 3);
+  assert.equal(stats.variantReadings, 1);
+  // trace: the 食食/植物 pair on 青花 and 米粉, whatever order their tags came in; 夜市仔 is no site tag
+  assert.deepEqual(stats.pairs, [{ tags: ['食食', '植物'], count: 2 }]);
+  // trace: lengths 青花 2, 米粉 2, 跤頭趺 3, 鹹粿 2, the 8-character phrase in the last bucket
+  assert.deepEqual(stats.lengths.map((b) => b.count), [0, 3, 1, 0, 0, 0, 0, 1]);
+  assert.equal(stats.lengths.at(-1).length, LONGEST);
+  assert.ok(stats.lengths.at(-1).orLonger);
+  // tags by count, most first
+  assert.deepEqual(stats.perTag.map((t) => t.name), ['食食', '植物']);
 });

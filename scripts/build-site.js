@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { compile } from './compile.js';
 import { buildSearchRows } from './itaigi.js';
 import { romanize } from './romanize.js';
+import { buildStats } from './stats.js';
 import { buildTagMap } from './tag-map.js';
 
 // Builds the static site into dist/: the pages, the shared lib/ (native ES modules, no bundler)
@@ -19,7 +20,7 @@ const D3_MODULES = ['d3-color', 'd3-dispatch', 'd3-ease', 'd3-force', 'd3-hierar
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'site'), { recursive: true });
 for (const file of ['index.html', 'styles.css', 'favicon.svg']) cpSync(join(root, 'site', file), join(dist, file));
-for (const file of ['app.js', 'config.js', 'dom.js', 'icons.js', 'logic.js', 'settings.js', 'sidebar.js', 'tag-map.js', 'tags.js']) cpSync(join(root, 'site', file), join(dist, 'site', file));
+for (const file of ['app.js', 'config.js', 'dom.js', 'icons.js', 'logic.js', 'settings.js', 'sidebar.js', 'story.js', 'tag-map.js', 'tags.js']) cpSync(join(root, 'site', file), join(dist, 'site', file));
 // the D3 modules the homepage's tag bubbles load (ES module builds, npm dependencies), by the
 // names index.html's import map gives them
 mkdirSync(join(dist, 'vendor'));
@@ -36,5 +37,9 @@ else {
   const tagMap = buildTagMap(JSON.parse(readFileSync(join(dist, 'search.json'), 'utf8')), itaigi);
   writeFileSync(join(dist, 'tag-map.json'), JSON.stringify(tagMap));
   console.log(`build-site: ${tagMap.length} tags → dist/tag-map.json`);
+  // the homepage's statistics, from the same rows
+  const stats = buildStats(JSON.parse(readFileSync(join(dist, 'search.json'), 'utf8')), itaigi, tagMap);
+  writeFileSync(join(dist, 'stats.json'), JSON.stringify(stats));
+  console.log(`build-site: ${stats.words} words, ${stats.contributors} contributors → dist/stats.json`);
   console.log('build-site: dist/ ready');
 }

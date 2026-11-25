@@ -33,20 +33,18 @@ export function searchRows(rows, query, limit = 50) {
 // "/" joins variant readings in iTaigi; folding it to a syllable break lets each variant match.
 const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 
-// The one contributor name every iTaigi word carries: iTaigi's own contributor names (often real
-// names) are not republished (maintainer 2026-11-21).
-export const ITAIGI_CONTRIBUTOR = 'itaigi';
-
-// itaigi.json rows [hanji, tl, poj, tps, [tag index]] → search index, each credited to ITAIGI_CONTRIBUTOR; folding runs once here, not
-// per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the whole tl.
+// itaigi.json rows [hanji, tl, poj, tps, [tag index], [contributor]] → search index, each word
+// credited to its iTaigi contributors as itaigi.tw names them (maintainer 2026-11-26); folding runs
+// once here, not per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the
+// whole tl.
 export function indexItaigi(rows) {
-  return rows.map(([hanji, tl, poj, tps, tags]) => ({
+  return rows.map(([hanji, tl, poj, tps, tags, contributors]) => ({
     hanji,
     tl,
     poj,
     tps,
     tags,
-    contributors: [ITAIGI_CONTRIBUTOR],
+    contributors,
     variants: tl.split('/').map(foldReading),
     folded: foldReading(tl),
   }));

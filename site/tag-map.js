@@ -1,6 +1,6 @@
 import { h, svg } from './dom.js';
 import { icon } from './icons.js';
-import { tagCircles, tagRoute, wordRoute } from './logic.js';
+import { tagCircles, wordRoute } from './logic.js';
 
 // The homepage's tag bubbles, drawn with D3: one circle per site tag, its area following how many
 // words carry the tag, the tag's sample words packed inside it as small bubbles (d3-hierarchy). The
@@ -30,12 +30,17 @@ const PHONE_WORDS = 24;
 // how much a hovered tag swells
 const HOVER_GROWTH = 1.25;
 // the entrance: how drawn in the bubbles start (share of their final distance from the centre; near
-// 1, so the forces ease them out instead of flinging them) and the pause between one bubble
-// appearing and the next
+// 1, so the forces ease them out instead of flinging them), the time over which they start to
+// appear (centre first, the gaps widening outwards) and how long each takes to spring open
 const ENTRANCE_SPREAD = 0.85;
-const ENTRANCE_STAGGER_MS = 15;
+const ENTRANCE_SPAN_MS = 1100;
+const ENTRANCE_POP_MS = 520;
+// a little randomness in each start, so the bloom does not tick like a metronome
+const ENTRANCE_JITTER_MS = 80;
 // a zoom in or out
 const ZOOM_MS = 450;
+// how far the mouse moves (px) before a press becomes a drag rather than a click
+const DRAG_THRESHOLD_PX = 4;
 // px between circles
 const GAP = 6;
 
@@ -48,13 +53,14 @@ const wordWidth = ([hanji, tl]) => Math.max(2, [...hanji].length, 0.52 * TL_SCAL
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-// loadTags() → tag-map.json entries; fallback() → what the box shows if the map cannot load.
-export function tagMap(loadTags, fallback) {
+// loadTags() → tag-map.json entries; fallback() → what the box shows if the map cannot load;
+// onWord({ hanji, tl }, link) runs when a word bubble is clicked (instead of following its link);
+// onZoomIn() when a tag is zoomed into (a page can start loading what a word click will need).
+export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} } = {}) {
   const box = h('div', { class: 'tag-map' });
   const back = h('button', { class: 'tag-map-back', type: 'button' }, icon('back'), '全部標籤');
-  const more = h('a', { class: 'tag-map-more' });
   // the bar under the map keeps its height while empty, so zooming never moves the page
-  const bar = h('div', { class: 'tag-map-bar', 'data-empty': 'true' }, back, more);
+  const bar = h('div', { class: 'tag-map-bar', 'data-empty': 'true' }, back);
   const section = h('div', { class: 'tag-map-section' }, box, bar);
   Promise.all([loadTags(), loadD3()])
     .then(([tags, d3]) => {
@@ -70,7 +76,7 @@ export function tagMap(loadTags, fallback) {
         drawn = `${width}x${height}`;
         current?.stop();
         // the entrance plays on the first draw only, not when a resize redraws the map
-        current = draw(d3, tags, box, bar, more, width, height, { entrance: current === null });
+        current = draw(d3, tags, box, bar, width, height, { entrance: current === null, onWord, onZoomIn });
       });
       observer.observe(box);
       back.addEventListener('click', () => current?.zoomOut({ refocus: true }));
@@ -84,7 +90,7 @@ export function tagMap(loadTags, fallback) {
 
 // Draws the map for a width × height box and sets it moving (with the entrance when `entrance`);
 // returns { zoomOut, stop }.
-function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}) {
+function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = null, onZoomIn = () => {} } = {}) {
   const aspect = width / height;
   const wordCount = width < 600 ? PHONE_WORDS : WIDE_WORDS;
   // start from a tight pack, then let the forces settle it before the first paint
@@ -94,8 +100,8 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
     height,
     { gap: GAP },
   );
-  // appearAt: when a node may start swelling into view (performance.now() time; 0 = already shown)
-  const nodes = circles.map(({ r, x, y }, index) => ({ index, r, x, y, grow: 1, scale: 1, appearAt: 0 }));
+  // scale: eased towards grow (hover); entry: the entrance's own factor (1 once it is in)
+  const nodes = circles.map(({ r, x, y }, index) => ({ index, r, x, y, grow: 1, scale: 1, entry: 1 }));
   // forceCollide reads the radii once; swell() hands it the accessor again after a size changes
   const reach = (node) => node.r * node.grow + GAP;
   const collide = d3.forceCollide(reach).strength(0.8).iterations(2);
@@ -156,13 +162,20 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
       const cx = node.x - inner;
       const cy = node.y - inner;
       const size = Math.min(0.62 * node.r, (1.45 * node.r) / wordWidth(node.data));
-      return svg(
+      const link = svg(
         'a',
-        { class: 'word-bubble', href: wordRoute(hanji, tl), tabindex: '-1', 'aria-label': `${hanji} ${tl}` },
+        { class: 'word-bubble', href: wordRoute(hanji, tl), tabindex: '-1', 'aria-label': `${hanji} ${tl}`, 'aria-haspopup': onWord ? 'dialog' : null },
         svg('circle', { cx, cy, r: node.r }),
         svg('text', { class: 'word-hanji', x: cx, y: cy - 0.32 * size, 'font-size': size }, hanji),
         svg('text', { class: 'word-tl', x: cx, y: cy + 0.55 * size, 'font-size': TL_SCALE * size }, firstReading(tl)),
       );
+      // a plain click (or Enter) opens the word's card in place; a modified click still follows the link
+      link.addEventListener('click', (event) => {
+        if (!onWord || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        onWord({ hanji, tl }, link);
+      });
+      return link;
     });
     const target = svg(
       'circle',
@@ -186,27 +199,39 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
   map.append(...bubbles.map((b) => b.group));
   box.replaceChildren(map);
 
-  // each tick: ease every body towards its target size (none before it is due to appear), then
-  // place it
+  // each tick: ease every body towards its hover size, then place it at that size times its
+  // entrance factor
   const place = () => {
-    const now = performance.now();
     for (const { node, group, body } of bubbles) {
-      const target = now < node.appearAt ? 0 : node.grow;
-      node.scale += (target - node.scale) * 0.3;
+      node.scale += (node.grow - node.scale) * 0.3;
       group.setAttribute('transform', `translate(${node.x} ${node.y})`);
-      body.setAttribute('transform', `scale(${node.scale})`);
+      body.setAttribute('transform', `scale(${node.scale * node.entry})`);
     }
   };
   simulation.on('tick', place);
+  // the entrance runs on its own timer (the simulation may cool before the last bubble is due):
+  // bubbles bloom from the centre outwards, each springing open past its size and settling back,
+  // while a gentle reheat eases them out from slightly drawn in
+  let entranceTimer = null;
   if (entrance && !reducedMotion.matches) {
-    // start drawn in towards the centre and unseen; a gentle reheat eases the bodies back out while
-    // they swell in, largest first
-    const start = performance.now();
-    [...nodes].sort((a, b) => b.r - a.r).forEach((node, rank) => {
+    const order = [...nodes].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+    order.forEach((node, rank) => {
+      const share = rank / Math.max(1, order.length - 1);
+      node.delay = ENTRANCE_SPAN_MS * share ** 1.3 + (Math.random() - 0.5) * ENTRANCE_JITTER_MS;
+      node.entry = 0;
       node.x *= ENTRANCE_SPREAD;
       node.y *= ENTRANCE_SPREAD;
-      node.scale = 0;
-      node.appearAt = start + rank * ENTRANCE_STAGGER_MS;
+    });
+    const pop = d3.easeBackOut.overshoot(1.4);
+    entranceTimer = d3.timer((elapsed) => {
+      let done = true;
+      for (const node of nodes) {
+        const progress = Math.min(1, Math.max(0, (elapsed - node.delay) / ENTRANCE_POP_MS));
+        node.entry = progress === 0 ? 0 : pop(progress);
+        if (progress < 1) done = false;
+      }
+      place();
+      if (done) entranceTimer.stop();
     });
     simulation.alpha(0.3).restart();
   }
@@ -215,8 +240,9 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
   let view = rootView;
   let zoomTimer = null;
   let focused = null;
+  let drag = null;
   const swell = (index, grow) => {
-    if (focused !== null || reducedMotion.matches) return;
+    if (focused !== null || drag?.start || reducedMotion.matches) return;
     nodes[index].grow = grow;
     collide.radius(reach);
     simulation.alpha(Math.max(simulation.alpha(), 0.5)).restart();
@@ -258,13 +284,9 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
       for (const word of b.words) word.setAttribute('tabindex', i === index ? '0' : '-1');
     });
     bar.dataset.empty = String(index === null);
-    if (index !== null) {
-      const { name } = bubbles[index].tag;
-      more.href = tagRoute(name);
-      more.replaceChildren(`看「${name}」全部`, icon('chevron'));
-    }
   };
   const zoomIn = (index) => {
+    onZoomIn();
     for (const node of nodes) node.grow = 1;
     collide.radius(reach);
     simulation.stop();
@@ -293,6 +315,65 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
   map.addEventListener('click', (event) => {
     if (event.target === map) zoomOut();
   });
+
+  // dragging with the mouse pans the view (touch keeps scrolling the page): a CSS transform while
+  // the pointer moves, the viewBox set on release, the centre kept within the map; the click that
+  // ends a drag is swallowed before any bubble sees it
+  const reachX = rootView[2] / 2;
+  const reachY = rootView[2] / aspect / 2;
+  const keepInside = ([x, y, w]) => [
+    Math.min(rootView[0] + reachX, Math.max(rootView[0] - reachX, x)),
+    Math.min(rootView[1] + reachY, Math.max(rootView[1] - reachY, y)),
+    w,
+  ];
+  let dragged = false;
+  map.addEventListener('pointerdown', (event) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    drag = { x: event.clientX, y: event.clientY, id: event.pointerId, start: null };
+  });
+  map.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (!drag.start) {
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      // a zoom still under way stops where it is
+      zoomTimer?.stop();
+      show(view);
+      map.style.transform = '';
+      map.classList.remove('moving');
+      drag.start = view;
+      map.setPointerCapture(drag.id);
+      map.classList.add('panning');
+    }
+    const perPx = drag.start[2] / width;
+    view = keepInside([drag.start[0] - dx * perPx, drag.start[1] - dy * perPx, drag.start[2]]);
+    map.style.transform = transformFor(drag.start, view);
+  });
+  const endDrag = () => {
+    if (drag?.start) {
+      show(view);
+      map.style.transform = '';
+      map.classList.remove('panning');
+      dragged = true;
+      // the click (if any) follows in this same task; after it, clicks count again
+      setTimeout(() => {
+        dragged = false;
+      });
+    }
+    drag = null;
+  };
+  map.addEventListener('pointerup', endDrag);
+  map.addEventListener('pointercancel', endDrag);
+  map.addEventListener(
+    'click',
+    (event) => {
+      if (!dragged) return;
+      event.stopPropagation();
+      event.preventDefault();
+    },
+    true,
+  );
   show(view);
   bar.dataset.empty = 'true';
   return {
@@ -300,6 +381,7 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
     stop: () => {
       simulation.stop();
       zoomTimer?.stop();
+      entranceTimer?.stop();
     },
   };
 }

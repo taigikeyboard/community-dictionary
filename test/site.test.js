@@ -11,7 +11,6 @@ import {
   foldSearch,
   formToRaw,
   indexItaigi,
-  ITAIGI_CONTRIBUTOR,
   packCircles,
   searchItaigi,
   parseRoute,
@@ -114,10 +113,10 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
 test('searchItaigi: hanji, each variant reading; exact, then prefix, then the rest', () => {
   const [food, plant, feeling] = ['食食', '植物', '心情'].map((name) => TAG_NAMES.indexOf(name));
   const index = indexItaigi([
-    ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant]],
-    ['花蕊', 'hue-luí', 'hoe-luí', 'ㄏㄨㆤ ㄌㄨㄧˋ', [plant]],
-    ['花', 'hue', 'hoe', 'ㄏㄨㆤ', [plant]],
-    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling]],
+    ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant], ['阿明']],
+    ['花蕊', 'hue-luí', 'hoe-luí', 'ㄏㄨㆤ ㄌㄨㄧˋ', [plant], ['阿明', '阿珠']],
+    ['花', 'hue', 'hoe', 'ㄏㄨㆤ', [plant], ['阿珠']],
+    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling], ['阿明']],
   ]);
   const hanji = (query) => searchItaigi(index, query).map((r) => r.hanji);
   assert.deepEqual(hanji('花'), ['花', '花蕊', '青花']);
@@ -140,9 +139,10 @@ test('searchItaigi: hanji, each variant reading; exact, then prefix, then the re
   assert.deepEqual(wordsSpelled(rows, index, '花', 'hue').itaigi.map((r) => r.tl), ['hue']);
   assert.deepEqual(wordsSpelled(rows, index, '八', 'pueh').community.map((r) => r.key), [KEY]);
   assert.deepEqual(wordsSpelled(rows, index, '花', 'hoe').itaigi, []);
-  // a contributor's page: community rows by login, every iTaigi row under ITAIGI_CONTRIBUTOR
+  // a contributor's page: community rows by login, iTaigi rows by the names itaigi.tw gives them
   assert.deepEqual(wordsByContributor(rows, index, 'octocat').community.map((r) => r.key), [KEY]);
-  assert.equal(wordsByContributor(rows, index, ITAIGI_CONTRIBUTOR).itaigi.length, index.length);
+  assert.deepEqual(wordsByContributor(rows, index, '阿明').itaigi.map((r) => r.hanji), ['青花', '花蕊', '𤺪呢']);
+  assert.deepEqual(wordsByContributor(rows, index, '阿珠').itaigi.map((r) => r.hanji), ['花蕊', '花']);
   assert.deepEqual(wordsByContributor(rows, index, 'nobody'), { community: [], itaigi: [] });
 });
 
