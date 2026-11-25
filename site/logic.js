@@ -171,7 +171,6 @@ export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${e
 // location.hash → { page, ... }; anything unknown or undecodable is the search page.
 export function parseRoute(hash) {
   if (hash === '#/submit') return { page: 'submit' };
-  if (hash === '#/about') return { page: 'about' };
   const parts = hash.split('/');
   try {
     if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {
@@ -301,7 +300,7 @@ const MESSAGE_RULES = [
   [/: must contain a Han character, kana or a letter$/, () => '愛有漢字、假名抑是字母'],
   [/: must contain a letter$/, () => '愛有字母'],
   [/: only with accent /, () => '揀「其他」腔口才需要填所在'],
-  [/: contains a control character/, () => '有袂當用的特殊字元'],
+  [/: contains a control character/, () => '有袂當用 ê 特殊字元'],
   [/: unknown /, () => '選項無效'],
 ];
 

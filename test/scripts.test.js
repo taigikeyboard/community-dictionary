@@ -12,7 +12,7 @@ import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/import-itaigi.j
 import { buildSearchRows, parseItaigi } from '../scripts/itaigi.js';
 import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from '../scripts/romanize.js';
-import { buildStats, LONGEST } from '../scripts/stats.js';
+import { ANONYMOUS, buildStats, LONGEST } from '../scripts/stats.js';
 import { buildTagMap, sampleWords } from '../scripts/tag-map.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
@@ -302,24 +302,26 @@ test('stats buildStats: counts from the served rows, both sources', () => {
     ['米粉', 'bí-hún', '', '', [plant, food], ['阿明', '阿珠']],
     ['跤頭趺', 'kha-thâu-u', '', '', [body], ['阿明']],
     ['大人𤆬囡仔去𨑨迌', 'tuā-lâng tshuā gín-á khì tshit-thô', '', '', [], ['阿華']],
+    ['一', 'it', '', '', [], [ANONYMOUS]],
+    ['二', 'jī', '', '', [], [ANONYMOUS]],
+    ['三', 'sann', '', '', [], [ANONYMOUS]],
+    ['四', 'sì', '', '', [], [ANONYMOUS]],
   ];
   const community = [{ hanji: '鹹粿', tl: 'kiâm-kué', attestations: [{ tags: ['食食', '夜市仔'], contributor: 'octocat' }, { tags: ['食食'], contributor: 'octocat' }] }];
   const tagMap = [{ name: '植物', tl: 'si̍t-bu̍t', hue: 'leaf', count: 2 }, { name: '食食', tl: 'tsia̍h-si̍t', hue: 'cobalt', count: 3 }];
   const stats = buildStats(community, itaigi, tagMap);
-  // trace: 5 words; 鹹粿 counts once for octocat (two attestations); 米粉 credits 阿明 and 阿珠
-  assert.equal(stats.words, 5);
-  assert.equal(stats.contributors, 4);
+  // trace: 9 words; 鹹粿 counts once for octocat (two attestations); 米粉 credits 阿明 and 阿珠;
+  // 匿名 credits 4 words, more than 阿明, but is left out of the ranking (still a contributor)
+  assert.equal(stats.words, 9);
+  assert.equal(stats.contributors, 5);
   assert.deepEqual(stats.topContributors[0], { name: '阿明', count: 3 });
-  // trace: credits 阿明 3 + 阿珠 1 + 阿華 1 + octocat 1 = 6; all four are in the top 10 → share 1
-  assert.equal(stats.topShare, 1);
-  assert.equal(stats.singleWordContributors, 3);
+  assert.ok(!stats.topContributors.some((person) => person.name === ANONYMOUS));
   // trace: 青花, 米粉 (two site tags each) and 鹹粿 (食食 + its own 夜市仔) carry more than one tag
   assert.equal(stats.multiTag, 3);
-  assert.equal(stats.variantReadings, 1);
   // trace: the 食食/植物 pair on 青花 and 米粉, whatever order their tags came in; 夜市仔 is no site tag
   assert.deepEqual(stats.pairs, [{ tags: ['食食', '植物'], count: 2 }]);
-  // trace: lengths 青花 2, 米粉 2, 跤頭趺 3, 鹹粿 2, the 8-character phrase in the last bucket
-  assert.deepEqual(stats.lengths.map((b) => b.count), [0, 3, 1, 0, 0, 0, 0, 1]);
+  // trace: lengths 一二三四 1, 青花 2, 米粉 2, 跤頭趺 3, 鹹粿 2, the 8-character phrase in the last bucket
+  assert.deepEqual(stats.lengths.map((b) => b.count), [4, 3, 1, 0, 0, 0, 0, 1]);
   assert.equal(stats.lengths.at(-1).length, LONGEST);
   assert.ok(stats.lengths.at(-1).orLonger);
   // tags by count, most first

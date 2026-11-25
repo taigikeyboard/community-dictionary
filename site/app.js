@@ -32,7 +32,7 @@ const LOAD_ERROR = '資料載入失敗，請重新整理。';
 const SITE_TITLE = '台語齒盤社群辭典';
 // the homepage's lead under its title (index.html's description and share text keep the slogan
 // 揣無詞？來社群辭典貢獻！)
-const SUBTITLE = '收錄 ê 台語詞會入去台語齒盤';
+const SUBTITLE = '這个是 iTaigi 復刻網站，收錄 ê 詞會定期入去台語齒盤';
 
 // a page's title, and a lead line under it (a tag's Tâi-lô, `isReading`, follows the 台羅 switch)
 const hero = (title, lead, { isReading = false } = {}) =>
@@ -92,7 +92,7 @@ function resultItem(row, { exact = false, linked = false } = {}) {
 // panel and its list are returned for the search box's keyboard control.
 function matchesPopover(root, locate, limit, { isSearch = false, onRender = () => {} } = {}) {
   const results = h('ul', { class: 'results' });
-  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': isSearch ? '揣詞結果' : '已經有的詞' }, results);
+  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': isSearch ? '揣詞結果' : '已經有 ê 詞' }, results);
 
   let rows = null;
   let itaigi = null;
@@ -493,11 +493,12 @@ function renderSubmit() {
   };
   // The label grows with the count ("檢查 3 个詞"); a hidden copy of its longest form, stacked in the
   // same grid cell, holds the button at that width so it never changes size while typing.
-  const submitBase = open ? '登入 GitHub 送出' : '檢查';
+  const submitBase = open ? '登入 GitHub 送出' : '提交';
   const submitLabel = h('span');
   const submit = h(
     'button',
-    { class: 'button button-steady', type: 'submit' },
+    // grey and unpressable until submissions open (Phase 2); the tooltip says why
+    { class: 'button button-steady', type: 'submit', disabled: !open, title: open ? null : '提交猶未開放' },
     h('span', { class: 'button-sizer', 'aria-hidden': 'true' }, `${submitBase} ${MAX_WORDS} 个詞`),
     submitLabel,
   );
@@ -563,7 +564,11 @@ function renderSubmit() {
   });
 
   document.title = `提交新詞 · ${SITE_TITLE}`;
-  view.replaceChildren(hero('提交新詞'), form);
+  // until submissions open, a notice says the site is still being built
+  const building = open
+    ? null
+    : h('p', { class: 'construction-note', role: 'note' }, icon('cone'), '網站當咧做');
+  view.replaceChildren(hero('提交新詞'), building, form);
   sync();
 }
 
@@ -812,87 +817,23 @@ function renderWord(hanji, tl) {
   withWords(list, (rows, itaigi) => cardList(list, wordsSpelled(rows, itaigi, hanji, tl), { headword: false }));
 }
 
-// The 說明 page: what the dictionary collects, a word's way from the form into 台語齒盤 (a
-// four-step strip drawn with the site's own card surface), and the CC0 terms.
-function renderAbout() {
-  document.title = `說明 · ${SITE_TITLE}`;
-  const section = (title, ...body) => h('section', { class: 'about-section' }, h('h2', {}, title), h('div', { class: 'about-body' }, ...body));
-  const kind = (name, text) => [h('dt', {}, name), h('dd', {}, text)];
-  // 雞 is ke in 漳 speech and kue in 泉 speech; 教典 lists both readings of 雞卵
-  const accentSample = h(
-    'figure',
-    { class: 'accent-sample' },
-    h('p', { class: 'accent-word' }, '雞卵'),
-    h('dl', {}, kind('偏漳腔', 'ke-nn̄g'), kind('偏泉腔', 'kue-nn̄g')),
-  );
-  const step = (name, text) => h('li', {}, h('strong', {}, name), h('span', {}, text));
-  view.replaceChildren(
-    hero('說明'),
-    section(
-      '這是啥物',
-      h('p', {}, '台語齒盤社群辭典是予逐家做伙收台語詞的所在。逐个所在的人講話無啥仝款，有的詞辭典猶未收，嘛有新的詞一直出世。'),
-      h('p', {}, '收錄的詞上尾會匯入台語齒盤，予用台語寫字的人，揣會著家己平常咧講的詞。'),
-    ),
-    section(
-      '收啥物詞',
-      h(
-        'dl',
-        { class: 'about-kinds' },
-        kind('腔口差', '仝一个詞，無仝所在有無仝的講法。'),
-        kind('新的詞', '這馬才出現的詞，像「手機仔」。'),
-        kind('辭典猶未收的詞', '逐家平常咧講，毋過辭典揣無的詞。'),
-      ),
-      accentSample,
-    ),
-    section(
-      '詞的路途',
-      h(
-        'ol',
-        { class: 'flow' },
-        step('提交新詞', '用 GitHub 登入，寫詞、台羅佮腔口。'),
-        step('檢查', '網站先檢查格式，管理的人閣一个一个看過。'),
-        step('社群辭典', '收錄的詞，逐家攏會當揣。'),
-        step('台語齒盤', '上尾匯入台語齒盤，寫字的時陣就揣會著。'),
-      ),
-    ),
-    section(
-      '授權',
-      h(
-        'p',
-        {},
-        '提交的詞用 ',
-        h('a', { href: 'https://creativecommons.org/publicdomain/zero/1.0/deed.zh-hant', rel: 'noopener' }, 'CC0 1.0'),
-        ' 公開，任何人攏會當自由使用。',
-      ),
-    ),
-  );
-}
-
-const topbarLinks = document.querySelectorAll('.topbar-links a');
-
-// Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit, the
-// 說明 page at #/about, cards at #/tag/<name>, #/contributor/<name> and #/word/<hanji>/<tl>. The top
-// bar marks the page it links to (card pages are none of them).
+// Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit, cards
+// at #/tag/<name>, #/contributor/<name> and #/word/<hanji>/<tl>.
 function route() {
   const target = parseRoute(location.hash);
   // the homepage widens the column for the bubble map (styles.css main[data-page="search"])
   view.dataset.page = target.page;
-  for (const link of topbarLinks) {
-    if (link.dataset.page === target.page) link.setAttribute('aria-current', 'page');
-    else link.removeAttribute('aria-current');
-  }
   if (target.page === 'submit') renderSubmit();
-  else if (target.page === 'about') renderAbout();
   else if (target.page === 'tag') renderTag(target.tag);
   else if (target.page === 'contributor') renderContributor(target.name);
   else if (target.page === 'word') renderWord(target.hanji, target.tl);
   else renderSearch();
 }
 
-// the search box sits in the top bar, before the page links
+// the search box sits at the top bar's right
 const search = searchBox();
 const searchInput = search.querySelector('input');
-document.querySelector('.topbar-links').before(search);
+document.querySelector('.topbar-inner').append(search);
 
 // "/" anywhere outside a text field jumps to the search box (after kautian-mirror)
 document.addEventListener('keydown', (event) => {

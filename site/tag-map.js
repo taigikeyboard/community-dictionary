@@ -29,16 +29,18 @@ const WIDE_WORDS = 32;
 const PHONE_WORDS = 24;
 // how much a hovered tag swells
 const HOVER_GROWTH = 1.25;
+// the share of the way to its hover size a bubble covers each frame: lower is a slower, softer swell
+const HOVER_EASE = 0.18;
 // the entrance: how drawn in the bubbles start (share of their final distance from the centre; near
 // 1, so the forces ease them out instead of flinging them), the time over which they start to
 // appear (centre first, the gaps widening outwards) and how long each takes to spring open
 const ENTRANCE_SPREAD = 0.85;
-const ENTRANCE_SPAN_MS = 1100;
-const ENTRANCE_POP_MS = 520;
+const ENTRANCE_SPAN_MS = 1500;
+const ENTRANCE_POP_MS = 700;
 // a little randomness in each start, so the bloom does not tick like a metronome
 const ENTRANCE_JITTER_MS = 80;
 // a zoom in or out
-const ZOOM_MS = 450;
+const ZOOM_MS = 650;
 // how far the mouse moves (px) before a press becomes a drag rather than a click
 const DRAG_THRESHOLD_PX = 4;
 // px between circles
@@ -136,14 +138,15 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
     svg('stop', { class: 'bubble-shadow-clear', offset: '1' }),
   );
   const map = svg('svg', { class: 'tag-map-svg' }, svg('defs', {}, shadowGradient));
-  const show = ([x, y, w]) => map.setAttribute('viewBox', `${x - w / 2} ${y - w / aspect / 2} ${w} ${w / aspect}`);
-  // view `at` drawn while the viewBox shows `base`, as a CSS transform of the whole <svg>: a moving
-  // viewBox re-lays out every SVG element each frame, a transform only redraws them
-  const transformFor = (base, at) => {
-    const k = base[2] / at[2];
-    const cx = ((at[0] - base[0]) * width) / base[2] + width / 2;
-    const cy = ((at[1] - base[1]) * width) / base[2] + height / 2;
-    return `translate(${width / 2 - k * cx}px, ${height / 2 - k * cy}px) scale(${k})`;
+  // The viewBox is set once, to the root view; every other view (a zoom, a pan) is drawn as a CSS
+  // transform of the whole <svg>. A viewBox change re-lays out all ~5,800 SVG nodes (a visible hitch);
+  // a transform only redraws them, and the browser re-renders the still layer sharp at its scale.
+  map.setAttribute('viewBox', `${rootView[0] - rootView[2] / 2} ${rootView[1] - rootView[2] / aspect / 2} ${rootView[2]} ${rootView[2] / aspect}`);
+  const show = ([x, y, w]) => {
+    const k = rootView[2] / w;
+    const cx = ((x - rootView[0]) * width) / rootView[2] + width / 2;
+    const cy = ((y - rootView[1]) * width) / rootView[2] + height / 2;
+    map.style.transform = `translate(${width / 2 - k * cx}px, ${height / 2 - k * cy}px) scale(${k})`;
   };
 
   // each tag drawn around (0, 0); the simulation moves the group and scales its body
@@ -203,7 +206,7 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
   // entrance factor
   const place = () => {
     for (const { node, group, body } of bubbles) {
-      node.scale += (node.grow - node.scale) * 0.3;
+      node.scale += (node.grow - node.scale) * HOVER_EASE;
       group.setAttribute('transform', `translate(${node.x} ${node.y})`);
       body.setAttribute('transform', `scale(${node.scale * node.entry})`);
     }
@@ -249,27 +252,19 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
   };
   const zoom = (target) => {
     zoomTimer?.stop();
-    show(view);
-    map.style.transform = '';
-    map.classList.remove('moving');
     const path = d3.interpolateZoom(view, target);
     if (reducedMotion.matches) {
       view = target;
+      map.classList.remove('moving');
       return show(view);
     }
-    // the viewBox holds the wider of the two views for the whole move (so nothing outside it is
-    // ever needed), the transform carries the motion, and the target is set as the viewBox at the end
-    const base = view[2] >= target[2] ? view : target;
-    show(base);
     map.classList.add('moving');
     zoomTimer = d3.timer((elapsed) => {
       const t = Math.min(1, elapsed / ZOOM_MS);
       view = path(d3.easeCubicInOut(t));
-      map.style.transform = transformFor(base, view);
+      show(view);
       if (t === 1) {
         zoomTimer.stop();
-        show(view);
-        map.style.transform = '';
         map.classList.remove('moving');
       }
     });
@@ -287,7 +282,12 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
   };
   const zoomIn = (index) => {
     onZoomIn();
-    for (const node of nodes) node.grow = 1;
+    // the bodies hold still while zoomed in, so a hover swell is undone at once, not eased (with
+    // the simulation stopped, no later tick would finish easing it)
+    for (const node of nodes) {
+      node.grow = 1;
+      node.scale = 1;
+    }
     collide.radius(reach);
     simulation.stop();
     place();
@@ -316,9 +316,8 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
     if (event.target === map) zoomOut();
   });
 
-  // dragging with the mouse pans the view (touch keeps scrolling the page): a CSS transform while
-  // the pointer moves, the viewBox set on release, the centre kept within the map; the click that
-  // ends a drag is swallowed before any bubble sees it
+  // dragging with the mouse pans the view (touch keeps scrolling the page), the centre kept within
+  // the map; the click that ends a drag is swallowed before any bubble sees it
   const reachX = rootView[2] / 2;
   const reachY = rootView[2] / aspect / 2;
   const keepInside = ([x, y, w]) => [
@@ -339,8 +338,6 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
       // a zoom still under way stops where it is
       zoomTimer?.stop();
-      show(view);
-      map.style.transform = '';
       map.classList.remove('moving');
       drag.start = view;
       map.setPointerCapture(drag.id);
@@ -348,12 +345,10 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
     }
     const perPx = drag.start[2] / width;
     view = keepInside([drag.start[0] - dx * perPx, drag.start[1] - dy * perPx, drag.start[2]]);
-    map.style.transform = transformFor(drag.start, view);
+    show(view);
   });
   const endDrag = () => {
     if (drag?.start) {
-      show(view);
-      map.style.transform = '';
       map.classList.remove('panning');
       dragged = true;
       // the click (if any) follows in this same task; after it, clicks count again

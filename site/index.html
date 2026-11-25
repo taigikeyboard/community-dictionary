@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="揣無詞？來社群辭典貢獻！腔口差、新詞，佮辭典猶未收的詞。">
+  <meta name="description" content="揣無詞？來社群辭典貢獻！腔口差、新詞，佮辭典猶未收 ê 詞。">
   <title>台語齒盤社群辭典</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="台語齒盤社群辭典">
@@ -137,15 +137,10 @@
     </svg>
     </button>
   </aside>
-  <!-- top bar: the site name links home; site/app.js marks the current page link -->
+  <!-- top bar: the site name (the way home) left, the search box (site/app.js adds it) right -->
   <header class="topbar">
     <div class="topbar-inner">
       <a class="topbar-brand" href="#/">台語齒盤社群辭典</a>
-      <nav class="topbar-links" aria-label="頁">
-        <a href="#/" data-page="search">揣詞</a>
-        <a href="#/submit" data-page="submit">提交新詞</a>
-        <a href="#/about" data-page="about">說明</a>
-      </nav>
     </div>
   </header>
   <!-- read aloud, never drawn: short confirmations such as 已複製 (site/app.js) -->
@@ -153,6 +148,12 @@
   <main id="view">
     <noscript>這个網站愛開 JavaScript 才會當用。</noscript>
   </main>
+  <!-- the way to the form, a floating button at the lower right (like a site's help bubble); it hides
+       on the form itself (styles.css) -->
+  <a class="submit-fab" href="#/submit">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    提交新詞
+  </a>
 
 </body>
 </html>

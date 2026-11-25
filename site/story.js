@@ -2,16 +2,24 @@ import { h } from './dom.js';
 import { contributorRoute, tagRoute } from './logic.js';
 
 // The homepage's statistics under the bubble map (dist/stats.json, from scripts/stats.js), told as
-// a scrolling story after iNaturalist's Year in Review and Bloomberg's graphics: each section states
-// its finding as a headline over one chart, and rises into view when the reader scrolls to it, its
-// bars growing and its big numbers counting up. Readers who ask for reduced motion get it all at once.
+// a scrolling story after iNaturalist's Year in Review and Bloomberg's graphics: each section is a
+// centred title over one chart, and rises into view when the reader scrolls to it, its bars growing
+// and its big numbers counting up. Pointing at a bar or column (or tabbing to it, or tapping it)
+// shows its figures in a tooltip and fades the rest of its chart. Readers who ask for reduced motion
+// get it all at once.
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // a big number's count-up
-const COUNT_MS = 900;
+const COUNT_MS = 1400;
 
 const number = (n) => n.toLocaleString('en-US');
-const percent = (share) => `${(share * 100).toFixed(1)}%`;
+const percent = (part, whole) => `${((100 * part) / whole).toFixed(1)}%`;
+// each chart row's tooltip: { color, title, tl, value, lines }
+const tips = new WeakMap();
+const withTip = (row, tip) => {
+  tips.set(row, tip);
+  return row;
+};
 const hueOf = (hue) => `var(--hue-${hue})`;
 
 // loadStats() → stats.json; the sections arrive once it has loaded (nothing shows if it fails).
@@ -21,38 +29,40 @@ export function storySections(loadStats) {
     .then((stats) => {
       root.append(...sections(stats));
       reveal(root);
+      hoverTips(root);
     })
     .catch(() => {});
   return root;
 }
 
-// One section: a small label, the finding as a headline, its chart, an optional note under it.
-const section = (label, headline, chart, note = null) =>
-  h('section', { class: 'story-section' }, h('p', { class: 'story-label' }, label), h('h2', { class: 'story-headline' }, headline), chart, note ? h('p', { class: 'story-note' }, note) : null);
+// One section: its title, centred, over its chart.
+const section = (title, chart) => h('section', { class: 'story-section' }, h('h2', { class: 'story-title' }, title), chart);
 
-// A ranked bar: its label (a link when `href`), a track filled to `share`, its count.
-const bar = ({ label, href, share, count, color, index }) =>
-  h(
-    'li',
-    { class: 'story-bar', style: `--share: ${share}; --i: ${index}; --bar: ${color}` },
-    href ? h('a', { class: 'story-bar-label', href }, label) : h('span', { class: 'story-bar-label' }, label),
-    h('span', { class: 'story-bar-track' }, h('span', { class: 'story-bar-fill' })),
-    h('span', { class: 'story-bar-count' }, number(count)),
+// A ranked bar: its label (a link when `href`), a track filled to `share`, its count; `tip` its
+// tooltip.
+const bar = ({ label, href, share, count, color, index, tip }) =>
+  withTip(
+    h(
+      'li',
+      { class: 'story-bar', style: `--share: ${share}; --i: ${index}; --bar: ${color}` },
+      href ? h('a', { class: 'story-bar-label', href }, label) : h('span', { class: 'story-bar-label' }, label),
+      h('span', { class: 'story-bar-track' }, h('span', { class: 'story-bar-fill' })),
+      h('span', { class: 'story-bar-count' }, number(count)),
+    ),
+    tip,
   );
 
 function sections(stats) {
   const hueByTag = new Map(stats.perTag.map((tag) => [tag.name, tag.hue]));
+  const countByTag = new Map(stats.perTag.map((tag) => [tag.name, tag.count]));
   const [topTag] = stats.perTag;
   const longest = Math.max(...stats.lengths.map((b) => b.count));
-  const commonest = stats.lengths.find((b) => b.count === longest);
   const [topPair] = stats.pairs;
   const neutral = hueOf('cobalt');
   return [
     // the totals, as big numbers
-    h(
-      'section',
-      { class: 'story-section story-totals' },
-      h('p', { class: 'story-label' }, '收錄'),
+    section(
+      '收錄',
       h(
         'dl',
         { class: 'story-numbers' },
@@ -60,46 +70,56 @@ function sections(stats) {
           [stats.words, '詞'],
           [stats.tags, '標籤'],
           [stats.contributors, '貢獻者'],
-          [stats.multiTag, '有兩个以上標籤的詞'],
+          [stats.multiTag, '有兩个以上標籤 ê 詞'],
         ].map(([value, label]) => h('div', { class: 'story-number' }, h('dt', {}, label), h('dd', { 'data-value': value }, number(value)))),
       ),
     ),
     section(
       '標籤',
-      `${topTag.name}上濟，有 ${number(topTag.count)} 个詞。`,
       h(
         'ol',
         { class: 'story-bars' },
         stats.perTag.map((tag, index) =>
-          bar({ label: tag.name, href: tagRoute(tag.name), share: tag.count / topTag.count, count: tag.count, color: hueOf(tag.hue), index }),
+          bar({
+            label: tag.name,
+            href: tagRoute(tag.name),
+            share: tag.count / topTag.count,
+            count: tag.count,
+            color: hueOf(tag.hue),
+            index,
+            tip: { color: hueOf(tag.hue), title: tag.name, tl: tag.tl, value: `${number(tag.count)} 个詞`, lines: [`占全部 ê ${percent(tag.count, stats.words)}`, `排名第 ${index + 1}`] },
+          }),
         ),
       ),
     ),
     section(
-      '詞的長短',
-      `${commonest.length} 字的詞上濟，有 ${number(commonest.count)} 个。`,
+      '詞 ê 長短',
       h(
         'ol',
         { class: 'story-columns' },
         stats.lengths.map((b, index) =>
-          h(
+          withTip(
+            h(
             'li',
-            { class: 'story-column', style: `--share: ${b.count / longest}; --i: ${index}; --bar: ${neutral}` },
+            // no link inside, so the column itself takes Tab for its tooltip
+            { class: 'story-column', tabindex: '0', style: `--share: ${b.count / longest}; --i: ${index}; --bar: ${neutral}` },
             h('span', { class: 'story-column-count' }, number(b.count)),
             h('span', { class: 'story-column-track' }, h('span', { class: 'story-column-fill' })),
             h('span', { class: 'story-column-label' }, b.orLonger ? `${b.length} 字以上` : `${b.length} 字`),
+            ),
+            { color: neutral, title: b.orLonger ? `${b.length} 字以上` : `${b.length} 字`, value: `${number(b.count)} 个詞`, lines: [`占全部 ê ${percent(b.count, stats.words)}`] },
           ),
         ),
       ),
     ),
     topPair
       ? section(
-          '做伙出現的標籤',
-          `${topPair.tags[0]}佮${topPair.tags[1]}上濟做伙出現，有 ${number(topPair.count)} 个詞。`,
+          '做伙出現 ê 標籤',
           h(
             'ol',
             { class: 'story-bars story-pairs' },
             stats.pairs.map((pair, index) =>
+              withTip(
               h(
                 'li',
                 // the bar runs from one tag's colour to the other's
@@ -118,13 +138,20 @@ function sections(stats) {
                 h('span', { class: 'story-bar-track' }, h('span', { class: 'story-bar-fill' })),
                 h('span', { class: 'story-bar-count' }, number(pair.count)),
               ),
+              // each tag's share: how many of its words also carry the other
+              {
+                color: hueOf(hueByTag.get(pair.tags[0])),
+                title: pair.tags.join(' · '),
+                value: `${number(pair.count)} 个詞`,
+                lines: pair.tags.map((name) => `占${name} ê ${percent(pair.count, countByTag.get(name))}`),
+              },
+              ),
             ),
           ),
         )
       : null,
     section(
       '貢獻者',
-      `頭前 ${stats.topContributors.length} 位貢獻者，貢獻 ${percent(stats.topShare)} 的詞。`,
       h(
         'ol',
         { class: 'story-bars' },
@@ -136,10 +163,10 @@ function sections(stats) {
             count: person.count,
             color: neutral,
             index,
+            tip: { color: neutral, title: person.name, value: `${number(person.count)} 个詞`, lines: [`占全部 ê ${percent(person.count, stats.words)}`, `排名第 ${index + 1}`] },
           }),
         ),
       ),
-      `有 ${number(stats.singleWordContributors)} 位貢獻 1 个詞。`,
     ),
   ].filter(Boolean);
 }
@@ -178,4 +205,77 @@ function countUp(figure) {
     if (t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
+}
+
+// One tooltip for the whole story, beside the pointer (or above a row reached by Tab), kept inside
+// the window; the chart the row belongs to fades its other rows meanwhile. A tap shows it too.
+function hoverTips(root) {
+  const tip = h('div', { class: 'story-tip', 'aria-hidden': 'true' });
+  document.body.append(tip);
+  let current = null;
+  // how the tooltip was opened: 'pointer' follows the mouse, 'focus' sits above the focused row
+  let openedBy = null;
+  const rowOf = (target) => {
+    const row = target.closest?.('.story-bar, .story-column');
+    return row && tips.has(row) ? row : null;
+  };
+  const place = (x, y) => {
+    const gap = 14;
+    const { offsetWidth: w, offsetHeight: hgt } = tip;
+    const left = x + gap + w > window.innerWidth ? x - gap - w : x + gap;
+    const top = Math.max(8, Math.min(window.innerHeight - hgt - 8, y - hgt / 2));
+    tip.style.transform = `translate(${Math.max(8, left)}px, ${top}px)`;
+  };
+  const show = (row) => {
+    if (row === current) return;
+    hide();
+    current = row;
+    const { color, title, tl, value, lines } = tips.get(row);
+    tip.replaceChildren(
+      h('p', { class: 'story-tip-title', style: `--swatch: ${color}` }, title, tl ? h('span', { class: 'story-tip-tl tl' }, tl) : null),
+      h('p', { class: 'story-tip-value' }, value),
+      ...lines.map((line) => h('p', { class: 'story-tip-line' }, line)),
+    );
+    tip.classList.add('is-visible');
+    row.classList.add('is-hover');
+    row.parentElement.classList.add('has-hover');
+  };
+  const hide = () => {
+    if (!current) return;
+    tip.classList.remove('is-visible');
+    current.classList.remove('is-hover');
+    current.parentElement.classList.remove('has-hover');
+    current = null;
+  };
+  const placeAbove = (row) => {
+    const box = row.getBoundingClientRect();
+    place(box.left + box.width / 2, box.top);
+  };
+  root.addEventListener('pointermove', (event) => {
+    const row = rowOf(event.target);
+    if (!row) return hide();
+    show(row);
+    openedBy = 'pointer';
+    place(event.clientX, event.clientY);
+  });
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('focusin', (event) => {
+    const row = rowOf(event.target);
+    if (!row) return;
+    show(row);
+    openedBy = 'focus';
+    placeAbove(row);
+  });
+  root.addEventListener('focusout', hide);
+  // the page moving under a still pointer would leave the tooltip on the wrong row; a focused row's
+  // tooltip (Tab scrolls the row into view) moves with it instead
+  const onScroll = () => (openedBy === 'focus' && current ? placeAbove(current) : hide());
+  window.addEventListener('scroll', onScroll, { passive: true });
+  // the homepage is rebuilt on every visit: the tooltip leaves with its story
+  new MutationObserver((_, observer) => {
+    if (root.isConnected) return;
+    tip.remove();
+    window.removeEventListener('scroll', onScroll);
+    observer.disconnect();
+  }).observe(document.getElementById('view'), { childList: true });
 }

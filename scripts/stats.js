@@ -9,6 +9,10 @@ export const LONGEST = 8;
 // how many tag pairs and contributors the page lists
 export const TOP_PAIRS = 8;
 export const TOP_CONTRIBUTORS = 10;
+// the name iTaigi gives words whose contributor left none: not a person, and with over half of all
+// iTaigi words it would dwarf every real contributor, so the ranking leaves it out (maintainer
+// 2026-11-26); its words still credit it
+export const ANONYMOUS = '匿名';
 
 // One word's tag names and contributors, whichever source it comes from.
 function wordFacts(row, fromItaigi) {
@@ -34,11 +38,9 @@ export function buildStats(communityRows, itaigiRows, tagMap) {
   const pairs = new Map();
   const credits = new Map();
   let multiTag = 0;
-  let variantReadings = 0;
   for (const word of words) {
     const length = [...word.hanji].length;
     if (length > 0) lengths[Math.min(length, LONGEST) - 1] += 1;
-    if (word.tl.includes('/')) variantReadings += 1;
     const siteTags = word.tags.filter((name) => TAG_NAMES.includes(name)).sort((a, b) => TAG_NAMES.indexOf(a) - TAG_NAMES.indexOf(b));
     if (word.tags.length > 1) multiTag += 1;
     for (let a = 0; a < siteTags.length; a += 1) {
@@ -50,22 +52,19 @@ export function buildStats(communityRows, itaigiRows, tagMap) {
     for (const name of word.contributors) credits.set(name, (credits.get(name) ?? 0) + 1);
   }
   const contributors = ranked(credits);
-  const totalCredits = contributors.reduce((sum, [, n]) => sum + n, 0) || 1;
-  const topCredits = contributors.slice(0, TOP_CONTRIBUTORS).reduce((sum, [, n]) => sum + n, 0);
   return {
     words: words.length,
     tags: tagMap.length,
     contributors: contributors.length,
     multiTag,
-    variantReadings,
     perTag: tagMap.map(({ name, tl, hue, count }) => ({ name, tl, hue, count })).sort((a, b) => b.count - a.count),
     lengths: lengths.map((count, i) => ({ length: i + 1, count, orLonger: i + 1 === LONGEST })),
     pairs: ranked(pairs)
       .slice(0, TOP_PAIRS)
       .map(([key, count]) => ({ tags: key.split('\t'), count })),
-    topContributors: contributors.slice(0, TOP_CONTRIBUTORS).map(([name, count]) => ({ name, count })),
-    // share of all word credits (a word can credit several people) held by the top contributors
-    topShare: topCredits / totalCredits,
-    singleWordContributors: contributors.filter(([, n]) => n === 1).length,
+    topContributors: contributors
+      .filter(([name]) => name !== ANONYMOUS)
+      .slice(0, TOP_CONTRIBUTORS)
+      .map(([name, count]) => ({ name, count })),
   };
 }

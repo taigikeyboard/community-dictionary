@@ -148,7 +148,8 @@ test('searchItaigi: hanji, each variant reading; exact, then prefix, then the re
 
 test('routes: tag and word pages round-trip, anything else is search', () => {
   assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
-  assert.deepEqual(parseRoute('#/about'), { page: 'about' });
+  // the 說明 page is gone (2026-11-26): its old link lands on search
+  assert.deepEqual(parseRoute('#/about'), { page: 'search' });
   assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });
   assert.deepEqual(parseRoute(contributorRoute('阿明')), { page: 'contributor', name: '阿明' });
   // a "/" inside a reading stays inside the tl part
