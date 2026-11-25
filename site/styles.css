@@ -79,6 +79,9 @@
     "PingFang TC", "Noto Sans TC", Arial, sans-serif;
   --font: var(--system-font);
   --measure: 980px;
+  /* the announcement bar: a dark slate in both themes, a step lighter on the dark page */
+  --announce-bg: light-dark(#2b3240, #323a4a);
+  --announce-height: 6rem;
   /* the homepage's wider column, for the bubble map */
   --measure-wide: 1400px;
   --sidebar-width: 18.75rem;
@@ -226,10 +229,8 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
    and the bar under the box (its height kept while empty) offers 全部標籤 --- */
 /* the homepage's main view: the map fills what the window leaves under the title (svh, so a phone's
    address bar showing or hiding never redraws it), in a column wider than the other pages' */
-.tag-map { height: clamp(26rem, calc(100svh - 19rem), 58rem); }
+.tag-map { height: clamp(26rem, calc(100svh - 15.5rem - var(--announce-height)), 58rem); }
 main[data-page="search"] { max-width: calc(var(--measure-wide) + 3rem); }
-/* the homepage's subtitle is a full sentence: room for it on one line, balanced lines when it wraps */
-main[data-page="search"] .hero p { max-width: 40rem; text-wrap: balance; word-break: keep-all; }
 main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s var(--ease-emphasized) both; }
 /* the homepage's title and lead fade up as the page opens (the bubbles enter in site/tag-map.js);
    transform and opacity only, so nothing around them moves */
@@ -345,15 +346,6 @@ a.story-bar-label:hover, .story-bar-label a:hover { color: var(--accent); text-d
   .story-columns { gap: 0.375rem; height: 12rem; }
 }
 
-/* the floating 提交新詞 button (index.html), lower right over every page but the form: the accent
-   pill of the site's main buttons, lifted by the menu shadow, rising a little on hover */
-.submit-fab { position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 20; display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.625rem 1.125rem 0.625rem 0.875rem; border-radius: var(--radius-round); background: var(--button-strong); color: #fff; font-weight: 600; box-shadow: var(--menu-shadow); transition: var(--button-transition); }
-.submit-fab svg { width: 1.125rem; height: 1.125rem; }
-.submit-fab:hover { background: var(--button-strong-hover); text-decoration: none; transform: translateY(-1px); }
-.submit-fab:active { background: var(--button-strong-active); transform: var(--button-press); }
-.submit-fab:focus-visible { outline: none; box-shadow: var(--menu-shadow), 0 0 0 3px var(--ring); }
-main[data-page="submit"] ~ .submit-fab { display: none; }
-
 /* the form's construction notice: a mustard-tinted box with a road cone, under the title */
 .construction-note { display: flex; align-items: center; gap: 0.625rem; margin: -1rem 0 2rem; padding: 0.875rem 1.125rem; border-radius: var(--radius); background: color-mix(in srgb, var(--hue-mustard) 22%, var(--card)); color: var(--heading); font-weight: 600; }
 .construction-note .icon { flex: none; font-size: 1.5rem; color: color-mix(in srgb, var(--hue-mustard) 70%, #7a4a00); stroke-width: 1.75; }
@@ -390,7 +382,7 @@ main[data-page="submit"] ~ .submit-fab { display: none; }
   from { opacity: 0; transform: scale(0.97); }
 }
 @media (max-width: 734px) {
-  .tag-map { height: clamp(24rem, calc(100svh - 15rem), 44rem); }
+  .tag-map { height: clamp(24rem, calc(100svh - 11.5rem - var(--announce-height)), 44rem); }
 }
 
 /* --- form --- */
@@ -639,22 +631,31 @@ input.pill-input.align-end { left: auto; right: 0; }
 /* a word page holds a card or two: one centred column instead of a sparse grid */
 .cards-word { grid-template-columns: minmax(0, 36rem); justify-content: center; }
 
-/* --- top bar: the site name at the window's left edge (the way home), the search box at its right,
-   a hairline under the full width; part of the page, so it scrolls away with it. Every page's title starts
-   below it at the same height, so switching pages never moves it --- */
-.topbar { border-bottom: 1px solid var(--hairline); }
-.topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; height: 3.75rem; padding: 0 1.5rem; }
-.topbar-brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--heading); font-size: 0.9375rem; font-weight: 600; white-space: nowrap; }
-.topbar-brand:hover { text-decoration: none; opacity: 0.8; }
+/* --- the announcement bar across the top: a slim dark strip (after the banner on culturedcode.com/
+   things) with the announcement and the 提交新詞 button centred, the search box at the right when shown;
+   part of the page, so it scrolls away with it. Every page's title starts below it at the same
+   height, so switching pages never moves it --- */
+.topbar { background: var(--announce-bg); }
+.topbar-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 1rem; height: var(--announce-height); padding: 0 1.5rem; }
 .topbar a:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
+.announce { grid-column: 2; display: flex; align-items: center; gap: 0.875rem; margin: 0; font-size: 0.9375rem; }
+.announce-text { color: rgba(255, 255, 255, 0.85); white-space: nowrap; }
+.announce-cta { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.375rem 0.875rem 0.375rem 0.625rem; border-radius: var(--radius-round); background: var(--button-strong); color: #fff; font-weight: 600; white-space: nowrap; transition: var(--button-transition); }
+.announce-cta svg { width: 1rem; height: 1rem; }
+.announce-cta:hover { background: var(--button-strong-hover); text-decoration: none; }
+.announce-cta:active { background: var(--button-strong-active); transform: var(--button-press); }
+.topbar a.announce-cta:focus-visible { border-radius: var(--radius-round); }
+/* on the form itself the button stands down, keeping its place so the bar does not shift */
+body:has(> main[data-page="submit"]) .announce-cta { visibility: hidden; }
 /* the search box (app.js adds it): compact, white with a border, blue once
    focused; its menu opens under it, exactly as wide */
-.topbar .search { flex: 0 1 18rem; min-width: 6rem; margin: 0 0 0 auto; }
+.topbar .search { grid-column: 3; justify-self: end; width: min(18rem, 100%); }
 .topbar .search input[type="search"] { min-height: 36px; padding: 0.375rem 0.75rem 0.375rem 2.25rem; border-color: var(--border); border-radius: var(--radius-control); background: var(--card); box-shadow: none; font-size: 0.9375rem; }
 .topbar .search input[type="search"]:focus { border-color: var(--accent); background: var(--card); box-shadow: 0 0 0 3px var(--ring); }
 .topbar .search > .matches { left: 0; right: 0; z-index: 30; }
-/* a phone: tighter, the site name (now the only way home) kept beside a narrower search box */
+/* a phone: tighter; the announcement's words give way, the button stays */
 @media (max-width: 40rem) {
   .topbar-inner { gap: 0.75rem; padding: 0 1rem; }
+  .announce-text { display: none; }
 }
 

@@ -30,9 +30,6 @@ import { TAG_NAMES, TAGS } from './tags.js';
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
 const SITE_TITLE = '台語齒盤社群辭典';
-// the homepage's lead under its title (index.html's description and share text keep the slogan
-// 揣無詞？來社群辭典貢獻！)
-const SUBTITLE = '這个是 iTaigi 復刻網站，收錄 ê 詞會定期入去台語齒盤';
 
 // a page's title, and a lead line under it (a tag's Tâi-lô, `isReading`, follows the 台羅 switch)
 const hero = (title, lead, { isReading = false } = {}) =>
@@ -627,8 +624,8 @@ function openWordTip({ hanji, tl }, link) {
 function renderSearch() {
   document.title = SITE_TITLE;
   view.replaceChildren(
-    // the subtitle as the title's lead, then the tag bubbles
-    hero(SITE_TITLE, SUBTITLE),
+    // the title, then the tag bubbles (what the site is says the announcement bar above)
+    hero(SITE_TITLE),
     tagMap(loadTagMap, () => h('div', { class: 'tags' }, TAGS.map((tag) => tagLink(tag.name, tag.tl))), {
       onWord: openWordTip,
       // a zoomed-in tag shows words whose cards need iTaigi: start loading it (1.5 MB) now
@@ -830,14 +827,15 @@ function route() {
   else renderSearch();
 }
 
-// the search box sits at the top bar's right
+// the search box sits at the top bar's right; hidden for now (maintainer 2026-11-26), and "/" with it
 const search = searchBox();
 const searchInput = search.querySelector('input');
+search.hidden = true;
 document.querySelector('.topbar-inner').append(search);
 
 // "/" anywhere outside a text field jumps to the search box (after kautian-mirror)
 document.addEventListener('keydown', (event) => {
-  if (event.key !== '/' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (search.hidden || event.key !== '/' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.target.closest('input, textarea, select, [contenteditable]')) return;
   event.preventDefault();
   searchInput.focus();
