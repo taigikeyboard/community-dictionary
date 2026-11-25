@@ -219,12 +219,15 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
    address bar showing or hiding never redraws it), in a column wider than the other pages' */
 .tag-map { height: clamp(26rem, calc(100svh - 19rem), 58rem); }
 main[data-page="search"] { max-width: calc(var(--measure-wide) + 3rem); }
-main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.6s ease-out both; }
+main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.4s ease-out both; }
 /* the homepage's title and lead fade up as the page opens (the bubbles enter in site/tag-map.js);
    transform and opacity only, so nothing around them moves */
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(10px); }
 }
+/* the zoom moves the whole <svg> by a CSS transform (site/tag-map.js), so the box clips it */
+.tag-map { overflow: hidden; }
+.tag-map-svg { transform-origin: 0 0; }
 .tag-map-svg { display: block; width: 100%; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; }
 .tag-bubble { --hue: var(--hue-cobalt); }
 .tag-bubble[data-hue="jade"] { --hue: var(--hue-jade); }
@@ -235,8 +238,14 @@ main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.6s e
 .tag-bubble[data-hue="coral"] { --hue: var(--hue-coral); }
 .tag-bubble[data-hue="rose"] { --hue: var(--hue-rose); }
 .tag-bubble[data-hue="brick"] { --hue: var(--hue-brick); }
-.tag-circle { fill: color-mix(in srgb, var(--hue) var(--tint), var(--card)); filter: drop-shadow(0 1px 1.5px var(--bubble-shadow)) drop-shadow(0 3px 8px var(--bubble-shadow)); cursor: pointer; transition: filter 0.2s ease-out, fill 0.2s; }
-.tag-bubble:hover .tag-circle { fill: color-mix(in srgb, var(--hue) var(--tint-hover), var(--card)); filter: drop-shadow(0 2px 3px var(--bubble-shadow)) drop-shadow(0 8px 20px var(--bubble-shadow)); }
+.tag-circle { fill: color-mix(in srgb, var(--hue) var(--tint), var(--card)); cursor: pointer; transition: fill 0.2s; }
+.tag-bubble:hover .tag-circle { fill: color-mix(in srgb, var(--hue) var(--tint-hover), var(--card)); }
+/* the card shadow, as a soft radial gradient under each circle (site/tag-map.js): a CSS
+   drop-shadow filter re-rasterised on every frame the bubbles move halved the frame rate */
+.tag-shadow { opacity: 0.75; pointer-events: none; transition: opacity 0.2s; }
+.tag-bubble:hover .tag-shadow { opacity: 1; }
+.bubble-shadow-solid { stop-color: var(--bubble-shadow); }
+.bubble-shadow-clear { stop-color: var(--bubble-shadow); stop-opacity: 0; }
 .tag-circle:focus { outline: none; }
 .tag-circle:focus-visible { stroke: var(--accent); stroke-width: 3; }
 .tag-bubble { transition: opacity 0.3s ease-out; }
@@ -256,10 +265,16 @@ main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.6s e
 .tag-words { pointer-events: none; }
 .tag-bubble.focused .tag-words { pointer-events: auto; }
 .word-bubble circle { fill: color-mix(in srgb, var(--hue) var(--tint-word), var(--card)); transition: fill 0.15s; }
-.word-bubble text { opacity: 0; transition: opacity 0.3s; }
+/* out of the layout (display: none, not just transparent) until their tag is zoomed into and the
+   view has stopped: some 1,700 invisible lines otherwise cost layout on every change; they fade in
+   once shown */
+.word-bubble text { display: none; }
 .word-hanji { fill: var(--heading); }
 .word-tl { fill: var(--secondary); font-family: var(--system-font); }
-.tag-bubble.focused .word-bubble text { opacity: 1; }
+.tag-map-svg:not(.moving) .tag-bubble.focused .word-bubble text { display: inline; opacity: 1; transition: opacity 0.25s; }
+@starting-style {
+  .tag-map-svg:not(.moving) .tag-bubble.focused .word-bubble text { opacity: 0; }
+}
 .word-bubble:hover circle, .word-bubble:focus-visible circle { fill: color-mix(in srgb, var(--hue) var(--tint-word-hover), var(--card)); }
 /* a word is marked by its bubble, not the site's link underline */
 .word-bubble:hover { text-decoration: none; }

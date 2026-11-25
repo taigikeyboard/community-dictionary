@@ -33,7 +33,9 @@ const HOVER_GROWTH = 1.25;
 // 1, so the forces ease them out instead of flinging them) and the pause between one bubble
 // appearing and the next
 const ENTRANCE_SPREAD = 0.85;
-const ENTRANCE_STAGGER_MS = 35;
+const ENTRANCE_STAGGER_MS = 15;
+// a zoom in or out
+const ZOOM_MS = 450;
 // px between circles
 const GAP = 6;
 
@@ -104,6 +106,9 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
     .force('y', d3.forceY(0).strength(0.05 * aspect))
     .force('collide', collide)
     .alphaDecay(0.04)
+    // stop well before the default 0.001 and damp harder: settle crisply instead of drifting
+    .alphaMin(0.02)
+    .velocityDecay(0.5)
     .stop();
   for (let i = 0; i < 300; i += 1) simulation.tick();
 
@@ -117,8 +122,23 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
   // room for a swollen circle at the edge
   const rootView = [(settled.left + settled.right) / 2, (settled.top + settled.bottom) / 2, 1.12 * Math.max(settled.right - settled.left, (settled.bottom - settled.top) * aspect)];
   const tagView = (node) => [node.x, node.y, 2.04 * node.r * Math.max(1, aspect)];
-  const map = svg('svg', { class: 'tag-map-svg' });
+  // one gradient for every shadow: solid until just under the circle's edge, clear at its own rim
+  const shadowGradient = svg(
+    'radialGradient',
+    { id: 'bubble-shadow' },
+    svg('stop', { class: 'bubble-shadow-solid', offset: '0.84' }),
+    svg('stop', { class: 'bubble-shadow-clear', offset: '1' }),
+  );
+  const map = svg('svg', { class: 'tag-map-svg' }, svg('defs', {}, shadowGradient));
   const show = ([x, y, w]) => map.setAttribute('viewBox', `${x - w / 2} ${y - w / aspect / 2} ${w} ${w / aspect}`);
+  // view `at` drawn while the viewBox shows `base`, as a CSS transform of the whole <svg>: a moving
+  // viewBox re-lays out every SVG element each frame, a transform only redraws them
+  const transformFor = (base, at) => {
+    const k = base[2] / at[2];
+    const cx = ((at[0] - base[0]) * width) / base[2] + width / 2;
+    const cy = ((at[1] - base[1]) * width) / base[2] + height / 2;
+    return `translate(${width / 2 - k * cx}px, ${height / 2 - k * cy}px) scale(${k})`;
+  };
 
   // each tag drawn around (0, 0); the simulation moves the group and scales its body
   const bubbles = tags.map((tag, i) => {
@@ -158,7 +178,9 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
       svg('text', { class: 'tag-hanji', y: -0.3 * nameSize, 'font-size': nameSize }, tag.name),
       svg('text', { class: 'tag-tl', y: 0.62 * nameSize, 'font-size': 0.55 * nameSize }, tag.tl),
     );
-    const body = svg('g', { class: 'tag-body' }, target, svg('g', { class: 'tag-words' }, words), name);
+    // the shadow reaches 12% past the circle and sits a little low, as light from above would cast it
+    const shadow = svg('circle', { class: 'tag-shadow', cy: r * 0.04, r: r * 1.12, fill: 'url(#bubble-shadow)' });
+    const body = svg('g', { class: 'tag-body' }, shadow, target, svg('g', { class: 'tag-words' }, words), name);
     return { tag, node: nodes[i], target, words, body, group: svg('g', { class: 'tag-bubble', 'data-hue': tag.hue }, body) };
   });
   map.append(...bubbles.map((b) => b.group));
@@ -170,7 +192,7 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
     const now = performance.now();
     for (const { node, group, body } of bubbles) {
       const target = now < node.appearAt ? 0 : node.grow;
-      node.scale += (target - node.scale) * 0.2;
+      node.scale += (target - node.scale) * 0.3;
       group.setAttribute('transform', `translate(${node.x} ${node.y})`);
       body.setAttribute('transform', `scale(${node.scale})`);
     }
@@ -186,7 +208,7 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
       node.scale = 0;
       node.appearAt = start + rank * ENTRANCE_STAGGER_MS;
     });
-    simulation.alpha(0.4).restart();
+    simulation.alpha(0.3).restart();
   }
   place();
 
@@ -201,17 +223,29 @@ function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}
   };
   const zoom = (target) => {
     zoomTimer?.stop();
+    show(view);
+    map.style.transform = '';
+    map.classList.remove('moving');
     const path = d3.interpolateZoom(view, target);
     if (reducedMotion.matches) {
       view = target;
       return show(view);
     }
-    const duration = Math.min(900, Math.max(450, path.duration));
+    // the viewBox holds the wider of the two views for the whole move (so nothing outside it is
+    // ever needed), the transform carries the motion, and the target is set as the viewBox at the end
+    const base = view[2] >= target[2] ? view : target;
+    show(base);
+    map.classList.add('moving');
     zoomTimer = d3.timer((elapsed) => {
-      const t = Math.min(1, elapsed / duration);
+      const t = Math.min(1, elapsed / ZOOM_MS);
       view = path(d3.easeCubicInOut(t));
-      show(view);
-      if (t === 1) zoomTimer.stop();
+      map.style.transform = transformFor(base, view);
+      if (t === 1) {
+        zoomTimer.stop();
+        show(view);
+        map.style.transform = '';
+        map.classList.remove('moving');
+      }
     });
   };
   // marks the focused tag (or none): its words take clicks and Tab, the others dim, the bar fills;

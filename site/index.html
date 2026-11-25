@@ -42,6 +42,26 @@
       }
     }
   </script>
+  <!-- every module app.js reaches, the D3 modules and the bubble data, fetched at once instead of one
+       import level after another (the homepage's map waited on four round trips) -->
+  <link rel="modulepreload" href="lib/entry.js">
+  <link rel="modulepreload" href="site/config.js">
+  <link rel="modulepreload" href="site/dom.js">
+  <link rel="modulepreload" href="site/icons.js">
+  <link rel="modulepreload" href="site/logic.js">
+  <link rel="modulepreload" href="site/settings.js">
+  <link rel="modulepreload" href="site/sidebar.js">
+  <link rel="modulepreload" href="site/tag-map.js">
+  <link rel="modulepreload" href="site/tags.js">
+  <link rel="modulepreload" href="vendor/d3-color.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-dispatch.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-ease.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-force.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-hierarchy.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-interpolate.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-quadtree.min.mjs">
+  <link rel="modulepreload" href="vendor/d3-timer.min.mjs">
+  <link rel="preload" href="tag-map.json" as="fetch" crossorigin>
   <script type="module" src="site/app.js"></script>
 </head>
 <body>
