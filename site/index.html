@@ -4,19 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="台語齒盤社群辭典：腔口差、新詞，佮辭典猶未收的詞。">
+  <meta name="description" content="揣無詞？來社群辭典貢獻！腔口差、新詞，佮辭典猶未收的詞。">
   <title>台語齒盤社群辭典</title>
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="台語齒盤社群辭典">
   <meta property="og:title" content="台語齒盤社群辭典">
-  <meta property="og:description" content="腔口差、新詞，佮辭典猶未收的詞。">
+  <meta property="og:description" content="揣無詞？來社群辭典貢獻！">
   <meta property="og:url" content="https://taigikeyboard.tw/community-dictionary/">
   <meta property="og:locale" content="zh_TW">
   <script>
     // apply the display settings and sidebar state before first paint (site/settings.js, site/sidebar.js)
     try {
       const root = document.documentElement;
-      if (JSON.parse(localStorage.getItem("sidebar")) === "open") root.dataset.sidebar = "open";
+      // open unless the reader collapsed it
+      if (JSON.parse(localStorage.getItem("sidebar")) !== "closed") root.dataset.sidebar = "open";
       const settings = JSON.parse(localStorage.getItem("settings")) || {};
       for (const [name, value] of Object.entries(settings)) {
         if (typeof value === "string") root.dataset[name] = value;
@@ -25,13 +26,35 @@
   </script>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
+  <!-- the D3 modules the homepage's tag bubbles load (site/tag-map.js), by name, since they import
+       one another by name (build-site copies them into vendor/) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "d3-color": "./vendor/d3-color.min.mjs",
+        "d3-dispatch": "./vendor/d3-dispatch.min.mjs",
+        "d3-ease": "./vendor/d3-ease.min.mjs",
+        "d3-force": "./vendor/d3-force.min.mjs",
+        "d3-hierarchy": "./vendor/d3-hierarchy.min.mjs",
+        "d3-interpolate": "./vendor/d3-interpolate.min.mjs",
+        "d3-quadtree": "./vendor/d3-quadtree.min.mjs",
+        "d3-timer": "./vendor/d3-timer.min.mjs"
+      }
+    }
+  </script>
   <script type="module" src="site/app.js"></script>
 </head>
 <body>
+  <!-- opens the sidebar: a floating button at the lower left on phones; on wide screens, once the
+       sidebar is collapsed, a slim » strip down the window's left edge (styles.css) -->
   <button class="corner-button sidebar-toggle" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄">
-    <svg viewBox="0 0 20 20" aria-hidden="true">
+    <svg class="icon-panel" viewBox="0 0 20 20" aria-hidden="true">
       <rect x="2.75" y="4" width="14.5" height="12" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
       <path d="M7.75 4v12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </svg>
+    <svg class="icon-chevrons" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M5 5.5l4.5 4.5L5 14.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M10.5 5.5L15 10l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
   <!-- left sidebar: docked on wide screens (site/sidebar.js slides it away); on narrow ones a popover,
@@ -63,6 +86,10 @@
         </select>
       </label>
       <div class="settings-heading">選單顯示</div>
+      <!-- on by default, unlike 白話字 / 方音符號: off hides Tâi-lô wherever a word also has Hanji -->
+      <label class="setting">台羅
+        <input type="checkbox" name="tl" role="switch" checked>
+      </label>
       <label class="setting">白話字
         <input type="checkbox" name="poj" role="switch">
       </label>
@@ -81,7 +108,27 @@
         <a href="https://github.com/taigikeyboard/community-dictionary" target="_blank" rel="noopener noreferrer" aria-label="GitHub" title="GitHub"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M216.5 362.5c-66-8-112.5-55.5-112.5-117 0-25 9-52 24-70-6.5-16.5-5.5-51.5 2-66 20-2.5 47 8 63 22.5 19-6 39-9 63.5-9s44.5 3 62.5 8.5c15.5-14 43-24.5 63-22 7 13.5 8 48.5 1.5 65.5 16 19 24.5 44.5 24.5 70.5 0 61.5-46.5 108-113.5 116.5 17 11 28.5 35 28.5 62.5l0 52C323 491.5 335.5 500 350.5 494 441 459.5 512 369 512 257 512 115.5 397 0 255.5 0S0 115.5 0 257c0 111 70.5 203 165.5 237.5 13.5 5 26.5-4 26.5-17.5l0-40c-7 3-16 5-24 5-33 0-52.5-18-66.5-51.5-5.5-13.5-11.5-21.5-23-23-6-.5-8-3-8-6 0-6 10-10.5 20-10.5 14.5 0 27 9 40 27.5 10 14.5 20.5 21 33 21s20.5-4.5 32-16c8.5-8.5 15-16 21-21z"/></svg></a>
       </div>
     </footer>
+    <!-- wide screens: collapses the docked sidebar (after docusaurus.io's « bar at the sidebar's foot) -->
+    <button class="sidebar-collapse" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄">
+    <svg class="icon-chevrons" viewBox="0 0 20 20" aria-hidden="true">
+      <path d="M15 5.5L10.5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M9.5 5.5L5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    </button>
   </aside>
+  <!-- top bar: the site name links home; site/app.js marks the current page link -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="topbar-brand" href="#/">台語齒盤社群辭典</a>
+      <nav class="topbar-links" aria-label="頁">
+        <a href="#/" data-page="search">揣詞</a>
+        <a href="#/submit" data-page="submit">提交新詞</a>
+        <a href="#/about" data-page="about">說明</a>
+      </nav>
+    </div>
+  </header>
+  <!-- read aloud, never drawn: short confirmations such as 已複製 (site/app.js) -->
+  <p id="status" class="unseen" role="status"></p>
   <main id="view">
     <noscript>這个網站愛開 JavaScript 才會當用。</noscript>
   </main>

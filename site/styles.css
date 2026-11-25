@@ -1,5 +1,4 @@
-/* Colors from taigikeyboard.tw/kautian-mirror; layout after apple.com: centered, generous
-   whitespace, large type, few borders. */
+/* Layout: centered, generous whitespace, large type, few borders. Palette and surfaces: see :root. */
 @font-face {
   font-family: "Iansui";
   /* served by kautian-mirror on the same origin; elsewhere (local preview) the system font is used */
@@ -35,23 +34,56 @@
 
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f5f5f7, #000000);
-  --card: light-dark(#ffffff, #1c1c1e);
-  --text: light-dark(#1d1d1f, #f5f5f7);
-  --secondary: light-dark(#6e6e73, #98989d);
-  --border: light-dark(#d2d2d7, #3a3a3c);
-  --field: light-dark(#fafafa, #2c2c2e);
-  --hairline: light-dark(#e8e8ed, #38383a);
-  --hover: light-dark(#f5f5f7, #2c2c2e);
-  --menu-shadow: 0 4px 24px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.5));
-  --accent: light-dark(#0071e3, #2997ff);
-  --ring: light-dark(rgba(0, 113, 227, 0.15), rgba(41, 151, 255, 0.25));
-  --danger: light-dark(#d70015, #ff6961);
+  /* after culturedcode.com/things: a cool blue-grey page, soft grey-blue text, Things' own blues
+     (links #2576eb / dark #649fff; filled buttons #4f91fb, hover #649fff, pressed #3c84f3), white surfaces lifted by layered
+     shadows instead of borders, a yellow highlighter and blue hairline-ruled list headings; the
+     dark mode is a graphite one */
+  --bg: light-dark(#f2f5f7, #1b1c1f);
+  /* the top of the page, fading into --bg (body background) */
+  --wash: light-dark(#fcfdfe, #232428);
+  --sidebar-bg: light-dark(#eaedf0, #222326);
+  --card: light-dark(#ffffff, #26272b);
+  --text: light-dark(#44474b, #e2e2e4);
+  --heading: light-dark(#303336, #f2f2f3);
+  --secondary: light-dark(#55606e, #8f9096);
+  --border: light-dark(#d9dce0, #3a3b40);
+  --field: light-dark(#ffffff, #2c2d31);
+  --hairline: light-dark(#e3e6ea, #34353a);
+  --hover: light-dark(#f3f5f7, #303136);
+  --bubble-shadow: light-dark(rgba(0, 28, 70, 0.09), rgba(0, 0, 0, 0.45));
+  /* the glazes of Taiwanese majolica tiles (花磚), sampled from photos on Wikimedia Commons: 二結王公廟
+     舊廟's altar tiles (cobalt, jade, brick: shot in shade, so lightened at the same hue), 深坑德興居
+     (leaf, lime) and 鎖港許祖取古宅 (aqua, mustard, coral, rose). The tag bubbles tint with them
+     (strengths below; the dark card takes stronger ones, set with the theme rules further down) */
+  --hue-cobalt: #3b5bb5;
+  --hue-jade: #2f8f8f;
+  --hue-aqua: #86d5d6;
+  --hue-leaf: #61a548;
+  --hue-lime: #99be71;
+  --hue-mustard: #eac55f;
+  --hue-coral: #e8a590;
+  --hue-rose: #e39c99;
+  --hue-brick: #c0604a;
+  --tint: 18%;
+  --tint-hover: 28%;
+  --tint-word: 34%;
+  --tint-word-hover: 52%;
+  --surface-shadow: 0 1px 2px light-dark(rgba(0, 28, 70, 0.07), rgba(0, 0, 0, 0.4)), 0 2px 12px light-dark(rgba(0, 28, 70, 0.07), rgba(0, 0, 0, 0.25));
+  --surface-shadow-hover: 0 2px 4px light-dark(rgba(0, 28, 70, 0.09), rgba(0, 0, 0, 0.45)), 0 8px 28px light-dark(rgba(0, 28, 70, 0.11), rgba(0, 0, 0, 0.35));
+  --menu-shadow: 0 2px 4px light-dark(rgba(0, 28, 70, 0.08), rgba(0, 0, 0, 0.4)), 0 12px 34px light-dark(rgba(0, 28, 70, 0.14), rgba(0, 0, 0, 0.5));
+  --accent: light-dark(#2576eb, #649fff);
+  --ring: light-dark(rgba(92, 156, 245, 0.2), rgba(100, 159, 255, 0.3));
+  --highlight: light-dark(rgba(255, 214, 3, 0.38), rgba(255, 214, 3, 0.22));
+  --danger: light-dark(#c4262e, #ff7b7b);
   --system-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica,
     "PingFang TC", "Noto Sans TC", Arial, sans-serif;
   --font: var(--system-font);
   --measure: 980px;
+  /* the homepage's wider column, for the bubble map */
+  --measure-wide: 1400px;
   --sidebar-width: 18.75rem;
+  /* the collapsed sidebar's » strip on wide screens */
+  --sidebar-strip: 30px;
   /* corner radii: boxes (cards, text inputs, popovers), rows inside a box (box radius minus its 6px
      padding, so the corners stay concentric), everything tapped (buttons, choice pills, icon
      buttons: rounded rectangles after culturedcode.com/things), and switches (round) */
@@ -62,12 +94,13 @@
   /* buttons after culturedcode.com/things: a soft fill (choice pills), the accent fill (the main
      action, a picked pill), and ghost buttons with no fill until hovered; each one lightens on
      hover and darkens and shrinks a little while pressed */
-  --button-soft: light-dark(#e3e8ef, #2c2c2e);
-  --button-soft-hover: light-dark(#d9e0e9, #3a3a3c);
-  --button-soft-active: light-dark(#cfd8e6, #48484a);
+  --button-soft: light-dark(#e6e9ed, #313237);
+  --button-soft-hover: light-dark(#dde1e6, #3a3b41);
+  --button-soft-active: light-dark(#d3d8de, #45464c);
   --button-soft-text: light-dark(rgba(0, 8, 19, 0.74), rgba(255, 255, 255, 0.82));
-  --button-strong-hover: color-mix(in srgb, var(--accent) 88%, #fff);
-  --button-strong-active: color-mix(in srgb, var(--accent) 90%, #000);
+  --button-strong: #4f91fb;
+  --button-strong-hover: #649fff;
+  --button-strong-active: #3c84f3;
   --ghost-hover: light-dark(rgba(4, 15, 26, 0.05), rgba(255, 255, 255, 0.08));
   --ghost-active: light-dark(rgba(4, 15, 26, 0.1), rgba(255, 255, 255, 0.14));
   --button-lift: 0 2px 4px rgba(0, 0, 0, 0.05);
@@ -79,12 +112,23 @@
 /* follows the system theme unless 外觀 pins one ("auto" pins none) */
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+/* light-dark() takes colours only, so the bubble tints follow the theme here: dark when 外觀 says so,
+   or when it follows a dark system */
+:root[data-theme="dark"] { --tint: 15%; --tint-hover: 23%; --tint-word: 26%; --tint-word-hover: 42%; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --tint: 15%; --tint-hover: 23%; --tint-word: 26%; --tint-word-hover: 42%; }
+}
 :root[data-font="iansui"] { --font: "Iansui", var(--system-font); }
 :root[data-font="openhuninn"] { --font: "jf-openhuninn", var(--system-font); }
 :root[data-font="genyomin"] { --font: "GenYoMin2 TW", var(--system-font); }
 :root[data-font="genyogothic"] { --font: "GenYoGothic2 TW", var(--system-font); }
 /* off by default: shown only once the reader turns 白話字 / 方音符號 on (or kautian-mirror stored "on") */
 :root:not([data-poj="on"]) .poj, :root:not([data-tps="on"]) .tps { display: none; }
+/* 台羅 is on unless turned off; off, the bubbles' Hanji move down to the centre their Tâi-lô shared
+   (site/tag-map.js sets them 0.3em / 0.32em above it) */
+:root[data-tl="off"] :is(.tl, .tag-tl, .word-tl) { display: none; }
+:root[data-tl="off"] .tag-hanji { transform: translateY(0.3em); }
+:root[data-tl="off"] .word-hanji { transform: translateY(0.32em); }
 
 * { box-sizing: border-box; }
 /* author display rules must not undo the hidden attribute */
@@ -97,7 +141,8 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
+  /* a light wash at the top fading into the page grey; scrolls with the page, takes no space */
+  background: linear-gradient(var(--wash), var(--bg) 36rem) no-repeat, var(--bg);
   color: var(--text);
   font: 1.0625rem/1.6 var(--font);
   -webkit-font-smoothing: antialiased;
@@ -112,59 +157,121 @@ a:hover { text-decoration: underline; }
 
 /* top-aligned, not vertically centered: showing or hiding category fields must not move the
    title and the fields above them */
-main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padding: 4rem 1.5rem 3rem; }
+main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 auto; padding: 3rem 1.5rem 3rem; }
 
 /* --- page head --- */
 .hero { padding: 0 0 2.5rem; text-align: center; }
-.hero h1 { margin: 0; font-size: 3.5rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.hero h1 { margin: 0; color: var(--heading); font-size: 3.5rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .hero h1:focus { outline: none; }
 .hero p { max-width: 30rem; margin: 1rem auto 0; color: var(--secondary); font-size: 1.375rem; line-height: 1.45; }
 
 /* --- existing words: popover under the active word, floating over the form --- */
 .matches { position: absolute; top: calc(100% + 8px); left: 0; right: calc(36px + 0.75rem); z-index: 10; max-height: min(420px, 60vh); overflow-y: auto; padding: 0.375rem; border: 1px solid var(--hairline); border-radius: var(--radius); background: var(--card); box-shadow: var(--menu-shadow); }
 .results { list-style: none; margin: 0; padding: 0; }
-.results li { padding: 0.5rem 0.75rem; border-radius: var(--radius-inner); transition: background 0.15s; }
-.results li:hover { background: var(--hover); }
+.results li { position: relative; padding: 0.5rem 0.75rem; border-radius: var(--radius-inner); transition: background 0.15s; }
+/* note-list rows: hairlines between, hidden next to the hovered row */
+.results li + li::before { content: ""; position: absolute; top: 0; left: 0.75rem; right: 0.75rem; height: 1px; background: var(--hairline); }
+/* the row under the mouse, and the row picked with the arrow keys (.active, menuKeys) */
+.results li:hover::before, .results li:hover + li::before, .results li.active::before, .results li.active + li::before { opacity: 0; }
+.results li:hover, .results li.active { background: var(--hover); }
 .result-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 1rem; }
 /* a search result row is a link to the word's cards; it fills the row and keeps the row's colours */
 .result-link { display: block; margin: -0.5rem -0.75rem; padding: 0.5rem 0.75rem; color: inherit; }
 .result-link:hover { text-decoration: none; }
 .result-hanji { overflow-wrap: anywhere; }
 .result-tl, .result-head .poj, .result-head .tps { color: var(--secondary); font-size: 0.9375rem; overflow-wrap: anywhere; }
-.exact .result-hanji { color: var(--accent); }
-/* --- search: same shape as the form fields, icon on the left, popover below --- */
-.search { position: relative; margin-bottom: 1.25rem; }
-.search > .icon { position: absolute; left: 1rem; top: 24px; font-size: 1.125rem; color: var(--secondary); transform: translateY(-50%); pointer-events: none; }
-.search input[type="search"] { padding-left: 2.75rem; background: var(--card); }
+/* the exact match is marked as with a highlighter pen */
+.exact .result-hanji { padding: 0 0.125em; border-radius: 3px; background: linear-gradient(transparent 45%, var(--highlight) 45%); color: var(--heading); font-weight: 600; }
+/* --- the search box (in the top bar, app.js): icon, input and the "/" hint in .search-field, the
+   menu under the whole box --- */
+.search { position: relative; }
+.search-field { position: relative; }
+.search-field > .icon { position: absolute; left: 0.75rem; top: 50%; font-size: 1rem; color: var(--secondary); transform: translateY(-50%); pointer-events: none; }
 .search input::-webkit-search-cancel-button { display: none; }
-.search > .matches { right: 0; }
+/* the "/" shortcut (app.js): a hint over the empty box, gone once something is typed; touch screens
+   have no key to press, so they never show it */
+.search-hint { position: absolute; left: 2.25rem; top: 50%; transform: translateY(-50%); color: var(--secondary); font-size: 0.875rem; pointer-events: none; }
+.search-hint kbd { display: inline-block; min-width: 1.25rem; padding: 0 0.3rem; border: 1px solid var(--border); border-radius: 5px; font: 0.8125rem/1.4 var(--system-font); text-align: center; }
+.search input:not(:placeholder-shown) ~ .search-hint { display: none; }
+@media not ((hover: hover) and (pointer: fine)) {
+  .search-hint { display: none; }
+}
 
-/* --- tag chips under the search box: wrap onto more lines rather than scroll sideways --- */
+/* #tag links (the bubble map's fallback, a card's foot): wrap onto more lines rather than scroll
+   sideways */
 .tags { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
-/* homepage rows (標籤, 貢獻者), each under a small label */
-.chip-group { margin-bottom: 1.5rem; }
-.chip-group h2 { margin: 0 0 0.625rem; color: var(--secondary); font-size: 0.9375rem; font-weight: 400; }
-/* tags and the homepage's contributors read as plain #name text, no box; a card's byline joins
-   names by 、 */
+/* tags read as plain #name text, no box; a card's byline joins names by 、 */
 .tag { color: var(--secondary); font-size: 0.9375rem; transition: color 0.15s; }
-.tag::before { content: "#"; opacity: 0.6; }
+.tag::before { content: "#"; color: var(--accent); opacity: 0.75; }
 .tag:hover, .person:hover { color: var(--accent); text-decoration: none; }
 .tag:focus-visible, .person:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
 .person { color: var(--text); transition: color 0.15s; }
 /* read aloud, never drawn */
 .unseen { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); margin: 0; white-space: nowrap; }
 
-/* --- links between the two pages --- */
-/* 貢獻詞 sits at the search box's lower right, above the chips */
-.cta { margin: -0.75rem 0 1.25rem; text-align: right; }
-.text-link { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.5rem; font-size: 1rem; }
-.text-link:hover, .back-link:hover { text-decoration: none; opacity: 0.8; }
-.text-link .icon { font-size: 1rem; }
-/* the back link takes a fixed row above a subpage's title; the homepage, which has none, leaves the
-   same row empty, so every page's title sits at the same height and switching pages never moves it */
-.back-link { display: inline-flex; align-items: center; gap: 0.125rem; height: 1.75rem; margin-bottom: 1rem; font-size: 1.0625rem; }
-main > .hero:first-child { margin-top: 2.75rem; }
-.back-link .icon { font-size: 1.125rem; }
+/* --- tag bubbles (homepage, site/tag-map.js): a box of fixed proportions the map draws into, so
+   nothing below moves when it arrives or zooms. Coloured with the glazes of Taiwanese majolica tiles,
+   Things-style: each tag's colour (site/tags.js hue) is a soft tint on a white circle on the card
+   shadow, its words a deeper tint, the name dark (a yellow name would not read); hover
+   deepens the tint and the shadow. Zoomed in, the other tags dim, the name gives way to the words,
+   and the bar under the box (its height kept while empty) offers 全部標籤 and the tag's own page --- */
+/* the homepage's main view: the map fills what the window leaves under the title (svh, so a phone's
+   address bar showing or hiding never redraws it), in a column wider than the other pages' */
+.tag-map { height: clamp(26rem, calc(100svh - 19rem), 58rem); }
+main[data-page="search"] { max-width: calc(var(--measure-wide) + 3rem); }
+main[data-page="search"] .hero { padding-bottom: 1rem; }
+.tag-map-svg { display: block; width: 100%; height: 100%; overflow: hidden; user-select: none; -webkit-user-select: none; }
+.tag-bubble { --hue: var(--hue-cobalt); }
+.tag-bubble[data-hue="jade"] { --hue: var(--hue-jade); }
+.tag-bubble[data-hue="aqua"] { --hue: var(--hue-aqua); }
+.tag-bubble[data-hue="leaf"] { --hue: var(--hue-leaf); }
+.tag-bubble[data-hue="lime"] { --hue: var(--hue-lime); }
+.tag-bubble[data-hue="mustard"] { --hue: var(--hue-mustard); }
+.tag-bubble[data-hue="coral"] { --hue: var(--hue-coral); }
+.tag-bubble[data-hue="rose"] { --hue: var(--hue-rose); }
+.tag-bubble[data-hue="brick"] { --hue: var(--hue-brick); }
+.tag-circle { fill: color-mix(in srgb, var(--hue) var(--tint), var(--card)); filter: drop-shadow(0 1px 1.5px var(--bubble-shadow)) drop-shadow(0 3px 8px var(--bubble-shadow)); cursor: pointer; transition: filter 0.2s ease-out, fill 0.2s; }
+.tag-bubble:hover .tag-circle { fill: color-mix(in srgb, var(--hue) var(--tint-hover), var(--card)); filter: drop-shadow(0 2px 3px var(--bubble-shadow)) drop-shadow(0 8px 20px var(--bubble-shadow)); }
+.tag-circle:focus { outline: none; }
+.tag-circle:focus-visible { stroke: var(--accent); stroke-width: 3; }
+.tag-bubble { transition: opacity 0.3s ease-out; }
+.tag-map-svg.zoomed .tag-bubble:not(.focused) { opacity: 0.35; }
+.tag-map-svg text { text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+/* the name stays legible over the word bubbles: a halo in the card colour */
+/* the name (and its Tâi-lô, lighter) over the word haze; the halo takes the circle's own tint, so it
+   reads as the circle, not a white box */
+.tag-name { transition: opacity 0.3s; }
+.tag-name text { paint-order: stroke; stroke: color-mix(in srgb, var(--hue) var(--tint), var(--card)); stroke-width: 4px; stroke-linejoin: round; transition: stroke 0.2s; }
+.tag-hanji { fill: var(--heading); font-weight: 600; }
+.tag-tl { fill: var(--secondary); font-family: var(--system-font); }
+.tag-bubble:hover .tag-name text { stroke: color-mix(in srgb, var(--hue) var(--tint-hover), var(--card)); }
+/* zoomed in, only the focused tag speaks: its words replace its name, the other names fade */
+.tag-map-svg.zoomed .tag-name { opacity: 0; }
+/* the words: a tint until their tag is zoomed into, then readable links */
+.tag-words { pointer-events: none; }
+.tag-bubble.focused .tag-words { pointer-events: auto; }
+.word-bubble circle { fill: color-mix(in srgb, var(--hue) var(--tint-word), var(--card)); transition: fill 0.15s; }
+.word-bubble text { opacity: 0; transition: opacity 0.3s; }
+.word-hanji { fill: var(--heading); }
+.word-tl { fill: var(--secondary); font-family: var(--system-font); }
+.tag-bubble.focused .word-bubble text { opacity: 1; }
+.word-bubble:hover circle, .word-bubble:focus-visible circle { fill: color-mix(in srgb, var(--hue) var(--tint-word-hover), var(--card)); }
+/* a word is marked by its bubble, not the site's link underline */
+.word-bubble:hover { text-decoration: none; }
+.word-bubble:focus { outline: none; }
+.word-bubble:focus-visible circle { stroke: var(--accent); stroke-width: 1.5; }
+.tag-map-bar { display: flex; align-items: center; justify-content: space-between; min-height: 2.5rem; margin-top: 0.5rem; }
+.tag-map-bar[data-empty="true"] > * { visibility: hidden; }
+.tag-map-back, .tag-map-more { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; border: 0; border-radius: var(--radius-control); background: none; color: var(--accent); font: inherit; font-size: 0.9375rem; cursor: pointer; transition: var(--button-transition); }
+.tag-map-back { margin-left: -0.5rem; }
+.tag-map-more { margin-right: -0.5rem; }
+.tag-map-back:hover, .tag-map-more:hover { background: var(--ghost-hover); text-decoration: none; }
+.tag-map-back:focus-visible, .tag-map-more:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.tag-map-back .icon, .tag-map-more .icon { font-size: 1rem; }
+.contributed-tags { margin-top: 1rem; }
+@media (max-width: 734px) {
+  .tag-map { height: clamp(24rem, calc(100svh - 15rem), 44rem); }
+}
 
 /* --- form --- */
 input[type="text"], input[type="search"], textarea {
@@ -191,12 +298,17 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .field { display: grid; gap: 0.5rem; margin: 0; padding: 0; border: 0; min-width: 0; }
 .field > label, .field > legend { padding: 0; color: var(--text); font-weight: 600; }
 .field .error { color: var(--danger); font-size: 0.875rem; }
+/* the form's own fields (not the word rows inside their box) are lifted by a shadow, with no border
+   until focused or invalid */
+.field > input, .field > textarea { border-color: transparent; box-shadow: var(--surface-shadow); }
+.field > input:focus, .field > textarea:focus { border-color: var(--accent); box-shadow: var(--surface-shadow), 0 0 0 4px var(--ring); }
+.field > input[aria-invalid="true"], .field > textarea[aria-invalid="true"] { border-color: var(--danger); }
 
 
 /* words: one numbered row per word, number + Hanji/Japanese + Tâi-lô + remove, in a box of their
    own; the fields below the box are shared by every word. --word-number and --word-gap (number
    column, grid gap) line up the head, the rows, their error lines and the popover */
-.words-block { --word-number: 1.25rem; --word-gap: 0.75rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
+.words-block { --word-number: 1.25rem; --word-gap: 0.75rem; padding: 1.25rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--surface-shadow); }
 .words { display: grid; gap: 0.75rem; counter-reset: word; }
 .word-fields { position: relative; display: grid; grid-template-columns: var(--word-number) 1fr 1fr 36px; gap: var(--word-gap); align-items: center; }
 /* the head's empty number cell, so its labels sit over the inputs */
@@ -225,7 +337,7 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .pills label { display: inline-flex; align-items: center; gap: 0.375rem; border: 1px solid transparent; background: var(--button-soft); color: var(--button-soft-text); cursor: pointer; transition: var(--button-transition); }
 .pills label:hover { background: var(--button-soft-hover); box-shadow: var(--button-lift); }
 .pills label:active { background: var(--button-soft-active); transform: var(--button-press); }
-.pills label:has(input:checked) { background: var(--accent); color: #fff; }
+.pills label:has(input:checked) { background: var(--button-strong); color: #fff; }
 .pills label:has(input:checked):hover { background: var(--button-strong-hover); }
 .pills label:has(input:checked):active { background: var(--button-strong-active); }
 .pills label:has(input:focus-visible) { box-shadow: 0 0 0 3px var(--ring); }
@@ -243,7 +355,7 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
   padding: 0 1.25rem;
   border: 0;
   border-radius: var(--radius-control);
-  background: var(--accent);
+  background: var(--button-strong);
   color: #fff;
   font: inherit;
   font-weight: 600;
@@ -292,8 +404,13 @@ input.pill-input.align-end { left: auto; right: 0; }
 .corner-button:active { background: var(--ghost-active); transform: var(--button-press); }
 .corner-button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 .corner-button svg { width: 18px; height: 18px; }
-/* page-coloured so it stays legible over form fields scrolled beneath it on narrow screens */
-.sidebar-toggle { position: fixed; top: 0.75rem; left: 0.75rem; z-index: 20; background: var(--bg); }
+/* kept out of the top bar: a floating button at the window's lower left (where Things keeps its
+   sidebar's toolbar), on the card surface so it stays legible over whatever scrolls beneath */
+.corner-button.sidebar-toggle { position: fixed; bottom: 1rem; left: 1rem; z-index: 20; width: 40px; height: 40px; border-radius: var(--radius-control); background: var(--card); box-shadow: var(--surface-shadow); color: var(--secondary); }
+.corner-button.sidebar-toggle:hover { background: var(--card); box-shadow: var(--surface-shadow-hover); color: var(--text); }
+.corner-button.sidebar-toggle:active { background: var(--hover); }
+.corner-button.sidebar-toggle:focus-visible { box-shadow: var(--surface-shadow), 0 0 0 3px var(--ring); }
+.sidebar-toggle .icon-chevrons, .sidebar-collapse { display: none; }
 
 .sidebar {
   inset: 0 auto 0 0;
@@ -304,8 +421,7 @@ input.pill-input.align-end { left: auto; right: 0; }
   padding: 1rem 1.5rem 1.5rem;
   overflow-y: auto;
   border: 0;
-  border-right: 1px solid var(--hairline);
-  background: var(--bg);
+  background: var(--sidebar-bg);
   color: var(--text);
   box-shadow: var(--menu-shadow);
   transform: translateX(-100%);
@@ -325,13 +441,26 @@ input.pill-input.align-end { left: auto; right: 0; }
 .social-links a:active { background: var(--ghost-active); transform: var(--button-press); }
 .social-links svg { flex: none; width: 15px; height: 15px; }
 @media (min-width: 50rem) {
-  /* docked, collapsed by default: slid out and hidden (its controls leave the tab order);
-     display: flex overrides the closed popover's display: none so it can slide */
-  .sidebar { position: fixed; display: flex; flex-direction: column; padding-top: 3.5rem; box-shadow: none; visibility: hidden; transition: transform 0.25s ease, visibility 0.25s; }
+  /* docked, open by default (index.html); collapsed it slides out and hides (its controls leave the
+     tab order); display: flex overrides the closed popover's display: none so it can slide */
+  .sidebar { position: fixed; display: flex; flex-direction: column; padding-top: 1.5rem; padding-bottom: 0; box-shadow: none; visibility: hidden; transition: transform 0.25s ease, visibility 0.25s; }
   .sidebar-close { display: none; }
   body { transition: padding-left 0.25s ease; }
   :root[data-sidebar="open"] .sidebar { transform: none; visibility: visible; }
   :root[data-sidebar="open"] body { padding-left: calc(var(--sidebar-width) + 1.5rem); }
+  /* after docusaurus.io: open, a full-width « bar held at the sidebar's foot; collapsed, a slim
+     strip down the window's left edge, all of it a » button, and the page starts beside it */
+  .sidebar-collapse { position: sticky; bottom: 0; display: flex; flex: none; align-items: center; justify-content: center; height: 40px; margin: 1.5rem -1.5rem 0; padding: 0; border: 0; border-top: 1px solid var(--hairline); background: var(--sidebar-bg); color: var(--secondary); cursor: pointer; transition: var(--button-transition); }
+  .sidebar-collapse:hover { background: var(--button-soft); color: var(--text); }
+  .sidebar-collapse:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--ring); }
+  .sidebar-collapse svg { width: 18px; height: 18px; }
+  .corner-button.sidebar-toggle { inset: 0 auto 0 0; width: var(--sidebar-strip); height: auto; border-right: 1px solid var(--hairline); border-radius: 0; background: transparent; box-shadow: none; }
+  .corner-button.sidebar-toggle:hover, .corner-button.sidebar-toggle:active { background: var(--ghost-hover); box-shadow: none; transform: none; }
+  .corner-button.sidebar-toggle:focus-visible { box-shadow: inset 0 0 0 3px var(--ring); }
+  .sidebar-toggle .icon-panel { display: none; }
+  .sidebar-toggle .icon-chevrons { display: block; }
+  :root[data-sidebar="open"] .sidebar-toggle { display: none; }
+  body { padding-left: var(--sidebar-strip); }
 }
 
 /* settings rows: label left, control right, hairlines between */
@@ -342,7 +471,7 @@ input.pill-input.align-end { left: auto; right: 0; }
   padding: 0.25rem 1.125rem 0.25rem 0.25rem;
   border: 0;
   border-radius: var(--radius-inner);
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.5 4l2.5 2.5L7.5 4' fill='none' stroke='%236e6e73' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right center / 10px no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.5 4l2.5 2.5L7.5 4' fill='none' stroke='%2355606e' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") right center / 10px no-repeat;
   color: var(--secondary);
   font: inherit;
   text-align: right;
@@ -356,15 +485,22 @@ input.pill-input.align-end { left: auto; right: 0; }
 /* iOS-style switch */
 .setting input[type="checkbox"] { position: relative; flex: none; width: 44px; height: 26px; margin: 0; border-radius: var(--radius-round); background: var(--border); cursor: pointer; transition: background 0.2s; -webkit-appearance: none; appearance: none; }
 .setting input[type="checkbox"]::before { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); transition: transform 0.2s; }
-.setting input[type="checkbox"]:checked { background: var(--text); }
+.setting input[type="checkbox"]:checked { background: var(--button-strong); }
 .setting input[type="checkbox"]:checked::before { transform: translateX(18px); }
 .setting input[type="checkbox"]:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 
 /* --- card pages (#/tag/…, #/word/…): a grid of word cards, more added on scroll --- */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 1rem; }
-.word-card { display: flex; flex-direction: column; gap: 0.5rem; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); }
-.card-hanji { color: var(--text); font-size: 1.75rem; font-weight: 700; line-height: 1.25; overflow-wrap: anywhere; }
+/* lifted by a shadow, no border; hover deepens the shadow (nothing moves) */
+.word-card { display: flex; flex-direction: column; gap: 0.5rem; padding: 1.5rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--surface-shadow); transition: box-shadow 0.2s ease-out; }
+.word-card:hover { box-shadow: var(--surface-shadow-hover); }
+.card-hanji { color: var(--heading); font-size: 1.75rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; overflow-wrap: anywhere; }
 .card-hanji:hover { color: var(--accent); text-decoration: none; }
+/* the card's first line and its 複製詞目 / 分享連結 buttons, pulled up into the card's corner; the
+   line keeps its own width (only the word is a link) and wraps before the buttons */
+.card-head { display: flex; align-items: flex-start; gap: 0.5rem; }
+.card-head > :first-child { min-width: 0; margin-right: auto; }
+.card-actions { display: flex; flex: none; gap: 0.125rem; margin: -0.25rem -0.75rem 0 0; }
 .card-readings { display: flex; flex-wrap: wrap; gap: 0.125rem 0.75rem; margin: 0; }
 .card-readings .poj, .card-readings .tps { color: var(--secondary); font-size: 0.9375rem; }
 .card-details { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; margin: 0.25rem 0 0; font-size: 0.9375rem; }
@@ -380,3 +516,59 @@ input.pill-input.align-end { left: auto; right: 0; }
 .empty { color: var(--secondary); text-align: center; }
 /* a word page holds a card or two: one centred column instead of a sparse grid */
 .cards-word { grid-template-columns: minmax(0, 36rem); justify-content: center; }
+
+/* --- top bar: icon and site name at the window's left edge, page links at its right, a hairline
+   under the full width; part of the page, so it scrolls away with it. Every page's title starts
+   below it at the same height, so switching pages never moves it --- */
+.topbar { border-bottom: 1px solid var(--hairline); }
+.topbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; height: 3.75rem; padding: 0 1.5rem; }
+.topbar-brand { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--heading); font-size: 0.9375rem; font-weight: 600; white-space: nowrap; }
+.topbar-brand:hover { text-decoration: none; opacity: 0.8; }
+.topbar-links { display: flex; gap: 1.5rem; }
+/* the current page is darker; colour only, never weight, so nothing reflows */
+.topbar-links a { color: var(--secondary); font-size: 0.9375rem; font-weight: 600; white-space: nowrap; transition: color 0.15s; }
+.topbar-links a:hover { color: var(--heading); text-decoration: none; }
+.topbar-links a[aria-current="page"] { color: var(--heading); }
+.topbar a:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
+/* the search box (app.js puts it before the links): compact, white with a border, blue once
+   focused; its menu opens under it, exactly as wide */
+.topbar .search { flex: 0 1 18rem; min-width: 6rem; margin: 0 0 0 auto; }
+.topbar .search input[type="search"] { min-height: 36px; padding: 0.375rem 0.75rem 0.375rem 2.25rem; border-color: var(--border); border-radius: var(--radius-control); background: var(--card); box-shadow: none; font-size: 0.9375rem; }
+.topbar .search input[type="search"]:focus { border-color: var(--accent); background: var(--card); box-shadow: 0 0 0 3px var(--ring); }
+.topbar .search > .matches { left: 0; right: 0; z-index: 30; }
+/* a phone: the site name gives way to the search box (揣詞 also leads home) */
+@media (max-width: 40rem) {
+  .topbar-inner { gap: 0.75rem; padding: 0 1rem; }
+  .topbar-brand { display: none; }
+  .topbar-links { gap: 1rem; }
+}
+
+/* --- 說明 page: one row per section, the heading in a narrow left column and the text beside it, so
+   the page keeps the homepage's full column while its lines stay a readable length --- */
+.about-section { display: grid; grid-template-columns: 10rem minmax(0, 1fr); gap: 0.5rem 2rem; padding: 1.75rem 0; border-top: 1px solid var(--hairline); }
+.about-section h2 { margin: 0; color: var(--heading); font-size: 1.0625rem; font-weight: 700; line-height: 1.6; }
+.about-body > :first-child { margin-top: 0; }
+.about-body > :last-child { margin-bottom: 0; }
+.about-body p { margin: 0 0 0.75rem; }
+.about-kinds { display: grid; grid-template-columns: auto 1fr; gap: 0.5rem 1.5rem; margin: 0 0 1.5rem; }
+.about-kinds dt { color: var(--heading); font-weight: 600; }
+.about-kinds dd { margin: 0; }
+/* one word, two accents: the word card's surface, smaller */
+.accent-sample { display: inline-grid; gap: 0.375rem; margin: 0; padding: 1rem 1.25rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--surface-shadow); }
+.accent-word { margin: 0; color: var(--heading); font-size: 1.5rem; font-weight: 700; line-height: 1.25; }
+.accent-sample dl { display: grid; grid-template-columns: auto auto; gap: 0.125rem 1rem; margin: 0; font-size: 0.9375rem; }
+.accent-sample dt { color: var(--secondary); }
+.accent-sample dd { margin: 0; font-family: var(--system-font); }
+/* a word's way: four steps left to right with a chevron between, top to bottom on a phone; the last
+   step, 台語齒盤, carries the accent */
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1.5rem; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.flow li { position: relative; display: grid; align-content: start; gap: 0.25rem; padding: 1rem 1.125rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--surface-shadow); font-size: 0.9375rem; counter-increment: step; }
+.flow li::before { content: counter(step); color: var(--secondary); font-size: 0.8125rem; font-variant-numeric: tabular-nums; }
+.flow strong { color: var(--heading); font-size: 1.0625rem; }
+.flow li:last-child strong { color: var(--accent); }
+.flow li + li::after { content: ""; position: absolute; top: 50%; left: -0.95rem; width: 0.4rem; height: 0.4rem; border: solid var(--secondary); border-width: 1.5px 1.5px 0 0; transform: translateY(-50%) rotate(45deg); }
+@media (max-width: 734px) {
+  .about-section { grid-template-columns: minmax(0, 1fr); }
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .flow li + li::after { top: -0.85rem; left: 50%; transform: translateX(-50%) rotate(135deg); }
+}

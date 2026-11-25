@@ -5,8 +5,9 @@ ARGS ?=
 help: ## List targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
 
-setup: ## Fetch the taigi-converter submodule
+setup: ## Fetch the taigi-converter submodule and the npm packages (D3 for the tag bubbles)
 	git submodule update --init --recursive
+	npm ci
 
 test: ## Run unit tests
 	npm test

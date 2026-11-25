@@ -3,7 +3,6 @@ import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
 import {
   checkBatch,
-  contributedTags,
   contributorRoute,
   duplicateStatus,
   findExisting,
@@ -18,8 +17,10 @@ import {
   wordsSpelled,
   wordsWithTag,
 } from './logic.js';
+import { h } from './dom.js';
 import { initSettings } from './settings.js';
 import { initSidebar } from './sidebar.js';
+import { tagMap } from './tag-map.js';
 import { TAG_NAMES, TAGS } from './tags.js';
 
 // Pages: search (community entries and iTaigi) with tag chips, the submission form, whose word rows
@@ -28,20 +29,16 @@ import { TAG_NAMES, TAGS } from './tags.js';
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
 const SITE_TITLE = '台語齒盤社群辭典';
-const SUBMIT_ROUTE = '#/submit';
+// also the page's description and share text in index.html
+const SLOGAN = '揣無詞？來社群辭典貢獻！';
 
-// Builds an element; children are nodes or strings (always text, never parsed as HTML).
-function h(tag, attrs = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [name, value] of Object.entries(attrs)) {
-    if (value === false || value == null) continue;
-    el.setAttribute(name, value === true ? '' : value);
-  }
-  el.append(...children.flat().filter((c) => c != null && c !== false));
-  return el;
-}
+// a page's title, and a lead line under it (a tag's Tâi-lô, `isReading`, follows the 台羅 switch)
+const hero = (title, lead, { isReading = false } = {}) =>
+  h('header', { class: 'hero' }, h('h1', {}, title), lead ? h('p', { class: isReading ? 'tl' : null }, lead) : null);
 
-const hero = (title, lead) => h('header', { class: 'hero' }, h('h1', {}, title), lead ? h('p', {}, lead) : null);
+// A word's Tâi-lô: hidden with the 台羅 switch (class tl), unless the word has no Hanji, when it is
+// the word itself.
+const tlSpan = (row) => h('span', { class: row.hanji ? 'result-tl tl' : 'result-tl' }, row.tl);
 
 // Fetches and caches one JSON file; rejects on a network or HTTP failure, and a failed load is not
 // cached, so the next call retries.
@@ -63,20 +60,7 @@ function cachedJson(path) {
 
 const loadRows = cachedJson('search.json');
 const loadItaigi = cachedJson('itaigi.json');
-const loadContributors = cachedJson('contributors.json');
-
-// One labelled row of chips on the homepage.
-const chipGroup = (label, chips) => h('section', { class: 'chip-group' }, h('h2', {}, label), chips);
-
-// Contributors under the tags, drawn like them as #name, most words first (dist/contributors.json
-// from build-site); each opens the contributor's cards page.
-function contributorChips() {
-  const row = h('nav', { class: 'tags', 'aria-label': '貢獻者' });
-  loadContributors()
-    .then((names) => row.append(...names.map((name) => h('a', { class: 'tag', href: contributorRoute(name) }, name))))
-    .catch(() => {});
-  return row;
-}
+const loadTagMap = cachedJson('tag-map.json');
 
 // A card's contributor byline: names as plain links to their cards pages, joined by 、.
 const contributorLinks = (names) => names.flatMap((name, i) => [i > 0 ? '、' : null, h('a', { class: 'person', href: contributorRoute(name) }, name)]).filter(Boolean);
@@ -92,7 +76,7 @@ const readings = (row) => [row.poj ? h('span', { class: 'poj' }, row.poj) : null
 // One result row: Hanji, Tâi-lô and the readings. In the search box it links to the word's cards;
 // under a word row of the form it does not, since leaving would drop what was typed.
 function resultItem(row, { exact = false, linked = false } = {}) {
-  const head = h('span', { class: 'result-head' }, h('span', { class: 'result-hanji' }, row.hanji), h('span', { class: 'result-tl' }, row.tl), readings(row));
+  const head = h('span', { class: 'result-head' }, h('span', { class: 'result-hanji' }, row.hanji), tlSpan(row), readings(row));
   return h('li', { class: exact ? 'exact' : null }, linked ? h('a', { class: 'result-link', href: wordRoute(row.hanji, row.tl) }, head) : head);
 }
 
@@ -101,8 +85,9 @@ function resultItem(row, { exact = false, linked = false } = {}) {
 // opening it never moves anything below, and it stays closed while nothing matches. Loads the
 // community entries on first use; the search box (`isSearch`) also lists iTaigi rows below them
 // (CC0, no attribution required) and links every row to its cards. A failed load is retried on
-// the next keystroke.
-function matchesPopover(root, locate, limit, { isSearch = false } = {}) {
+// the next keystroke. `onRender` runs after every update (rows replaced, opened or closed); the
+// panel and its list are returned for the search box's keyboard control.
+function matchesPopover(root, locate, limit, { isSearch = false, onRender = () => {} } = {}) {
   const results = h('ul', { class: 'results' });
   const panel = h('section', { class: 'matches', hidden: true, 'aria-label': isSearch ? '揣詞結果' : '已經有的詞' }, results);
 
@@ -115,12 +100,14 @@ function matchesPopover(root, locate, limit, { isSearch = false } = {}) {
     const found = rows ? findExisting(rows, hanji, tl, limit) : [];
     const foundItaigi = itaigi ? searchItaigi(itaigi, hanji, limit) : [];
     panel.hidden = found.length === 0 && foundItaigi.length === 0;
-    if (panel.hidden) return;
-    if (panel.parentElement !== active.anchor) active.anchor.append(panel);
-    results.replaceChildren(
-      ...found.map(({ row, exact }) => resultItem(row, { exact, linked: isSearch })),
-      ...foundItaigi.map((row) => resultItem(row, { linked: true })),
-    );
+    if (!panel.hidden) {
+      if (panel.parentElement !== active.anchor) active.anchor.append(panel);
+      results.replaceChildren(
+        ...found.map(({ row, exact }) => resultItem(row, { exact, linked: isSearch })),
+        ...foundItaigi.map((row) => resultItem(row, { linked: true })),
+      );
+    }
+    onRender();
   };
   const load = () => {
     if (!rows) {
@@ -159,31 +146,86 @@ function matchesPopover(root, locate, limit, { isSearch = false } = {}) {
     if (active && !active.anchor.contains(event.relatedTarget)) close();
   });
   root.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') close();
+    if (event.key === 'Escape' && !event.isComposing) close();
   });
   // keep focus in the input while clicking inside the popover (a row's link still follows)
   panel.addEventListener('pointerdown', (event) => event.preventDefault());
   root.addEventListener('words-changed', update);
+  return { panel, results };
+}
+
+// Keyboard control for the search box's menu, after kautian-mirror's combobox: ↓ / ↑ pick the
+// next / previous row and wrap around, Enter opens the picked row's word (the first row's when none
+// is picked), Escape closes it (matchesPopover); the mouse picks the row it moves over. Keys pressed
+// while an input method is composing stay with the input method. The input keeps focus; the picked
+// row is announced through aria-activedescendant. Returns `render`, to run after every update.
+function menuKeys(input, panel, results) {
+  results.id = 'search-results';
+  results.setAttribute('role', 'listbox');
+  results.setAttribute('aria-label', '揣詞結果');
+  input.setAttribute('role', 'combobox');
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-controls', results.id);
+  input.setAttribute('aria-expanded', 'false');
+  let picked = -1;
+  const options = () => [...results.children];
+  const pick = (index, { scroll = false } = {}) => {
+    const list = options();
+    list[picked]?.classList.remove('active');
+    list[picked]?.setAttribute('aria-selected', 'false');
+    picked = index;
+    const option = list[picked];
+    if (!option) return input.removeAttribute('aria-activedescendant');
+    option.classList.add('active');
+    option.setAttribute('aria-selected', 'true');
+    input.setAttribute('aria-activedescendant', option.id);
+    if (scroll) option.scrollIntoView({ block: 'nearest' });
+  };
+  input.addEventListener('keydown', (event) => {
+    // keyCode 229: a key some browsers send to an input method without setting isComposing
+    if (event.isComposing || event.keyCode === 229 || panel.hidden) return;
+    const count = options().length;
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      pick(picked < 0 ? (step > 0 ? 0 : count - 1) : (picked + step + count) % count, { scroll: true });
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      (options()[picked] ?? options()[0])?.querySelector('a')?.click();
+    }
+  });
+  results.addEventListener('mousemove', (event) => {
+    const index = options().indexOf(event.target.closest('li'));
+    if (index >= 0 && index !== picked) pick(index);
+  });
+  return () => {
+    picked = -1;
+    input.removeAttribute('aria-activedescendant');
+    input.setAttribute('aria-expanded', String(!panel.hidden));
+    options().forEach((option, index) => {
+      option.id = `search-option-${index}`;
+      option.setAttribute('role', 'option');
+      option.setAttribute('aria-selected', 'false');
+    });
+  };
 }
 
 // One tag as a link to its cards page, drawn as #name (the # from styles.css).
 const tagLink = (name, reading = null) => h('a', { class: 'tag', href: tagRoute(name), title: reading }, name);
 
-// The tag chips under the search box: the site's tags, then tags contributors made once they are
-// in accepted entries. Each opens the tag's cards page.
-function tagChips() {
-  const row = h('nav', { class: 'tags', 'aria-label': '標籤' }, TAGS.map((tag) => tagLink(tag.name, tag.tl)));
-  loadRows()
-    .then((rows) => row.append(...contributedTags(rows, TAG_NAMES).map((name) => tagLink(name))))
-    .catch(() => {});
-  return row;
-}
-
-// The page's search box; results open in the same popover as the word rows.
+// The top bar's search box, one for every page; results open in the same popover as the word rows.
 function searchBox() {
-  const input = h('input', { type: 'search', 'aria-label': '揣詞', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
-  const box = h('div', { class: 'search', role: 'search' }, icon('search'), input);
-  matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT, { isSearch: true });
+  // the blank placeholder only drives :placeholder-shown, which hides the 揤 / 揣詞 hint once
+  // something is typed (a placeholder cannot draw the key's box)
+  const input = h('input', { type: 'search', 'aria-label': '揣詞', placeholder: ' ', 'aria-keyshortcuts': '/', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
+  const hint = h('span', { class: 'search-hint', 'aria-hidden': 'true' }, '揤 ', h('kbd', {}, '/'), ' 揣詞');
+  const box = h('div', { class: 'search', role: 'search' }, h('div', { class: 'search-field' }, icon('search'), input, hint));
+  let render = () => {};
+  const { panel, results } = matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT, {
+    isSearch: true,
+    onRender: () => render(),
+  });
+  render = menuKeys(input, panel, results);
   return box;
 }
 
@@ -517,23 +559,78 @@ function renderSubmit() {
     // Phase 2: sign in through the Worker and POST the entries to its /submit endpoint.
   });
 
-  document.title = `貢獻詞 · ${SITE_TITLE}`;
-  view.replaceChildren(backToSearch(), hero('貢獻詞'), form);
+  document.title = `提交新詞 · ${SITE_TITLE}`;
+  view.replaceChildren(hero('提交新詞'), form);
   sync();
 }
 
 function renderSearch() {
   document.title = SITE_TITLE;
   view.replaceChildren(
-    hero(SITE_TITLE),
-    searchBox(),
-    h('p', { class: 'cta' }, h('a', { class: 'text-link', href: SUBMIT_ROUTE }, '貢獻詞', icon('chevron'))),
-    chipGroup('標籤', tagChips()),
-    chipGroup('貢獻者', contributorChips()),
+    // the slogan as the title's lead; the rest of the page is the tag bubbles
+    hero(SITE_TITLE, SLOGAN),
+    tagMap(loadTagMap, () => h('div', { class: 'tags' }, TAGS.map((tag) => tagLink(tag.name, tag.tl)))),
   );
 }
 
 const unique = (values) => [...new Set(values.filter((v) => v !== ''))];
+
+// How long a card button shows its check mark after copying.
+const COPIED_MS = 1500;
+// Screen readers do not reliably read a focused button's changed label; the page's status line
+// (index.html) says it aloud.
+const statusLine = document.getElementById('status');
+
+const setLabel = (button, label) => {
+  button.title = label;
+  button.setAttribute('aria-label', label);
+};
+
+// One icon button of a card's head. `run()` does its action and resolves to a done label, or to
+// nothing; with a label, the button shows a check mark and that label for COPIED_MS (a second
+// click restarts it), then its own icon and label again. Same size either way, so nothing moves.
+function cardAction(name, label, run) {
+  const button = h('button', { class: 'icon-button', type: 'button', title: label, 'aria-label': label }, icon(name));
+  let revert = null;
+  button.addEventListener('click', async () => {
+    const done = await run();
+    if (!done) return;
+    button.replaceChildren(icon('check'));
+    setLabel(button, done);
+    statusLine.textContent = done;
+    clearTimeout(revert);
+    revert = setTimeout(() => {
+      button.replaceChildren(icon(name));
+      setLabel(button, label);
+      statusLine.textContent = '';
+    }, COPIED_MS);
+  });
+  return button;
+}
+
+// Copies `text`; resolves to `doneLabel` once it is on the clipboard.
+const copyText = (text, doneLabel) =>
+  navigator.clipboard.writeText(text).then(
+    () => doneLabel,
+    (error) => console.warn('clipboard.write.failed', error.name),
+  );
+
+// A card's 複製詞目 / 分享連結 buttons (after kautian-mirror): copy "Hanji Tâi-lô"; share the
+// word page's link (`route`) through the system share sheet, or copy the link where there is none.
+function cardActions(row, route) {
+  return h(
+    'div',
+    { class: 'card-actions' },
+    cardAction('copy', '複製詞目', () => copyText([row.hanji, row.tl].filter(Boolean).join(' '), '已複製')),
+    cardAction('share', '分享連結', () => {
+      const url = `${location.origin}${location.pathname}${route}`;
+      if (!navigator.share) return copyText(url, '連結已複製');
+      navigator.share({ title: `${row.hanji || row.tl} · ${SITE_TITLE}`, url }).catch((error) => {
+        if (error.name !== 'AbortError') console.warn('share.failed', error.name);
+      });
+    }),
+  );
+}
 
 // One word card. Community rows merge their attestations (accents, meaning, example, note,
 // contributors); iTaigi rows have readings, tags and ITAIGI_CONTRIBUTOR. With `headword`
@@ -558,11 +655,16 @@ function wordCard(row, { headword }) {
       ? h('p', { class: 'card-credit', title: '貢獻者' }, h('span', { class: 'unseen' }, '貢獻者：'), contributorLinks(contributors))
       : null;
   const tagList = tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': '標籤' }, tags.map((name) => tagLink(name))) : null;
+  const readingLine = h('p', { class: 'card-readings' }, tlSpan(row), readings(row));
+  // the card's first line (the headword, or the readings on a word page) shares a row with the
+  // buttons, so a long word wraps before them instead of running under them
+  const route = wordRoute(row.hanji, row.tl);
+  const [first, second] = headword ? [h('a', { class: 'card-hanji', href: route }, row.hanji || row.tl), readingLine] : [readingLine, null];
   return h(
     'article',
     { class: 'word-card' },
-    headword ? h('a', { class: 'card-hanji', href: wordRoute(row.hanji, row.tl) }, row.hanji || row.tl) : null,
-    h('p', { class: 'card-readings' }, h('span', { class: 'result-tl' }, row.tl), readings(row)),
+    h('div', { class: 'card-head' }, first, cardActions(row, route)),
+    second,
     details.length > 0 ? h('dl', { class: 'card-details' }, details.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])) : null,
     tagList || credit ? h('footer', { class: 'card-foot' }, tagList, credit) : null,
   );
@@ -617,14 +719,12 @@ function withWords(list, fill) {
     .catch(() => list.replaceWith(h('p', { class: 'empty' }, LOAD_ERROR)));
 }
 
-const backToSearch = () => h('a', { class: 'back-link', href: '#/' }, icon('back'), '揣詞');
-
 // A tag's page: every word carrying it, as cards.
 function renderTag(tag) {
   document.title = `${tag} · ${SITE_TITLE}`;
   const reading = TAGS.find((listed) => listed.name === tag)?.tl;
   const list = h('div', { class: 'cards' });
-  view.replaceChildren(backToSearch(), hero(tag, reading), list);
+  view.replaceChildren(hero(tag, reading, { isReading: true }), list);
   withWords(list, (rows, itaigi) => cardList(list, wordsWithTag(rows, itaigi, tag), { headword: true }));
 }
 
@@ -632,7 +732,7 @@ function renderTag(tag) {
 function renderContributor(name) {
   document.title = `${name} · ${SITE_TITLE}`;
   const list = h('div', { class: 'cards' });
-  view.replaceChildren(backToSearch(), hero(name), list);
+  view.replaceChildren(hero(name), list);
   withWords(list, (rows, itaigi) => cardList(list, wordsByContributor(rows, itaigi, name), { headword: true }));
 }
 
@@ -640,28 +740,112 @@ function renderContributor(name) {
 function renderWord(hanji, tl) {
   document.title = `${hanji || tl} · ${SITE_TITLE}`;
   const list = h('div', { class: 'cards cards-word' });
-  view.replaceChildren(backToSearch(), hero(hanji || tl), list);
+  view.replaceChildren(hero(hanji || tl), list);
   withWords(list, (rows, itaigi) => cardList(list, wordsSpelled(rows, itaigi, hanji, tl), { headword: false }));
 }
 
-// Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit,
-// cards at #/tag/<name>, #/contributor/<name> and #/word/<hanji>/<tl>.
+// The 說明 page: what the dictionary collects, a word's way from the form into 台語齒盤 (a
+// four-step strip drawn with the site's own card surface), and the CC0 terms.
+function renderAbout() {
+  document.title = `說明 · ${SITE_TITLE}`;
+  const section = (title, ...body) => h('section', { class: 'about-section' }, h('h2', {}, title), h('div', { class: 'about-body' }, ...body));
+  const kind = (name, text) => [h('dt', {}, name), h('dd', {}, text)];
+  // 雞 is ke in 漳 speech and kue in 泉 speech; 教典 lists both readings of 雞卵
+  const accentSample = h(
+    'figure',
+    { class: 'accent-sample' },
+    h('p', { class: 'accent-word' }, '雞卵'),
+    h('dl', {}, kind('偏漳腔', 'ke-nn̄g'), kind('偏泉腔', 'kue-nn̄g')),
+  );
+  const step = (name, text) => h('li', {}, h('strong', {}, name), h('span', {}, text));
+  view.replaceChildren(
+    hero('說明'),
+    section(
+      '這是啥物',
+      h('p', {}, '台語齒盤社群辭典是予逐家做伙收台語詞的所在。逐个所在的人講話無啥仝款，有的詞辭典猶未收，嘛有新的詞一直出世。'),
+      h('p', {}, '收錄的詞上尾會匯入台語齒盤，予用台語寫字的人，揣會著家己平常咧講的詞。'),
+    ),
+    section(
+      '收啥物詞',
+      h(
+        'dl',
+        { class: 'about-kinds' },
+        kind('腔口差', '仝一个詞，無仝所在有無仝的講法。'),
+        kind('新的詞', '這馬才出現的詞，像「手機仔」。'),
+        kind('辭典猶未收的詞', '逐家平常咧講，毋過辭典揣無的詞。'),
+      ),
+      accentSample,
+    ),
+    section(
+      '詞的路途',
+      h(
+        'ol',
+        { class: 'flow' },
+        step('提交新詞', '用 GitHub 登入，寫詞、台羅佮腔口。'),
+        step('檢查', '網站先檢查格式，管理的人閣一个一个看過。'),
+        step('社群辭典', '收錄的詞，逐家攏會當揣。'),
+        step('台語齒盤', '上尾匯入台語齒盤，寫字的時陣就揣會著。'),
+      ),
+    ),
+    section(
+      '授權',
+      h(
+        'p',
+        {},
+        '提交的詞用 ',
+        h('a', { href: 'https://creativecommons.org/publicdomain/zero/1.0/deed.zh-hant', rel: 'noopener' }, 'CC0 1.0'),
+        ' 公開，任何人攏會當自由使用。',
+      ),
+    ),
+  );
+}
+
+const topbarLinks = document.querySelectorAll('.topbar-links a');
+
+// Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit, the
+// 說明 page at #/about, cards at #/tag/<name>, #/contributor/<name> and #/word/<hanji>/<tl>. The top
+// bar marks the page it links to (card pages are none of them).
 function route() {
   const target = parseRoute(location.hash);
+  // the homepage widens the column for the bubble map (styles.css main[data-page="search"])
+  view.dataset.page = target.page;
+  for (const link of topbarLinks) {
+    if (link.dataset.page === target.page) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  }
   if (target.page === 'submit') renderSubmit();
+  else if (target.page === 'about') renderAbout();
   else if (target.page === 'tag') renderTag(target.tag);
   else if (target.page === 'contributor') renderContributor(target.name);
   else if (target.page === 'word') renderWord(target.hanji, target.tl);
   else renderSearch();
 }
 
+// the search box sits in the top bar, before the page links
+const search = searchBox();
+const searchInput = search.querySelector('input');
+document.querySelector('.topbar-links').before(search);
+
+// "/" anywhere outside a text field jumps to the search box (after kautian-mirror)
+document.addEventListener('keydown', (event) => {
+  if (event.key !== '/' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.target.closest('input, textarea, select, [contenteditable]')) return;
+  event.preventDefault();
+  searchInput.focus();
+});
+
 initSettings(document.getElementById('settings'));
-initSidebar(document.querySelector('.sidebar-toggle'), document.getElementById('sidebar'));
+initSidebar(document.querySelectorAll('button[aria-controls="sidebar"]'), document.getElementById('sidebar'));
 
 // The focused link is replaced along with the page, so focus moves to the new heading instead of
 // falling back to <body>, keeping keyboard and screen-reader users in place.
 
 window.addEventListener('hashchange', () => {
+  // a new page starts with an empty search box and its menu closed
+  if (searchInput.value !== '') {
+    searchInput.value = '';
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+  }
   route();
   window.scrollTo(0, 0);
   const heading = view.querySelector('h1');

@@ -12,10 +12,11 @@ import {
   formToRaw,
   indexItaigi,
   ITAIGI_CONTRIBUTOR,
+  packCircles,
   searchItaigi,
   parseRoute,
-  rankContributors,
   searchRows,
+  tagCircles,
   tagRoute,
   wordRoute,
   wordsByContributor,
@@ -147,6 +148,7 @@ test('searchItaigi: hanji, each variant reading; exact, then prefix, then the re
 
 test('routes: tag and word pages round-trip, anything else is search', () => {
   assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
+  assert.deepEqual(parseRoute('#/about'), { page: 'about' });
   assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });
   assert.deepEqual(parseRoute(contributorRoute('阿明')), { page: 'contributor', name: '阿明' });
   // a "/" inside a reading stays inside the tl part
@@ -156,7 +158,28 @@ test('routes: tag and word pages round-trip, anything else is search', () => {
   for (const hash of ['', '#/', '#/tag/', '#/tag/%E0', '#/word/x', '#/nothing']) assert.deepEqual(parseRoute(hash), { page: 'search' });
 });
 
-test('rankContributors: most words first, ties in first-seen order, a name counted once per word', () => {
-  assert.deepEqual(rankContributors([['甲', '乙'], ['乙'], ['丙', '丙'], ['丙']]), ['乙', '丙', '甲']);
-  assert.deepEqual(rankContributors([]), []);
+test('packCircles: no two circles overlap, the largest sits at the centre, same input → same layout', () => {
+  const radii = [12, 40, 25, 25, 8, 30, 18, 22, 15, 10, 35, 20];
+  const gap = 4;
+  const centres = packCircles(radii, { aspect: 2, gap });
+  assert.equal(centres.length, radii.length);
+  for (let a = 0; a < radii.length; a += 1) {
+    for (let b = a + 1; b < radii.length; b += 1) {
+      const d = Math.hypot(centres[a].x - centres[b].x, centres[a].y - centres[b].y);
+      assert.ok(d >= radii[a] + radii[b] + gap - 1e-6, `circles ${a} and ${b} overlap`);
+    }
+  }
+  assert.deepEqual(centres[1], { x: 0, y: 0 });
+  assert.deepEqual(packCircles(radii, { aspect: 2, gap }), centres);
+});
+
+test('tagCircles: area follows the count above the minimum radius, the box holds every circle', () => {
+  const { box, circles } = tagCircles([400, 100, 1], 900, 450, { minRadius: 20 });
+  // 4× the words → 2× the radius
+  assert.ok(Math.abs(circles[0].r / circles[1].r - 2) < 1e-9);
+  // trace: scale = sqrt(0.55·900·450 / (π·501)) ≈ 11.9, so 1 word → r ≈ 11.9, raised to the 20 floor
+  assert.equal(circles[2].r, 20);
+  for (const { x, y, r } of circles) {
+    assert.ok(x - r >= box.left - 1e-9 && x + r <= box.right + 1e-9 && y - r >= box.top - 1e-9 && y + r <= box.bottom + 1e-9);
+  }
 });

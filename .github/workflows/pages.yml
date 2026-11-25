@@ -26,6 +26,8 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
+      # the D3 modules build-site copies into dist/vendor/
+      - run: npm ci
       - run: npm test
       - run: node scripts/validate.js
       - run: node scripts/build-site.js

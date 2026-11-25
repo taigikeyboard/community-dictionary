@@ -100,6 +100,70 @@ export function wordsSpelled(rows, itaigi, hanji, tl) {
   return { community: rows.filter(same), itaigi: itaigi.filter(same) };
 }
 
+// Centres for circles of the given radii, packed around (0, 0), largest first: each circle goes
+// where it touches two placed circles (or, second, beside the first) and lies nearest the centre
+// on an ellipse `aspect` times as wide as tall, so the pack takes the shape of its box. Circles stay
+// `gap` apart. Returns { x, y } in the order of `radii`.
+export function packCircles(radii, { aspect = 1, gap = 0 } = {}) {
+  const order = radii.map((_, i) => i).sort((a, b) => radii[b] - radii[a] || a - b);
+  const placed = [];
+  const fits = (x, y, r) => placed.every((c) => Math.hypot(x - c.x, y - c.y) >= c.r + r + gap - 1e-6);
+  const distance = (x, y) => (x / aspect) ** 2 + y ** 2;
+  for (const i of order) {
+    const r = radii[i];
+    const reach = r + gap;
+    const candidates = [];
+    if (placed.length === 0) candidates.push({ x: 0, y: 0 });
+    if (placed.length === 1) candidates.push({ x: placed[0].r + reach, y: 0 }, { x: -(placed[0].r + reach), y: 0 });
+    for (let a = 0; a < placed.length; a += 1) {
+      for (let b = a + 1; b < placed.length; b += 1) candidates.push(...touching(placed[a], placed[b], reach));
+    }
+    let best = null;
+    for (const p of candidates) if (fits(p.x, p.y, r) && (!best || distance(p.x, p.y) < distance(best.x, best.y))) best = p;
+    placed.push({ ...best, r, i });
+  }
+  const centres = [];
+  for (const { x, y, i } of placed) centres[i] = { x, y };
+  return centres;
+}
+
+// The two centres at distance a.r + reach from a and b.r + reach from b (none when they cannot meet).
+function touching(a, b, reach) {
+  const da = a.r + reach;
+  const db = b.r + reach;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const d = Math.hypot(dx, dy);
+  if (d === 0 || d > da + db || d < Math.abs(da - db)) return [];
+  const along = (da * da - db * db + d * d) / (2 * d);
+  const across = Math.sqrt(Math.max(0, da * da - along * along));
+  const mx = a.x + (along * dx) / d;
+  const my = a.y + (along * dy) / d;
+  return [
+    { x: mx + (across * dy) / d, y: my - (across * dx) / d },
+    { x: mx - (across * dy) / d, y: my + (across * dx) / d },
+  ];
+}
+
+// The homepage's tag circles for a width × height box (px): each circle's area follows its count
+// (radius at least minRadius, so a small tag still holds its name), the circles fill about `fill`
+// of the box and pack into its shape (packCircles). Returns the pack's bounding box and, per
+// count, { r, x, y }.
+export function tagCircles(counts, width, height, { fill = 0.55, gap = 6, minRadius = 22 } = {}) {
+  const total = counts.reduce((sum, count) => sum + count, 0) || 1;
+  const scale = Math.sqrt((fill * width * height) / (Math.PI * total));
+  const radii = counts.map((count) => Math.max(minRadius, scale * Math.sqrt(count)));
+  const centres = packCircles(radii, { aspect: width / height, gap });
+  const circles = radii.map((r, i) => ({ r, ...centres[i] }));
+  const box = {
+    left: Math.min(...circles.map((c) => c.x - c.r)),
+    top: Math.min(...circles.map((c) => c.y - c.r)),
+    right: Math.max(...circles.map((c) => c.x + c.r)),
+    bottom: Math.max(...circles.map((c) => c.y + c.r)),
+  };
+  return { box, circles };
+}
+
 // Hash routes: #/ search, #/submit the form, #/tag/<name> a tag's cards, #/contributor/<name> a
 // contributor's cards, #/word/<hanji>/<tl> one word's cards. Parts are URI-encoded, so a "/" inside a reading never splits the route.
 export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
@@ -109,6 +173,7 @@ export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${e
 // location.hash → { page, ... }; anything unknown or undecodable is the search page.
 export function parseRoute(hash) {
   if (hash === '#/submit') return { page: 'submit' };
+  if (hash === '#/about') return { page: 'about' };
   const parts = hash.split('/');
   try {
     if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {
@@ -124,21 +189,6 @@ export function parseRoute(hash) {
     // a malformed %-escape: fall through to search
   }
   return { page: 'search' };
-}
-
-// Tags on community entries that the site's own list lacks, in order of first appearance.
-// Contributor names, most words first (ties keep first-seen order); each element of `lists` is
-// one word's contributors. build-site ranks the homepage's contributor chips with it.
-export function rankContributors(lists) {
-  const count = new Map();
-  for (const names of lists) for (const name of new Set(names)) count.set(name, (count.get(name) ?? 0) + 1);
-  return [...count.keys()].sort((a, b) => count.get(b) - count.get(a));
-}
-
-export function contributedTags(rows, listed) {
-  const found = new Set();
-  for (const row of rows) for (const a of row.attestations) for (const tag of a.tags) if (!listed.includes(tag)) found.add(tag);
-  return [...found];
 }
 
 const pairKey = (hanji, tl) => `${normalizeHanji(hanji)}\n${normalizeTl(tl)}`;

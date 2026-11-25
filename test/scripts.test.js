@@ -12,6 +12,7 @@ import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/import-itaigi.j
 import { buildSearchRows, parseItaigi } from '../scripts/itaigi.js';
 import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from '../scripts/romanize.js';
+import { buildTagMap, sampleWords } from '../scripts/tag-map.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
 
@@ -259,4 +260,32 @@ test('data/itaigi.json: every row is [hanji, tl, [listed tag]], no contributor n
     assert.ok(typeof hanji === 'string' && /[A-Za-z]/.test(tl), JSON.stringify(row));
     for (const tag of tags) assert.ok(TAG_NAMES.includes(tag), `${hanji} ${tl}: ${tag}`);
   }
+});
+
+test('tag-map sampleWords: 2 to 4 characters, no spaces, one per Hanji, a stable pick', () => {
+  const rows = [
+    { hanji: '食', tl: 'tsia̍h' },
+    { hanji: '食飯', tl: 'tsia̍h-pn̄g' },
+    { hanji: '食飯', tl: 'tsia̍h-png' },
+    { hanji: '番薯葉仔', tl: 'han-tsî-hio̍h-á' },
+    { hanji: '食飽未閣' + '啊', tl: 'x' },
+    { hanji: '卵 包', tl: 'nn̄g pau' },
+  ];
+  // trace: 食 too short, 食飽未閣啊 too long, 卵 包 has a space, the second 食飯 a repeat
+  assert.deepEqual(sampleWords(rows).map(([hanji]) => hanji).sort(), ['番薯葉仔', '食飯'].sort());
+  assert.deepEqual(sampleWords(rows), sampleWords([...rows].reverse().filter((row) => row.tl !== 'tsia̍h-png')));
+  assert.equal(sampleWords(rows, 1).length, 1);
+});
+
+test('tag-map buildTagMap: counts and samples are the words of the tag page', () => {
+  const index = TAG_NAMES.indexOf('食食');
+  const itaigi = [
+    ['食飯', 'tsia̍h-pn̄g', '', '', [index]],
+    ['米粉', 'bí-hún', '', '', [index, 0]],
+    ['跤頭趺', 'kha-thâu-u', '', '', [0]],
+  ];
+  const community = [{ hanji: '鹹粿', tl: 'kiâm-kué', attestations: [{ tags: ['食食'] }] }];
+  const food = buildTagMap(community, itaigi).find((tag) => tag.name === '食食');
+  assert.equal(food.count, 3);
+  assert.deepEqual(food.words.map(([hanji]) => hanji).sort(), ['米粉', '食飯', '鹹粿'].sort());
 });
