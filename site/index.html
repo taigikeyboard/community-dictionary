@@ -16,8 +16,8 @@
     // apply the display settings and sidebar state before first paint (site/settings.js, site/sidebar.js)
     try {
       const root = document.documentElement;
-      // open unless the reader collapsed it
-      if (JSON.parse(localStorage.getItem("sidebar")) !== "closed") root.dataset.sidebar = "open";
+      // collapsed unless the reader opened it
+      if (JSON.parse(localStorage.getItem("sidebar")) === "open") root.dataset.sidebar = "open";
       const settings = JSON.parse(localStorage.getItem("settings")) || {};
       for (const [name, value] of Object.entries(settings)) {
         if (typeof value === "string") root.dataset[name] = value;

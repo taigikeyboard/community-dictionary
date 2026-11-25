@@ -1,6 +1,6 @@
 // Sidebar toggles, after kautian-mirror's: wide screens slide the docked sidebar in and out
-// (open by default; <html data-sidebar="open">, a collapse remembered; index.html restores it
-// before first paint); narrow screens open it as a popover drawer instead. `buttons` are every
+// (collapsed by default; <html data-sidebar="open">, remembered; index.html restores it before
+// first paint); narrow screens open it as a popover drawer instead. `buttons` are every
 // control for it (the » strip / phone button, the « bar in the sidebar).
 
 const STORAGE_KEY = 'sidebar';

@@ -7,8 +7,10 @@ import { tagCircles, tagRoute, wordRoute } from './logic.js';
 // circles are bodies in a d3-force simulation: hovering one swells it and it shoulders its
 // neighbours aside, which jostle and settle; leaving it lets them drift back. Clicking a tag (or
 // Enter / Space on it) zooms in until it fills the box, and its words can be read and opened; a
-// click outside it, Escape or 全部標籤 zooms back out (d3-interpolate's interpolateZoom). Readers
-// who ask for reduced motion get the same map without the movement. The box keeps its size
+// click outside it, Escape or 全部標籤 zooms back out (d3-interpolate's interpolateZoom). Each time
+// the homepage opens, the bubbles enter: drawn in towards the centre and unseen, they ease out to
+// their places, swelling into view one after another, largest first. Readers who ask for reduced motion
+// get the same map without the movement. The box keeps its size
 // (styles.css), so nothing around it moves.
 
 // loaded on the first draw, so other pages never fetch them; index.html's import map names them
@@ -27,6 +29,11 @@ const WIDE_WORDS = 32;
 const PHONE_WORDS = 24;
 // how much a hovered tag swells
 const HOVER_GROWTH = 1.25;
+// the entrance: how drawn in the bubbles start (share of their final distance from the centre; near
+// 1, so the forces ease them out instead of flinging them) and the pause between one bubble
+// appearing and the next
+const ENTRANCE_SPREAD = 0.85;
+const ENTRANCE_STAGGER_MS = 35;
 // px between circles
 const GAP = 6;
 
@@ -60,7 +67,8 @@ export function tagMap(loadTags, fallback) {
         if (width === 0 || height === 0 || `${width}x${height}` === drawn) return;
         drawn = `${width}x${height}`;
         current?.stop();
-        current = draw(d3, tags, box, bar, more, width, height);
+        // the entrance plays on the first draw only, not when a resize redraws the map
+        current = draw(d3, tags, box, bar, more, width, height, { entrance: current === null });
       });
       observer.observe(box);
       back.addEventListener('click', () => current?.zoomOut({ refocus: true }));
@@ -72,8 +80,9 @@ export function tagMap(loadTags, fallback) {
   return section;
 }
 
-// Draws the map for a width × height box and sets it moving; returns { zoomOut, stop }.
-function draw(d3, tags, box, bar, more, width, height) {
+// Draws the map for a width × height box and sets it moving (with the entrance when `entrance`);
+// returns { zoomOut, stop }.
+function draw(d3, tags, box, bar, more, width, height, { entrance = false } = {}) {
   const aspect = width / height;
   const wordCount = width < 600 ? PHONE_WORDS : WIDE_WORDS;
   // start from a tight pack, then let the forces settle it before the first paint
@@ -83,7 +92,8 @@ function draw(d3, tags, box, bar, more, width, height) {
     height,
     { gap: GAP },
   );
-  const nodes = circles.map(({ r, x, y }, index) => ({ index, r, x, y, grow: 1, scale: 1 }));
+  // appearAt: when a node may start swelling into view (performance.now() time; 0 = already shown)
+  const nodes = circles.map(({ r, x, y }, index) => ({ index, r, x, y, grow: 1, scale: 1, appearAt: 0 }));
   // forceCollide reads the radii once; swell() hands it the accessor again after a size changes
   const reach = (node) => node.r * node.grow + GAP;
   const collide = d3.forceCollide(reach).strength(0.8).iterations(2);
@@ -154,15 +164,30 @@ function draw(d3, tags, box, bar, more, width, height) {
   map.append(...bubbles.map((b) => b.group));
   box.replaceChildren(map);
 
-  // each tick: ease every body towards its target size, then place it
+  // each tick: ease every body towards its target size (none before it is due to appear), then
+  // place it
   const place = () => {
+    const now = performance.now();
     for (const { node, group, body } of bubbles) {
-      node.scale += (node.grow - node.scale) * 0.25;
+      const target = now < node.appearAt ? 0 : node.grow;
+      node.scale += (target - node.scale) * 0.2;
       group.setAttribute('transform', `translate(${node.x} ${node.y})`);
       body.setAttribute('transform', `scale(${node.scale})`);
     }
   };
   simulation.on('tick', place);
+  if (entrance && !reducedMotion.matches) {
+    // start drawn in towards the centre and unseen; a gentle reheat eases the bodies back out while
+    // they swell in, largest first
+    const start = performance.now();
+    [...nodes].sort((a, b) => b.r - a.r).forEach((node, rank) => {
+      node.x *= ENTRANCE_SPREAD;
+      node.y *= ENTRANCE_SPREAD;
+      node.scale = 0;
+      node.appearAt = start + rank * ENTRANCE_STAGGER_MS;
+    });
+    simulation.alpha(0.4).restart();
+  }
   place();
 
   let view = rootView;

@@ -29,8 +29,9 @@ import { TAG_NAMES, TAGS } from './tags.js';
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
 const SITE_TITLE = '台語齒盤社群辭典';
-// also the page's description and share text in index.html
-const SLOGAN = '揣無詞？來社群辭典貢獻！';
+// the homepage's lead under its title (index.html's description and share text keep the slogan
+// 揣無詞？來社群辭典貢獻！)
+const SUBTITLE = '收錄 ê 台語詞會入去台語齒盤';
 
 // a page's title, and a lead line under it (a tag's Tâi-lô, `isReading`, follows the 台羅 switch)
 const hero = (title, lead, { isReading = false } = {}) =>
@@ -568,7 +569,7 @@ function renderSearch() {
   document.title = SITE_TITLE;
   view.replaceChildren(
     // the slogan as the title's lead; the rest of the page is the tag bubbles
-    hero(SITE_TITLE, SLOGAN),
+    hero(SITE_TITLE, SUBTITLE),
     tagMap(loadTagMap, () => h('div', { class: 'tags' }, TAGS.map((tag) => tagLink(tag.name, tag.tl)))),
   );
 }
