@@ -270,12 +270,60 @@ function choiceGroup(name, label, content) {
   return h('fieldset', { class: 'field', id: `f-${name}`, 'aria-describedby': `e-${name}` }, h('legend', {}, label), content, errorSlot(name));
 }
 
-// 腔口: one pill per accent, full names, 其他 last as lib/entry.js lists them.
-const accentGroup = () => choiceGroup('accents', '腔口', h('div', { class: 'pills' }, ACCENTS.map((a) => pill('accents', a, a))));
-
 // A key pressed while an IME is composing (or the Enter that commits a candidate in Safari, which
 // reports keyCode 229 with isComposing already false) belongs to the IME, not the form.
 const imeKey = (event) => event.isComposing || event.keyCode === 229;
+
+// 腔口: one pill per accent, full names, 其他 last as lib/entry.js lists them. Ticking 其他 opens
+// the same floating input as the tags' ＋ (required with 其他 by lib/entry.js, any words, not only a place name); what is typed shows
+// on the pill as 其他：… and goes in `place`. Unticking 其他 clears it.
+function accentGroup() {
+  const pills = h('div', { class: 'pills' }, ACCENTS.filter((a) => a !== ACCENT_OTHER).map((a) => pill('accents', a, a)));
+  const other = pill('accents', ACCENT_OTHER, ACCENT_OTHER);
+  const box = other.querySelector('input');
+  const text = other.querySelector('span');
+  const value = h('input', { type: 'hidden', name: 'place', value: '' });
+  const custom = h('input', { type: 'text', id: 'f-place', class: 'pill-input', 'aria-label': '其他腔口', 'aria-describedby': 'e-place', autocomplete: 'off', hidden: true });
+  const slot = h('span', { class: 'tag-add' }, other, custom, value);
+  pills.append(slot);
+  const show = () => {
+    text.textContent = value.value ? `${ACCENT_OTHER}：${value.value}` : ACCENT_OTHER;
+  };
+  // an 其他 near the right edge opens its input leftward, so it stays inside the column
+  const editing = (on) => {
+    custom.hidden = !on;
+    if (!on) return;
+    custom.classList.remove('align-end');
+    custom.classList.toggle('align-end', slot.offsetLeft + custom.offsetWidth > pills.clientWidth);
+    custom.value = value.value;
+    custom.focus();
+  };
+  const commit = () => {
+    value.value = custom.value.normalize('NFC').trim();
+    show();
+    editing(false);
+  };
+  box.addEventListener('change', () => {
+    if (box.checked) return editing(true);
+    value.value = '';
+    show();
+    editing(false);
+  });
+  custom.addEventListener('keydown', (event) => {
+    if (imeKey(event)) return;
+    if (event.key === 'Escape') {
+      editing(false);
+      box.focus();
+    } else if (event.key === 'Enter') {
+      // Enter keeps what is typed instead of submitting the form
+      event.preventDefault();
+      commit();
+      box.focus();
+    }
+  });
+  custom.addEventListener('blur', () => !custom.hidden && commit());
+  return choiceGroup('accents', '腔口', h('div', {}, pills, errorSlot('place')));
+}
 
 // 標籤: the site's tags as pills, several may be picked, and a ＋ pill after the last one. ＋ opens
 // an input floating under it, so opening it never reflows the pills; an added tag becomes one more
@@ -531,17 +579,11 @@ function renderSubmit() {
     words.section,
     field('meaning', '意思', textInput('meaning')),
     field('example', '例句', textInput('example')),
-    h('div', { class: 'form' }, accentGroup(), h('div', { 'data-for-accent': true, hidden: true }, field('place', '所在', textInput('place')))),
+    accentGroup(),
     tagGroup(),
     field('note', '說明', textInput('note', { multiline: true })),
     h('div', { class: 'actions' }, submit, notice),
   );
-
-  const sync = () => {
-    const { accents } = readShared(form);
-    form.querySelector('[data-for-accent]').hidden = !accents.includes(ACCENT_OTHER);
-  };
-  form.addEventListener('change', sync);
 
   let confirmedKeys = null;
   form.addEventListener('submit', async (event) => {

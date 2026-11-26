@@ -282,7 +282,7 @@ export const FIELD_LABELS = Object.freeze({
   tl: '台羅',
   accents: '腔口',
   tags: '標籤',
-  place: '所在',
+  place: '其他腔口',
   meaning: '意思',
   example: '例句',
   note: '說明',
@@ -299,7 +299,7 @@ const MESSAGE_RULES = [
   [/: only Latin letters/, () => '干焦會當用台羅字母、調符、數字、空格佮「-」'],
   [/: must contain a Han character, kana or a letter$/, () => '愛有漢字、假名抑是字母'],
   [/: must contain a letter$/, () => '愛有字母'],
-  [/: only with accent /, () => '揀「其他」腔口才需要填所在'],
+  [/: only with accent /, () => '揀「其他」腔口才需要填'],
   [/: contains a control character/, () => '有袂當用 ê 特殊字元'],
   [/: unknown /, () => '選項無效'],
 ];
