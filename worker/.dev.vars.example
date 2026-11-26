@@ -1,0 +1,10 @@
+# Copy to .dev.vars for `npm run dev` (wrangler dev). Never commit .dev.vars.
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+# PKCS#8 PEM on one line with \n escapes: openssl pkcs8 -topk8 -nocrypt -in app.pem | awk 'NF {printf "%s\\n", $0}'
+GITHUB_APP_PRIVATE_KEY=
+# Any long random string: openssl rand -base64 48
+SESSION_KEY=
+# Local site preview
+SITE_ORIGINS=http://127.0.0.1:8000
+SITE_URL=http://127.0.0.1:8000/

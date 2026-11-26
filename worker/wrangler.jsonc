@@ -1,0 +1,23 @@
+// Submission Worker (docs/roadmap.md § Phase 2). Secrets, set with `wrangler secret put` in
+// Phase 4 and in .dev.vars for `wrangler dev`: GITHUB_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY
+// (PKCS#8 PEM), SESSION_KEY.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "community-dictionary",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-23",
+  "workers_dev": false,
+  "routes": [{ "pattern": "dict-api.taigikeyboard.tw", "custom_domain": true }],
+  "observability": { "enabled": true },
+  "vars": {
+    // The GitHub App's client ID, filled in once the App exists (Phase 4).
+    "GITHUB_CLIENT_ID": "",
+    "GITHUB_REPO": "taigikeyboard/community-dictionary",
+    "BASE_BRANCH": "main",
+    // Pages that may call the Worker (CORS + Origin check) and where sign-in returns.
+    "SITE_ORIGINS": "https://taigikeyboard.tw",
+    "SITE_URL": "https://taigikeyboard.tw/community-dictionary/",
+    "CAP_PER_CONTRIBUTOR": "5",
+    "CAP_TOTAL": "100"
+  }
+}

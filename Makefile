@@ -1,4 +1,4 @@
-.PHONY: help setup test validate compile build preview ci
+.PHONY: help setup test validate compile build preview ci worker-setup worker-dev
 
 ARGS ?=
 
@@ -25,3 +25,9 @@ preview: build ## Build, then serve dist/ at http://127.0.0.1:8000
 	python3 -m http.server 8000 --bind 127.0.0.1 -d dist
 
 ci: test validate build ## Same gates as the Pages workflow
+
+worker-setup: ## Install wrangler for the submission Worker
+	npm ci --prefix worker
+
+worker-dev: ## Run the Worker locally at http://127.0.0.1:8787 (needs worker/.dev.vars)
+	npm run dev --prefix worker

@@ -1,6 +1,6 @@
 # Community dictionary — roadmap
 
-> **Status**: 2026-11-20 — Phase 1 built; Phase 3 first slice live (search, form with validation, explanation, Pages deploy); Phase 2 and the rest of Phase 3 pending.
+> **Status**: 2026-11-26 — Phase 1 built; Phase 2 Worker built and tested locally, not deployed; Phase 3 live except sign-in and submit (the form's button stays disabled).
 
 ## Goal
 
@@ -53,7 +53,7 @@ form → POST /submit    ───────────────▶    val
 
 - **Sign-in** uses the GitHub App's user authorization (web application flow with `state` and PKCE `S256`). A GitHub App user token carries no scopes, so the consent screen only asks to verify the account. The token exchange needs the client secret, which is why a Worker exists at all. The Worker reads `id` and `login` once and discards the user token; it keeps no refresh token.
 - **Writing** uses the App's installation token, never the user's token: create a branch ref, then `PUT /repos/{owner}/{repo}/contents/{path}` with `branch`, `author` (the contributor's noreply identity) and `committer` (the App), then open the pull request. The App needs `contents: write` and `pull_requests: write` on this repository and nothing else.
-- **Session** is a short-lived value signed by the Worker (HMAC). Cookie versus bearer header is decided in Phase 2; either way `/submit` checks the `Origin` header.
+- **Session** is a short-lived value signed by the Worker (HMAC), carried in an HttpOnly cookie (maintainer 2026-11-26, over a bearer token in `localStorage`): the Worker's subdomain and the site are the same site, so `SameSite=Lax` lets the site's credentialed `fetch` send it while page scripts cannot read it. Every POST checks the `Origin` header.
 - **No database.** Rate limits are derived from GitHub state: a cap on open submission pull requests per contributor and in total, counted by branch prefix.
 - **Secrets** (Worker only): App private key (PKCS#8 for WebCrypto), client secret, session signing key.
 
@@ -126,7 +126,7 @@ One pull request per phase.
 |---|---|---|
 | 0 | This roadmap, README, licences | In progress |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
-| 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Pending |
+| 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Built 2026-11-26, not deployed (deploy with Phase 4) |
 | 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — first slice live; sign-in, submit, "My submissions" and "submitted" wait for Phase 2 |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Pending |
 
@@ -163,6 +163,21 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
 
+Built (2026-11-26; maintainer: build and test locally now, deploy together with the GitHub App in Phase 4). Code in `worker/` (its own `package.json` with wrangler, so the Pages build does not install it); tests in `test/worker.test.js` run the Worker against an in-memory GitHub under `npm test`. Verified against GitHub Docs (web application flow with PKCE, App JWT, installation tokens) and Cloudflare Docs (`routes[].custom_domain`) on 2026-11-26.
+
+| Choice | Value |
+|---|---|
+| Host | `dict-api.taigikeyboard.tw` as a Workers Custom Domain in `worker/wrangler.jsonc` (the zone is on Cloudflare); `workers_dev` off |
+| Routes | `GET /login?return=#/…` → GitHub; `GET /callback` → back to `SITE_URL` + that hash route (anything else → `#/`); `GET /session` → `{ id, login }` or 401; `POST /logout`; `POST /submit` (new: `{ words: [{ hanji, tl }], accents, tags, place, meaning, example, note }`; edit: the same fields for one word plus `path`); `POST /withdraw { path }` |
+| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_owner`, `not_found`, `unchanged`, `already_withdrawn`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
+| Session | 24 hours; the OAuth `state` + PKCE verifier sit in a signed 10-minute cookie scoped to `/callback`; the GitHub user token is used for `/user` only and never stored |
+| Installation token | App JWT (`iss` = client ID) → `GET /repos/{repo}/installation` → token limited to this repository and `contents` + `pull_requests: write`; cached per isolate until five minutes before expiry |
+| Duplicate check | the base branch's recursive tree (a truncated tree fails closed) plus the files of the contributor's open submission pull requests |
+| Branch name | `submit/<id>/<key>`; `-2`, `-3`… when an open pull request already uses it; a leftover branch of a closed pull request is reset to the base tip |
+| Edit | an entry in the contributor's open submission is read from and edited on that branch (no new pull request, no cap check); otherwise from the base branch in a new pull request. An unchanged pair keeps its file, directory and `contributor`; a changed pair moves to `entries/<current login>/` |
+| Pull request body | `Submitted by @<login>` (so GitHub notifies them of the review), the Hanji / Tâi-lô list, and the CC0 1.0 line (D4) |
+| Local run | `make worker-dev` (wrangler dev on 127.0.0.1:8787, `--local-upstream` so the callback URL stays local); secrets in `worker/.dev.vars` from `worker/.dev.vars.example` |
+
 ### Phase 3 — site
 
 - Static; style tokens taken from kautian-mirror. Built (2026-11-20) without a bundler: native ES modules, `dist/` mirrors the repo so `site/*.js` imports `../lib/entry.js` directly (`npm run build`). The Iansui font is loaded from kautian-mirror on the same origin (`/kautian-mirror/fonts/`) instead of committing a 2.7 MB copy; without it the system font is used.
@@ -176,7 +191,7 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 
 ### Phase 4 — maintainer setup
 
-1. Create the GitHub App (callback URL = the Worker's `/callback`; permissions `contents: write`, `pull_requests: write`; install on this repository only).
+1. Create the GitHub App (callback URL = `https://dict-api.taigikeyboard.tw/callback`; permissions `contents: write`, `pull_requests: write`; install on this repository only), and put its client ID in `worker/wrangler.jsonc` `GITHUB_CLIENT_ID`.
    Set the repository variable `SUBMIT_APP_LOGIN` to its bot login (`<app-slug>[bot]`) so CI treats its pull requests as submissions.
 2. Convert the private key to PKCS#8 and store the three secrets with `wrangler secret put`.
 3. Point a subdomain of `taigikeyboard.tw` at the Worker.
