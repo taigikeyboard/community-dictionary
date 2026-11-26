@@ -2,7 +2,8 @@ import { entryKey, entryPath, parseEntryPath, prepareEntry, serializeEntry, ENTR
 import { api, apiOrNull, GitHubError, installationToken } from './github.js';
 
 // New, edit and withdraw submissions: checks the contributor's rights and caps against GitHub
-// state (no database), then writes on a `submit/<id>/<key>` branch and opens the pull request.
+// state (no database), then writes one commit on a `submit/<id>/<key>` branch and opens the pull
+// request.
 
 export const MAX_WORDS = 20;
 const BRANCH_PREFIX = 'submit/';
@@ -16,12 +17,6 @@ export class SubmitError extends Error {
     this.code = code;
     this.details = details;
   }
-}
-
-function utf8Base64(text) {
-  let s = '';
-  for (const b of new TextEncoder().encode(text)) s += String.fromCharCode(b);
-  return btoa(s);
 }
 
 function decodeBase64Utf8(b64) {
@@ -100,38 +95,45 @@ class Repo {
 
   async readEntry(path, ref) {
     const file = await apiOrNull(this.token, 'GET', `/repos/${this.name}/contents/${path}?ref=${encodeURIComponent(ref)}`);
-    return file && { sha: file.sha, entry: JSON.parse(decodeBase64Utf8(file.content)) };
+    return file && JSON.parse(decodeBase64Utf8(file.content));
   }
 
-  // Creates `name` (or `name-2`, … when an open pull request already uses it) at the base tip.
-  // A leftover branch of a closed pull request is reset to the base tip.
-  async createBranch(name, openPrs) {
+  async tip(branch) {
+    const { object } = await this.call('GET', `/git/ref/heads/${branch}`);
+    return object.sha;
+  }
+
+  // Writes every change of one submission as a single commit (Git Data API: tree, commit, ref), so
+  // a branch is never left half-written. `changes` maps a path to an entry, or to null to delete
+  // it. The commit goes on top of an open pull request's `branch`, or else on `newBranch` (or
+  // `newBranch-2`, … when an open pull request already uses that name) off the base tip; a
+  // leftover branch of a closed pull request is reset.
+  async writeCommit({ branch, newBranch, openPrs, changes, message, user }) {
+    const parent = await this.tip(branch ?? this.base);
+    const { tree } = await this.call('GET', `/git/commits/${parent}`);
+    const items = [...changes].map(([path, entry]) =>
+      entry === null
+        ? { path, mode: '100644', type: 'blob', sha: null }
+        : { path, mode: '100644', type: 'blob', content: serializeEntry(entry) },
+    );
+    const newTree = await this.call('POST', '/git/trees', { base_tree: tree.sha, tree: items });
+    const commit = await this.call('POST', '/git/commits', { message, tree: newTree.sha, parents: [parent], author: author(user) });
+
+    if (branch) {
+      // Fast-forward only: a concurrent write to the same branch fails instead of being lost.
+      await this.call('PATCH', `/git/refs/heads/${branch}`, { sha: commit.sha, force: false });
+      return branch;
+    }
     const used = new Set(openPrs.map((pr) => pr.head.ref));
-    let branch = name;
-    for (let n = 2; used.has(branch); n++) branch = `${name}-${n}`;
-    const { object } = await this.call('GET', `/git/ref/heads/${this.base}`);
+    let name = newBranch;
+    for (let n = 2; used.has(name); n++) name = `${newBranch}-${n}`;
     try {
-      await this.call('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha: object.sha });
+      await this.call('POST', '/git/refs', { ref: `refs/heads/${name}`, sha: commit.sha });
     } catch (err) {
       if (!(err instanceof GitHubError && err.status === 422)) throw err;
-      await this.call('PATCH', `/git/refs/heads/${branch}`, { sha: object.sha, force: true });
+      await this.call('PATCH', `/git/refs/heads/${name}`, { sha: commit.sha, force: true });
     }
-    return branch;
-  }
-
-  // Contents API writes run one after another: GitHub documents that parallel calls conflict.
-  putEntry(path, entry, { branch, user, message, sha }) {
-    return this.call('PUT', `/contents/${path}`, {
-      message,
-      content: utf8Base64(serializeEntry(entry)),
-      branch,
-      author: author(user),
-      ...(sha && { sha }),
-    });
-  }
-
-  deleteEntry(path, { branch, user, message, sha }) {
-    return this.call('DELETE', `/contents/${path}`, { message, sha, branch, author: author(user) });
+    return name;
   }
 
   async openPullRequest(branch, title, body) {
@@ -202,11 +204,14 @@ export async function submitNew(env, user, body, now = Date.now()) {
   checkCaps(env, user, openPrs);
   await refuseHeldKeys(repo, user, ownFiles, new Set(keys));
 
-  const branch = await repo.createBranch(`${BRANCH_PREFIX}${user.id}/${keys[0]}`, openPrs);
-  for (const [i, entry] of entries.entries()) {
-    await repo.putEntry(entryPath(user.login, keys[i]), entry, { branch, user, message: `add ${wordLabel(entry)}` });
-  }
   const title = entries.length === 1 ? `add ${wordLabel(entries[0])}` : `add ${entries.length} words`;
+  const branch = await repo.writeCommit({
+    newBranch: `${BRANCH_PREFIX}${user.id}/${keys[0]}`,
+    openPrs,
+    changes: new Map(entries.map((entry, i) => [entryPath(user.login, keys[i]), entry])),
+    message: entries.length === 1 ? title : `${title}\n\n${entries.map(wordLabel).join('\n')}`,
+    user,
+  });
   const lines = ['| Hanji | Tâi-lô |', '|---|---|', ...entries.map((e) => `| ${e.hanji} | ${e.tl} |`)];
   return repo.openPullRequest(branch, title, prBody(user, lines));
 }
@@ -219,10 +224,10 @@ async function ownedTarget(repo, user, ownFiles, path) {
   const open = ownFiles.get(path);
   if (open?.status === 'removed') throw new SubmitError(409, 'already_withdrawn');
   const ref = open ? open.pr.head.ref : repo.base;
-  const file = await repo.readEntry(path, ref);
-  if (!file) throw new SubmitError(404, 'not_found');
-  if (file.entry.contributor_id !== user.id) throw new SubmitError(403, 'not_owner');
-  return { ...file, location, pr: open?.pr };
+  const entry = await repo.readEntry(path, ref);
+  if (!entry) throw new SubmitError(404, 'not_found');
+  if (entry.contributor_id !== user.id) throw new SubmitError(403, 'not_owner');
+  return { entry, location, pr: open?.pr };
 }
 
 export async function submitEdit(env, user, body) {
@@ -244,14 +249,17 @@ export async function submitEdit(env, user, body) {
   }
 
   if (!target.pr) checkCaps(env, user, openPrs);
-  const branch = target.pr?.head.ref ?? (await repo.createBranch(`${BRANCH_PREFIX}${user.id}/${target.location.key}`, openPrs));
   const message = `edit ${wordLabel(old)}`;
-  if (pairChanged) {
-    await repo.putEntry(entryPath(user.login, newKey), entry, { branch, user, message });
-    await repo.deleteEntry(body.path, { branch, user, message, sha: target.sha });
-  } else {
-    await repo.putEntry(body.path, entry, { branch, user, message, sha: target.sha });
-  }
+  // A changed pair adds the new file and deletes the old one in the same commit.
+  const changes = pairChanged ? new Map([[entryPath(user.login, newKey), entry], [body.path, null]]) : new Map([[body.path, entry]]);
+  const branch = await repo.writeCommit({
+    branch: target.pr?.head.ref,
+    newBranch: `${BRANCH_PREFIX}${user.id}/${target.location.key}`,
+    openPrs,
+    changes,
+    message,
+    user,
+  });
   if (target.pr) return { url: target.pr.html_url, number: target.pr.number };
   const lines = pairChanged ? [`${wordLabel(old)} → ${wordLabel(entry)}`] : [`\`${body.path}\``];
   return repo.openPullRequest(branch, message, prBody(user, lines));
@@ -263,9 +271,15 @@ export async function withdraw(env, user, body) {
   const target = await ownedTarget(repo, user, ownFiles, body.path);
 
   if (!target.pr) checkCaps(env, user, openPrs);
-  const branch = target.pr?.head.ref ?? (await repo.createBranch(`${BRANCH_PREFIX}${user.id}/${target.location.key}`, openPrs));
   const message = `withdraw ${wordLabel(target.entry)}`;
-  await repo.deleteEntry(body.path, { branch, user, message, sha: target.sha });
+  const branch = await repo.writeCommit({
+    branch: target.pr?.head.ref,
+    newBranch: `${BRANCH_PREFIX}${user.id}/${target.location.key}`,
+    openPrs,
+    changes: new Map([[body.path, null]]),
+    message,
+    user,
+  });
   if (target.pr) return { url: target.pr.html_url, number: target.pr.number };
   return repo.openPullRequest(branch, message, prBody(user, [`\`${body.path}\``]));
 }

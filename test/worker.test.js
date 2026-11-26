@@ -37,10 +37,16 @@ const env = {
   CAP_TOTAL: '100',
 };
 
-// Branches hold whole file maps; a commit records its author. Enough of the REST API for the Worker.
+// Git objects in memory: refs → commits → trees (file maps). `gh.branches.get(name)` is the file
+// map at a branch tip (mutate main's to seed it); `gh.commits` lists the commits the Worker made,
+// each with the tree changes it carried. Enough of the REST API for the Worker.
 function fakeGitHub() {
+  const trees = new Map([['t0', new Map()]]);
+  const objects = new Map([['c0', { tree: 't0', parents: [] }]]);
+  const refs = new Map([['main', 'c0']]);
+  const treeChanges = new Map();
   const gh = {
-    branches: new Map([['main', new Map()]]),
+    branches: { get: (name) => (refs.has(name) ? trees.get(objects.get(refs.get(name)).tree) : undefined) },
     commits: [],
     pulls: [],
     calls: [],
@@ -73,6 +79,7 @@ function fakeGitHub() {
       return reply(200, gh.pulls.filter((p) => p.state === 'open').slice((page - 1) * 100, page * 100));
     }
     if (rest === '/pulls' && method === 'POST') {
+      assert.ok(refs.has(body.head), `pull request head ${body.head} must exist`);
       const pr = { number: gh.pulls.length + 1, state: 'open', title: body.title, body: body.body, html_url: `https://github.com/${REPO}/pull/${gh.pulls.length + 1}`, head: { ref: body.head, repo: { full_name: REPO } } };
       gh.pulls.push(pr);
       return reply(201, pr);
@@ -90,40 +97,50 @@ function fakeGitHub() {
       }
       return reply(200, files);
     }
+    if (rest === '/git/trees' && method === 'POST') {
+      const files = new Map(trees.get(body.base_tree));
+      for (const item of body.tree) {
+        if (item.sha === null) files.delete(item.path);
+        else files.set(item.path, item.content);
+      }
+      const sha = `t${trees.size}`;
+      trees.set(sha, files);
+      treeChanges.set(sha, body.tree.map((item) => [item.sha === null ? 'delete' : 'write', item.path]));
+      return reply(201, { sha });
+    }
     if ((m = /^\/git\/trees\/(.+)$/.exec(rest))) {
-      const files = gh.branches.get(m[1]);
       return reply(200, {
         truncated: false,
-        tree: [...files].map(([p, text]) => {
+        tree: [...gh.branches.get(m[1])].map(([p, text]) => {
           blobs.set(shaOf(text), text);
           return { path: p, type: 'blob', sha: shaOf(text) };
         }),
       });
     }
     if ((m = /^\/git\/blobs\/(.+)$/.exec(rest))) return reply(200, { content: b64(blobs.get(m[1])) });
+    if (rest === '/git/commits' && method === 'POST') {
+      const sha = `c${objects.size}`;
+      objects.set(sha, { tree: body.tree, parents: body.parents });
+      gh.commits.push({ sha, message: body.message, author: body.author, parents: body.parents, changes: treeChanges.get(body.tree) });
+      return reply(201, { sha });
+    }
+    if ((m = /^\/git\/commits\/(.+)$/.exec(rest))) return reply(200, { sha: m[1], tree: { sha: objects.get(m[1]).tree } });
     if ((m = /^\/git\/refs?\/heads\/(.+)$/.exec(rest))) {
-      if (method === 'GET') return reply(200, { object: { sha: `main@${gh.commits.length}` } });
-      gh.branches.set(m[1], new Map(gh.branches.get('main')));
+      if (!refs.has(m[1])) return reply(404, { message: 'Not Found' });
+      if (method === 'GET') return reply(200, { object: { sha: refs.get(m[1]) } });
+      if (!body.force && objects.get(body.sha).parents[0] !== refs.get(m[1])) return reply(422, { message: 'Update is not a fast forward' });
+      refs.set(m[1], body.sha);
       return reply(200, {});
     }
     if (rest === '/git/refs') {
       const name = body.ref.replace('refs/heads/', '');
-      if (gh.branches.has(name)) return reply(422, { message: 'Reference already exists' });
-      gh.branches.set(name, new Map(gh.branches.get('main')));
+      if (refs.has(name)) return reply(422, { message: 'Reference already exists' });
+      refs.set(name, body.sha);
       return reply(201, {});
     }
-    if ((m = /^\/contents\/(.+)$/.exec(rest))) {
-      const filePath = m[1];
-      if (method === 'GET') {
-        const text = gh.branches.get(url.searchParams.get('ref'))?.get(filePath);
-        return text === undefined ? reply(404, { message: 'Not Found' }) : reply(200, { sha: shaOf(text), content: b64(text) });
-      }
-      const files = gh.branches.get(body.branch);
-      if (files.has(filePath) && body.sha !== shaOf(files.get(filePath))) return reply(409, { message: 'sha mismatch' });
-      if (method === 'PUT') files.set(filePath, Buffer.from(body.content, 'base64').toString());
-      else files.delete(filePath);
-      gh.commits.push({ branch: body.branch, method, path: filePath, author: body.author, message: body.message });
-      return reply(200, {});
+    if ((m = /^\/contents\/(.+)$/.exec(rest)) && method === 'GET') {
+      const text = gh.branches.get(url.searchParams.get('ref'))?.get(m[1]);
+      return text === undefined ? reply(404, { message: 'Not Found' }) : reply(200, { sha: shaOf(text), content: b64(text) });
     }
     return reply(404, { message: `fake GitHub: no route ${method} ${path}` });
   };
@@ -267,7 +284,7 @@ describe('POST guards', () => {
 });
 
 describe('new submission', () => {
-  it('commits one file per word as the contributor and opens one pull request', async () => {
+  it('commits every word as one file in a single commit by the contributor, in one pull request', async () => {
     const res = await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }, { hanji: '', tl: 'sim-mih' }], ...form });
     assert.equal(res.status, 200);
     assert.equal(res.data.pullRequest.url, `https://github.com/${REPO}/pull/1`);
@@ -282,7 +299,10 @@ describe('new submission', () => {
     assert.equal(branch.get(`entries/octocat/${KEY}.json`), serializeEntry({ ...accentEntry(), submitted: stored.submitted }));
     assert.match(stored.submitted, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(branch.has(`entries/octocat/${await entryKey('', 'sim-mih')}.json`));
-    assert.ok(gh.commits.every((c) => c.author.email === '583231+octocat@users.noreply.github.com'));
+    assert.equal(gh.commits.length, 1);
+    assert.equal(gh.commits[0].author.email, '583231+octocat@users.noreply.github.com');
+    assert.equal(gh.commits[0].message, 'add 2 words\n\n八 pueh\nsim-mih');
+    assert.equal(gh.commits[0].changes.length, 2);
     assert.equal(gh.branches.get('main').size, 0);
   });
 
@@ -350,7 +370,7 @@ describe('edit and withdraw', () => {
   it('moves a changed pair to a new file, then deletes the old one', async () => {
     await post('/submit', { path, hanji: '捌', tl: 'pueh', ...form });
     const newPath = `entries/octocat/${await entryKey('捌', 'pueh')}.json`;
-    assert.deepEqual(gh.commits.map((c) => [c.method, c.path]), [['PUT', newPath], ['DELETE', path]]);
+    assert.deepEqual(gh.commits.map((c) => c.changes), [[['write', newPath], ['delete', path]]]);
   });
 
   it('adds a second edit to the open pull request', async () => {
@@ -359,6 +379,8 @@ describe('edit and withdraw', () => {
     assert.equal(res.data.pullRequest.number, 1);
     assert.equal(gh.pulls.length, 1);
     assert.equal(JSON.parse(gh.branches.get(gh.pulls[0].head.ref).get(path)).note, 'two');
+    // The second edit is one more commit on top of the first, on the same branch.
+    assert.deepEqual(gh.commits[1].parents, [gh.commits[0].sha]);
   });
 
   it('refuses an unchanged edit', async () => {
