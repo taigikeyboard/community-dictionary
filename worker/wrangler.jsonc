@@ -10,8 +10,8 @@
   "routes": [{ "pattern": "dict-api.taigikeyboard.tw", "custom_domain": true }],
   "observability": { "enabled": true },
   "vars": {
-    // The GitHub App's client ID, filled in once the App exists (Phase 4).
-    "GITHUB_CLIENT_ID": "",
+    // Client ID of the GitHub App taigi-dictionary-submit (public; not a secret).
+    "GITHUB_CLIENT_ID": "Iv23lizVTV2DDdURodB1",
     "GITHUB_REPO": "taigikeyboard/community-dictionary",
     "BASE_BRANCH": "main",
     // Pages that may call the Worker (CORS + Origin check) and where sign-in returns.
