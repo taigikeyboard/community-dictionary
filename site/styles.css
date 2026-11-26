@@ -415,6 +415,7 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .field { display: grid; gap: 0.5rem; margin: 0; padding: 0; border: 0; min-width: 0; }
 .field > label, .field > legend, .field > .field-label { padding: 0; color: var(--text); font-weight: 600; }
 .field .error { color: var(--danger); font-size: 0.875rem; }
+.field-hint { margin: -0.25rem 0 0.25rem; color: var(--secondary); font-size: 0.875rem; }
 /* the form's own fields (not the word rows inside their box) are lifted by a shadow, with no border
    until focused or invalid */
 .field > input, .field > textarea { border-color: transparent; box-shadow: var(--surface-shadow); }

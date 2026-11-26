@@ -591,7 +591,6 @@ const SUBMIT_TIPS = [
   ['提交資料需要登入 GitHub 口座，若無口座請先去', h('a', { href: 'https://github.com/signup', target: '_blank', rel: 'noopener' }, '申請'), '。'],
   ['為著整理資料方便，台羅請使用教育部台語羅馬字。'],
   ['若無漢字、日語，彼欄會當留空。'],
-  ['解說、例句會當留空，但是盡量鼓勵寫清楚。'],
 ];
 
 const submitTips = () => h('section', { class: 'submit-tips', 'aria-label': '填寫提示' }, h('ol', {}, SUBMIT_TIPS.map((tip) => h('li', {}, tip))));
@@ -641,7 +640,8 @@ function renderSubmit() {
     const row = el.closest('.word');
     return row && { anchor: row.querySelector('.word-fields'), values: () => wordValues(row) };
   }, WORD_ROW_LIMIT);
-  // the words share every field below them; the box around the words says so
+  // the words share every field below them (one 解說, one set of 例句 and 標籤), so the box says
+  // that several words must be one meaning
   const form = h(
     'form',
     { class: 'form submit-form', novalidate: true },
@@ -649,6 +649,7 @@ function renderSubmit() {
       'div',
       { class: 'field form-box' },
       h('span', { class: 'field-label' }, '詞條'),
+      h('p', { class: 'field-hint' }, '仝一个意思 ê 詞（無仝寫法、講法）會當做伙提交；意思無仝 ê 詞，請分開提交。'),
       words,
     ),
     field('meaning', '解說', textInput('meaning')),
