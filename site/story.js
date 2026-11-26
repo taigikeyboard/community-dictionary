@@ -20,7 +20,6 @@ const withTip = (row, tip) => {
   tips.set(row, tip);
   return row;
 };
-const hueOf = (hue) => `var(--hue-${hue})`;
 
 // loadStats() → stats.json; the sections arrive once it has loaded (nothing shows if it fails).
 export function storySections(loadStats) {
@@ -53,12 +52,14 @@ const bar = ({ label, href, share, count, color, index, tip }) =>
   );
 
 function sections(stats) {
-  const hueByTag = new Map(stats.perTag.map((tag) => [tag.name, tag.hue]));
   const countByTag = new Map(stats.perTag.map((tag) => [tag.name, tag.count]));
   const [topTag] = stats.perTag;
   const longest = Math.max(...stats.lengths.map((b) => b.count));
   const [topPair] = stats.pairs;
-  const neutral = hueOf('cobalt');
+  // BBC style: a single series is one blue (the tags, the lengths); a ranking marks its leader in blue
+  // against light grey context
+  const neutral = 'var(--hue-blue)';
+  const context = 'var(--chart-context)';
   return [
     // the totals, as big numbers
     section(
@@ -85,9 +86,9 @@ function sections(stats) {
             href: tagRoute(tag.name),
             share: tag.count / topTag.count,
             count: tag.count,
-            color: hueOf(tag.hue),
+            color: neutral,
             index,
-            tip: { color: hueOf(tag.hue), title: tag.name, tl: tag.tl, value: `${number(tag.count)} 个詞`, lines: [`占全部 ê ${percent(tag.count, stats.words)}`, `排名第 ${index + 1}`] },
+            tip: { color: neutral, title: tag.name, tl: tag.tl, value: `${number(tag.count)} 个詞`, lines: [`占全部 ê ${percent(tag.count, stats.words)}`, `排名第 ${index + 1}`] },
           }),
         ),
       ),
@@ -122,17 +123,16 @@ function sections(stats) {
               withTip(
               h(
                 'li',
-                // the bar runs from one tag's colour to the other's
                 {
                   class: 'story-bar',
-                  style: `--share: ${pair.count / topPair.count}; --i: ${index}; --bar: ${hueOf(hueByTag.get(pair.tags[0]))}; --bar-end: ${hueOf(hueByTag.get(pair.tags[1]))}`,
+                  style: `--share: ${pair.count / topPair.count}; --i: ${index}; --bar: ${neutral}`,
                 },
                 h(
                   'span',
                   { class: 'story-bar-label' },
                   pair.tags.flatMap((name, i) => [
                     i > 0 ? ' · ' : null,
-                    h('a', { href: tagRoute(name), style: `--dot: ${hueOf(hueByTag.get(name))}` }, name),
+                    h('a', { href: tagRoute(name) }, name),
                   ]),
                 ),
                 h('span', { class: 'story-bar-track' }, h('span', { class: 'story-bar-fill' })),
@@ -140,7 +140,7 @@ function sections(stats) {
               ),
               // each tag's share: how many of its words also carry the other
               {
-                color: hueOf(hueByTag.get(pair.tags[0])),
+                color: neutral,
                 title: pair.tags.join(' · '),
                 value: `${number(pair.count)} 个詞`,
                 lines: pair.tags.map((name) => `占${name} ê ${percent(pair.count, countByTag.get(name))}`),
@@ -161,9 +161,9 @@ function sections(stats) {
             href: contributorRoute(person.name),
             share: person.count / stats.topContributors[0].count,
             count: person.count,
-            color: neutral,
+            color: index === 0 ? neutral : context,
             index,
-            tip: { color: neutral, title: person.name, value: `${number(person.count)} 个詞`, lines: [`占全部 ê ${percent(person.count, stats.words)}`, `排名第 ${index + 1}`] },
+            tip: { color: index === 0 ? neutral : context, title: person.name, value: `${number(person.count)} 个詞`, lines: [`占全部 ê ${percent(person.count, stats.words)}`, `排名第 ${index + 1}`] },
           }),
         ),
       ),

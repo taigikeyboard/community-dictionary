@@ -308,7 +308,7 @@ test('stats buildStats: counts from the served rows, both sources', () => {
     ['四', 'sì', '', '', [], [ANONYMOUS]],
   ];
   const community = [{ hanji: '鹹粿', tl: 'kiâm-kué', attestations: [{ tags: ['食食', '夜市仔'], contributor: 'octocat' }, { tags: ['食食'], contributor: 'octocat' }] }];
-  const tagMap = [{ name: '植物', tl: 'si̍t-bu̍t', hue: 'leaf', count: 2 }, { name: '食食', tl: 'tsia̍h-si̍t', hue: 'cobalt', count: 3 }];
+  const tagMap = [{ name: '植物', tl: 'si̍t-bu̍t', count: 2 }, { name: '食食', tl: 'tsia̍h-si̍t', count: 3 }];
   const stats = buildStats(community, itaigi, tagMap);
   // trace: 9 words; 鹹粿 counts once for octocat (two attestations); 米粉 credits 阿明 and 阿珠;
   // 匿名 credits 4 words, more than 阿明, but is left out of the ranking (still a contributor)

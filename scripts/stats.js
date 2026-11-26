@@ -57,7 +57,7 @@ export function buildStats(communityRows, itaigiRows, tagMap) {
     tags: tagMap.length,
     contributors: contributors.length,
     multiTag,
-    perTag: tagMap.map(({ name, tl, hue, count }) => ({ name, tl, hue, count })).sort((a, b) => b.count - a.count),
+    perTag: tagMap.map(({ name, tl, count }) => ({ name, tl, count })).sort((a, b) => b.count - a.count),
     lengths: lengths.map((count, i) => ({ length: i + 1, count, orLonger: i + 1 === LONGEST })),
     pairs: ranked(pairs)
       .slice(0, TOP_PAIRS)

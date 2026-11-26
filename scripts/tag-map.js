@@ -32,13 +32,13 @@ export function sampleWords(rows, size = SAMPLE_SIZE) {
     .map(([, pair]) => pair);
 }
 
-// communityRows: dist/search.json; itaigiRows: dist/itaigi.json rows. → [{ name, tl, hue, count, words }]
+// communityRows: dist/search.json; itaigiRows: dist/itaigi.json rows. → [{ name, tl, count, words }]
 // in the site's tag order, words as [hanji, tl] pairs.
 export function buildTagMap(communityRows, itaigiRows) {
   const itaigi = indexItaigi(itaigiRows);
-  return TAGS.map(({ name, tl, hue }) => {
+  return TAGS.map(({ name, tl }) => {
     const words = wordsWithTag(communityRows, itaigi, name);
     const all = [...words.community, ...words.itaigi];
-    return { name, tl, hue, count: all.length, words: sampleWords(all) };
+    return { name, tl, count: all.length, words: sampleWords(all) };
   });
 }
