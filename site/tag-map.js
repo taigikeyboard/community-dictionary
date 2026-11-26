@@ -1,6 +1,6 @@
 import { h, svg } from './dom.js';
 import { icon } from './icons.js';
-import { tagCircles, wordRoute } from './logic.js';
+import { tagCircles, tagRoute, wordRoute } from './logic.js';
 
 // The homepage's tag bubbles, drawn with D3: one circle per site tag, its area following how many
 // words carry the tag, the tag's sample words packed inside it as small bubbles (d3-hierarchy). The
@@ -23,7 +23,7 @@ const loadD3 = () =>
       throw error;
     }));
 
-// words per tag shown zoomed in (tag-map.json holds more): fewer on a narrow screen, so each
+// words per tag shown zoomed in, drawn from tag-map.json's larger pool: fewer on a narrow screen, so each
 // bubble, and its Tâi-lô, stays large enough to read
 const WIDE_WORDS = 32;
 const PHONE_WORDS = 24;
@@ -53,6 +53,17 @@ const firstReading = (tl) => tl.split('/')[0];
 // half an em a letter, at TL_SCALE), whichever is wider, at least 2
 const wordWidth = ([hanji, tl]) => Math.max(2, [...hanji].length, 0.52 * TL_SCALE * [...firstReading(tl).normalize('NFC')].length);
 
+// up to `count` of `pool`, a fresh random draw each call (a partial Fisher-Yates shuffle)
+function randomSample(pool, count) {
+  const items = [...pool];
+  const size = Math.min(count, items.length);
+  for (let i = 0; i < size; i += 1) {
+    const j = i + Math.floor(Math.random() * (items.length - i));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+  return items.slice(0, size);
+}
+
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 // loadTags() → tag-map.json entries; fallback() → what the box shows if the map cannot load;
@@ -61,8 +72,10 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} } = {}) {
   const box = h('div', { class: 'tag-map' });
   const back = h('button', { class: 'tag-map-back', type: 'button' }, icon('back'), '全部標籤');
+  // the zoomed tag's page, with every word the bubble only samples (draw() fills it in)
+  const all = h('a', { class: 'tag-map-all' });
   // the bar under the map keeps its height while empty, so zooming never moves the page
-  const bar = h('div', { class: 'tag-map-bar', 'data-empty': 'true' }, back);
+  const bar = h('div', { class: 'tag-map-bar', 'data-empty': 'true' }, back, all);
   const section = h('div', { class: 'tag-map-section' }, box, bar);
   Promise.all([loadTags(), loadD3()])
     .then(([tags, d3]) => {
@@ -78,7 +91,7 @@ export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} 
         drawn = `${width}x${height}`;
         current?.stop();
         // the entrance plays on the first draw only, not when a resize redraws the map
-        current = draw(d3, tags, box, bar, width, height, { entrance: current === null, onWord, onZoomIn });
+        current = draw(d3, tags, box, bar, all, width, height, { entrance: current === null, onWord, onZoomIn });
       });
       observer.observe(box);
       back.addEventListener('click', () => current?.zoomOut({ refocus: true }));
@@ -91,8 +104,8 @@ export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} 
 }
 
 // Draws the map for a width × height box and sets it moving (with the entrance when `entrance`);
-// returns { zoomOut, stop }.
-function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = null, onZoomIn = () => {} } = {}) {
+// `all` is the bar's link to the zoomed tag's page. Returns { zoomOut, stop }.
+function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord = null, onZoomIn = () => {} } = {}) {
   const aspect = width / height;
   const wordCount = width < 600 ? PHONE_WORDS : WIDE_WORDS;
   // start from a tight pack, then let the forces settle it before the first paint
@@ -149,18 +162,16 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
     map.style.transform = `translate(${width / 2 - k * cx}px, ${height / 2 - k * cy}px) scale(${k})`;
   };
 
-  // each tag drawn around (0, 0); the simulation moves the group and scales its body
-  const bubbles = tags.map((tag, i) => {
-    const { r } = nodes[i];
-    // the words fill a circle a little inside the tag's, each bubble holding the Hanji over its
-    // Tâi-lô (the first reading of several); a bubble's radius follows the wider of the two lines
-    // (area by width squared), so every word is set at the same size
+  // the words fill a circle a little inside the tag's (radius r), each bubble holding the Hanji over
+  // its Tâi-lô (the first reading of several); a bubble's radius follows the wider of the two lines
+  // (area by width squared), so every word is set at the same size
+  const packWords = (r, sample) => {
     const inner = r * 0.9;
     const pack = d3
       .pack()
       .size([2 * inner, 2 * inner])
-      .padding(inner * 0.02)(d3.hierarchy({ children: tag.words.slice(0, wordCount) }).sum((d) => (Array.isArray(d) ? wordWidth(d) ** 2 : 0)));
-    const words = (pack.children ?? []).map((node) => {
+      .padding(inner * 0.02)(d3.hierarchy({ children: sample }).sum((d) => (Array.isArray(d) ? wordWidth(d) ** 2 : 0)));
+    return (pack.children ?? []).map((node) => {
       const [hanji, tl] = node.data;
       const cx = node.x - inner;
       const cy = node.y - inner;
@@ -180,6 +191,15 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
       });
       return link;
     });
+  };
+
+  // each tag drawn around (0, 0); the simulation moves the group and scales its body. Its words start
+  // as the pool's first few, the same on every visit (unzoomed they are only a tint); each zoom into
+  // the tag repacks a fresh random draw (zoomIn)
+  const bubbles = tags.map((tag, i) => {
+    const { r } = nodes[i];
+    const words = packWords(r, tag.words.slice(0, wordCount));
+    const wordLayer = svg('g', { class: 'tag-words' }, words);
     const target = svg(
       'circle',
       { class: 'tag-circle', r, role: 'button', tabindex: '0', 'aria-label': tag.name },
@@ -196,8 +216,8 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
     );
     // the shadow reaches 12% past the circle and sits a little low, as light from above would cast it
     const shadow = svg('circle', { class: 'tag-shadow', cy: r * 0.04, r: r * 1.12, fill: 'url(#bubble-shadow)' });
-    const body = svg('g', { class: 'tag-body' }, shadow, target, svg('g', { class: 'tag-words' }, words), name);
-    return { tag, node: nodes[i], target, words, body, group: svg('g', { class: 'tag-bubble' }, body) };
+    const body = svg('g', { class: 'tag-body' }, shadow, target, wordLayer, name);
+    return { tag, node: nodes[i], target, words, wordLayer, body, group: svg('g', { class: 'tag-bubble' }, body) };
   });
   map.append(...bubbles.map((b) => b.group));
   box.replaceChildren(map);
@@ -279,9 +299,17 @@ function draw(d3, tags, box, bar, width, height, { entrance = false, onWord = nu
       for (const word of b.words) word.setAttribute('tabindex', i === index ? '0' : '-1');
     });
     bar.dataset.empty = String(index === null);
+    if (index !== null) {
+      const { tag } = bubbles[index];
+      all.href = tagRoute(tag.name);
+      all.textContent = `看全部 ${tag.count.toLocaleString('en-US')} 个詞 →`;
+    }
   };
   const zoomIn = (index) => {
     onZoomIn();
+    const b = bubbles[index];
+    b.words = packWords(b.node.r, randomSample(b.tag.words, wordCount));
+    b.wordLayer.replaceChildren(...b.words);
     // the bodies hold still while zoomed in, so a hover swell is undone at once, not eased (with
     // the simulation stopped, no later tick would finish easing it)
     for (const node of nodes) {

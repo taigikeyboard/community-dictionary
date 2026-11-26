@@ -2,11 +2,12 @@ import { indexItaigi, wordsWithTag } from '../site/logic.js';
 import { TAGS } from '../site/tags.js';
 
 // The homepage's tag bubble data: for each site tag, how many words carry it (the same words its
-// card page lists) and a fixed sample of them, the small bubbles inside the tag's bubble. The
-// sample is picked by a hash of each word, so it changes only when the data does.
+// card page lists) and a fixed pool of them, from which the zoomed-in bubble draws its small word
+// bubbles at random (site/tag-map.js). The pool is picked by a hash of each word, so it changes
+// only when the data does.
 
-// words kept per tag: the small bubbles a zoomed-in tag shows
-export const SAMPLE_SIZE = 40;
+// words kept per tag: the pool a zoomed-in tag draws its 24 to 32 word bubbles from
+export const SAMPLE_SIZE = 150;
 // a sample word fits in a small bubble and reads as a word on its own: 2 to 4 characters, no spaces
 const MIN_SAMPLE_LENGTH = 2;
 const MAX_SAMPLE_LENGTH = 4;

@@ -301,6 +301,10 @@ main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s v
 .tag-map-back:hover { background: var(--ghost-hover); text-decoration: none; }
 .tag-map-back:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 .tag-map-back .icon { font-size: 1rem; }
+/* the zoomed tag's page, at the bar's other end */
+.tag-map-all { margin-right: -0.5rem; padding: 0.25rem 0.5rem; border-radius: var(--radius-control); font-size: 0.9375rem; transition: var(--button-transition); }
+.tag-map-all:hover { background: var(--ghost-hover); text-decoration: none; }
+.tag-map-all:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 /* --- the homepage's statistics (site/story.js), a scrolling story under the bubble map: each section
    a large centred title over one chart. A section rises in when it
    scrolls into view; its bars grow from the left (scaleX: compositor only, nothing reflows), its
