@@ -1,6 +1,6 @@
 # Community dictionary — roadmap
 
-> **Status**: 2026-11-26 — Phase 1 built; Phase 2 Worker live at `dict-api.taigikeyboard.tw`; Phase 4 done (end-to-end submission passed); Phase 3 live except sign-in and submit (the form's button stays disabled).
+> **Status**: 2026-11-26 — Phase 1 built; Phase 2 Worker live at `dict-api.taigikeyboard.tw`; Phase 4 done (end-to-end submission passed); Phase 3: sign-in and submit wired to the Worker (2026-11-26); "My submissions" (edit, withdraw) still to come.
 
 ## Goal
 
@@ -71,7 +71,7 @@ One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contribu
   "tags": ["食食"],
   "place": "",
   "meaning": "",
-  "example": "",
+  "examples": [{ "hanji": "…", "tl": "…" }],
   "note": "…the contributor's explanation…",
   "contributor": "octocat",
   "contributor_id": 583231,
@@ -85,10 +85,10 @@ Ownership is `contributor_id`, never the directory name: a contributor who renam
 |---|---|---|
 | `tl` | yes | Tâi-lô |
 | `hanji` | no | Hanji or kana; empty when the word has no Hanji |
-| `accents`, `place` | no; `place` when `accents` has 其他 | the ten accents used by the Ministry of Education dictionary, or 其他 with free text (form: the 其他 pill opens a floating input like the tags' ＋, shown on the pill as 其他：…; maintainer 2026-11-26, replaces the 所在 field) |
+| `accents`, `place` | no; `place` when `accents` has 其他 | the ten accents used by the Ministry of Education dictionary, or 其他 with free text (form: a ＋ after the accents, like the tags', opens a floating input; the text becomes one more ticked pill, stored as 其他 + `place`; maintainer 2026-11-26, replaces the 其他：… pill, which replaced the 所在 field) |
 | `tags` | no | up to 5 semantic tags (maintainer 2026-11-21): the site's list (`site/tags.js`) or the contributor's own, each ≤ 10 characters in the Hanji field's script; whether an own tag is good Taiwanese is checked at review, as with Tâi-lô (D8) |
 | `meaning` | no | Mandarin or English equivalent (no separate source field since 2026-11-20: where the word was seen goes in `note`) |
-| `example` | no | An example sentence (maintainer 2026-11-20) |
+| `examples` | no | Example sentences (maintainer 2026-11-20): up to 5, each `{ hanji, tl }` — the sentence in Hanji (or kana) and in Tâi-lô, either may be empty but not both (maintainer 2026-11-26: two columns, several rows like the words). Sentences, so no script rule: punctuation is allowed |
 | `note` | no | the contributor's explanation |
 
 Why one file per entry, one directory per contributor:
@@ -127,12 +127,12 @@ One pull request per phase.
 | 0 | This roadmap, README, licences | In progress |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
 | 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Done 2026-11-26, deployed |
-| 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — first slice live; sign-in, submit, "My submissions" and "submitted" wait for Phase 2 |
+| 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — sign-in, submit and the "submitted" page live 2026-11-26; "My submissions" (edit, withdraw) next |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Done 2026-11-26 — App 「台語齒盤群眾辭典 TaigiKeyboard」 (slug `taigikeyboard`, bot `taigikeyboard[bot]` = `SUBMIT_APP_LOGIN`; created as `taigi-dictionary-submit`, renamed the same day — a rename changes the slug and bot login, so update the variable with it), public, Worker deployed, test pull request #1 opened by the bot with the contributor as commit author, `validate` passed in submission mode, closed unmerged; the site form is not wired yet (Phase 3) |
 
 ### Phase 1 — schema and checks
 
-- Limits: Hanji ≤ 20 characters, Tâi-lô ≤ 80, place ≤ 20, meaning ≤ 100, example ≤ 300, note ≤ 1,000; one line per field except `note`.
+- Limits: Hanji ≤ 20 characters, Tâi-lô ≤ 80, place ≤ 20, meaning ≤ 100, each example line ≤ 300, note ≤ 1,000; one line per field except `note`.
 - Character whitelists: Hanji field (labelled 漢字、日語) = CJK ideographs, kana for Japanese loanwords (added 2026-11-20), Tâi-lô letters and hyphen (Hàn-lô mixed writing is allowed); Tâi-lô field = Latin letters, combining tone marks, hyphen, space, tone digits.
 - CI fails when a file name does not match its content's key, when a field breaks a limit, or when a pull request from the App touches anything outside `entries/`.
 - Ownership in CI: for every file a submission commit adds, modifies or deletes, the commit author's id (from the noreply address) must equal the file's `contributor_id` — a second gate behind the Worker's own check.
@@ -158,7 +158,7 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 - The contributor's `id` and `login` come only from GitHub's `/user` response, never from the form.
 - Form text never reaches a shell or a template: the entry is `JSON.stringify` output, the commit message and pull request body are built from validated fields.
 - Branch `submit/<user id>/<key>`; pull request title `add` / `edit` / `withdraw <hanji> <tl>`; no labels.
-- One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, tags, place, meaning, example and note; each word is its own entry file, all in one commit and one pull request (branch named after the first word's key, title and commit subject `add <n> words`, the commit body listing the words). The cap counts pull requests, not words.
+- One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, tags, place, meaning, examples and note; each word is its own entry file, all in one commit and one pull request (branch named after the first word's key, title and commit subject `add <n> words`, the commit body listing the words). The cap counts pull requests, not words.
 - Edit and withdraw: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair adds the new file and deletes the old one in the same commit. An edit or withdrawal of an entry still in an open submission is one more commit on that branch (fast-forward only, so a concurrent write fails rather than being lost).
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
@@ -168,7 +168,7 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 | Choice | Value |
 |---|---|
 | Host | `dict-api.taigikeyboard.tw` as a Workers Custom Domain in `worker/wrangler.jsonc` (the zone is on Cloudflare); `workers_dev` off |
-| Routes | `GET /login?return=#/…` → GitHub; `GET /callback` → back to `SITE_URL` + that hash route (anything else → `#/`); `GET /session` → `{ id, login }` or 401; `POST /logout`; `POST /submit` (new: `{ words: [{ hanji, tl }], accents, tags, place, meaning, example, note }`; edit: the same fields for one word plus `path`); `POST /withdraw { path }` |
+| Routes | `GET /login?return=#/…` → GitHub; `GET /callback` → back to `SITE_URL` + that hash route (anything else → `#/`); `GET /session` → `{ id, login }` or 401; `POST /logout`; `POST /submit` (new: `{ words: [{ hanji, tl }], accents, tags, place, meaning, examples: [{ hanji, tl }], note }`; edit: the same fields for one word plus `path`); `POST /withdraw { path }` |
 | Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_owner`, `not_found`, `unchanged`, `already_withdrawn`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
 | Session | 24 hours, cookie `__Host-session`; the OAuth `state` + PKCE verifier sit in a signed 10-minute `__Host-oauth` cookie (`__Host-`: no sibling subdomain can plant either); each signed value carries its use, so one is never accepted as the other; the GitHub user token is used for `/user` only and never stored |
 | Installation token | App JWT (`iss` = client ID) → `GET /repos/{repo}/installation` → token limited to this repository and `contents` + `pull_requests: write`; cached per isolate until five minutes before expiry |
@@ -189,6 +189,7 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 - Sidebar (maintainer 2026-11-21), after kautian-mirror's: a toggle at the top left opens a sidebar docked on wide screens and a drawer on narrow ones, holding 外觀 (自動 / 淺色 / 暗色), 字型 (系統 / 粉圓 / 芫荽 / 源樣明體 / 源樣烏體, served by kautian-mirror on the same origin) and 選單顯示 白話字 / 方音符號 (on by default). Choices are `<html data-*>` attributes saved in `localStorage` and restored before first paint. Result rows in both popovers show Pe̍h-ōe-jī (where it differs from Tâi-lô) and 方音符號, converted from Tâi-lô at build time by `scripts/romanize.js` (`vendor/taigi-converter`; its 1.5 MB dictionary module stays out of the browser) into `search.json` and `itaigi.json`.
 - iTaigi in search (maintainer 2026-11-21): the search box also lists matches from iTaigi 華台對照典 (CC0 per the iTaigi licence notice), listed after the community entries with no source heading (maintainer 2026-11-21; CC0 needs no attribution). Source: itaigi.tw's own export (`https://itaigi.tw/匯出資料`; switched 2026-11-21 from ChhoeTaigi's CSV, last updated 2021). iTaigi no longer changes (maintainer 2026-11-21), so `scripts/import-itaigi.js`, run by hand, downloads it once and commits the snapshot `data/itaigi.json` — one row per Hanji + Tâi-lô pair with its tags; no contributor names (iTaigi names are often real names, maintainer 2026-11-21) — and build-site turns it into `dist/itaigi.json` with Pe̍h-ōe-jī and 方音符號. Deploys download nothing. The import keeps the crowdsourced rows (the bundled 台文華文線頂辭典 and 教典 rows are dropped, as ChhoeTaigi/iTaigiDataMirror does), turns full-width spaces in Tâi-lô into plain ones, drops rows whose Tâi-lô has no Latin letter, and leaves out the Mandarin gloss (no Mandarin on the site, maintainer 2026-11-21). Search matches Hanji or the start of a Tâi-lô syllable (each `/`-joined variant reading on its own); exact matches first, then prefixes. Every iTaigi word card lists one contributor, `itaigi` (`ITAIGI_CONTRIBUTOR` in `site/logic.js`, maintainer 2026-11-21), as a byline at the card's lower right (tags lower left; no visible label, 貢獻者 read aloud and on hover; maintainer 2026-11-21); a contributor is a link to the card page `#/contributor/<name>` (all words they gave; community contributors by GitHub login; maintainer 2026-11-21: a contributor is one more tag). iTaigi rows never enter `entries/` and play no part in the form's duplicate rules; the word rows do not show them.
 - Tags (maintainer 2026-11-21): 27 semantic tags named with 教典 headwords (`site/tags.js`, e.g. 身軀、食食、厝宅、𨑨迌、外來語), shown as chips under the search box. A chip opens the tag's card page `#/tag/<name>` (all its words as cards, 60 at a time, the next batch loading on scroll — no 閣看 button, maintainer 2026-11-21; no counts, maintainer 2026-11-21); a search result opens the word's card page `#/word/<hanji>/<tl>` (maintainer 2026-11-21). A card shows the readings, the tags (each a link to its page) and, for community entries, accents, meaning, example, note and contributors. Results under the form's word rows do not link, so typed words are never lost. The form offers the same tags as pills (several may be picked) and an input for the contributor's own; own tags in accepted entries appear as extra chips after the listed ones. The homepage also lists every contributor as a chip (標籤 and 貢獻者 both as `#name` text, no chip boxes, maintainer 2026-11-21; rows contributors most words first, from build-time `dist/contributors.json`; maintainer 2026-11-21), each opening `#/contributor/<name>`. `scripts/import-itaigi.js` (run by hand, not in CI) tags each iTaigi pair: pairs the 教典 also lists take their 教典 categories mapped to tags (about 15%), the rest are classified by Claude through the `claude` CLI from Hanji, Tâi-lô and the Mandarin gloss, 1–2 tags each or none. The tags are part of the committed snapshot `data/itaigi.json`.
+- Submit (2026-11-26): the form checks the session (`GET /session`, credentials included). Signed out, the button reads 「登入 GitHub 提交」: pressing it keeps the form in sessionStorage and goes to `/login?return=#/submit`; back on the form the draft fills it again. Signed in, it reads 「提交」 beside 「用 <login> 提交 · 登出」 and posts `/submit`; the answer replaces the form with 「提交成功」 and the pull request link. One's own earlier pair is a row error; Worker errors (caps, already submitted, invalid, try later) show in Taiwanese; a 401 signs in again. Tips above the form (`SUBMIT_TIPS`), 詞條 and 例句 in white boxes, 意思 relabelled 解說 (maintainer 2026-11-26). Editing a row or field clears its error at once.
 - "My submissions" filters the same JSON by the signed-in id — no extra Worker endpoint — and offers edit and withdraw.
 
 ### Phase 4 — maintainer setup

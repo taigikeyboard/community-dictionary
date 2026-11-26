@@ -169,7 +169,7 @@ async function post(path, body, { origin = SITE, user = USER } = {}) {
   return { status: res.status, data: await res.json(), headers: res.headers };
 }
 
-const form = { accents: ['鹿港偏泉腔'], tags: ['食食'], place: '', meaning: '', example: '', note: '鹿港講 pueh。' };
+const form = { accents: ['鹿港偏泉腔'], tags: ['食食'], place: '', meaning: '', examples: [], note: '鹿港講 pueh。' };
 
 describe('sign-in', () => {
   it('runs the PKCE flow and sets a session for the GitHub user', async () => {

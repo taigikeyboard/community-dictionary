@@ -7,7 +7,7 @@ import { api, apiOrNull, GitHubError, installationToken } from './github.js';
 
 export const MAX_WORDS = 20;
 const BRANCH_PREFIX = 'submit/';
-const ENTRY_FIELDS = ['accents', 'tags', 'place', 'meaning', 'example', 'note'];
+const ENTRY_FIELDS = ['accents', 'tags', 'place', 'meaning', 'examples', 'note'];
 
 // A refusal the contributor sees; `code` is mapped to Taiwanese text by the site.
 export class SubmitError extends Error {
@@ -39,7 +39,7 @@ function wordLabel(entry) {
 // Shared fields from the form, plus one word; identity always comes from the session.
 function draftEntry(body, word, identity) {
   const draft = { hanji: word?.hanji ?? '', tl: word?.tl ?? '' };
-  for (const field of ENTRY_FIELDS) draft[field] = body[field] ?? (field === 'accents' || field === 'tags' ? [] : '');
+  for (const field of ENTRY_FIELDS) draft[field] = body[field] ?? (['accents', 'tags', 'examples'].includes(field) ? [] : '');
   return prepareEntry({ ...draft, ...identity });
 }
 

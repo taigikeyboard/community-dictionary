@@ -218,7 +218,7 @@ export function formToRaw(values, identity) {
     tags: values.tags ?? [],
     place: accents.includes(ACCENT_OTHER) ? (values.place ?? '') : '',
     meaning: values.meaning ?? '',
-    example: values.example ?? '',
+    examples: values.examples ?? [],
     note: values.note ?? '',
     contributor: identity.login,
     contributor_id: identity.id,
@@ -252,7 +252,7 @@ export async function checkBatch(shared, words, identity = PLACEHOLDER_IDENTITY)
     const { entry, errors: raw } = checkForm({ ...shared, ...word }, identity);
     for (const error of describeErrors(raw)) {
       if (error.field === 'hanji' || error.field === 'tl') errors.push({ ...error, row });
-      else if (!errors.some((e) => e.field === error.field)) errors.push(error);
+      else if (!errors.some((e) => e.field === error.field && e.example === error.example)) errors.push(error);
     }
     if (raw.length > 0) continue;
     const key = await entryKey(entry.hanji, entry.tl);
@@ -283,8 +283,8 @@ export const FIELD_LABELS = Object.freeze({
   accents: '腔口',
   tags: '標籤',
   place: '其他腔口',
-  meaning: '意思',
-  example: '例句',
+  meaning: '解說',
+  examples: '例句',
   note: '說明',
 });
 
@@ -292,7 +292,6 @@ const MESSAGE_RULES = [
   [/^tags: more than (\d+) tags$/, (m) => `上濟 ${m[1]} 个`],
   [/^tags: "(.+)" longer than (\d+) characters$/, (m) => `「${m[1]}」傷長，上濟 ${m[2]} 字`],
   [/^tags: "(.+)" only Han characters/, (m) => `「${m[1]}」干焦會當用漢字、假名、台羅字母佮「-」`],
-  [/: required$/, () => '愛填'],
   [/: longer than (\d+) characters$/, (m) => `傷長，上濟 ${m[1]} 字`],
   [/: must be one line$/, () => '袂當換逝'],
   [/: only Han characters/, () => '干焦會當用漢字、假名、台羅字母佮「-」'],
@@ -310,8 +309,13 @@ export function describeErrors(errors) {
     .filter((e) => !/^(contributor|contributor_id|submitted):/.test(e))
     .map((e) => {
       const field = e.slice(0, e.indexOf(':'));
+      // a missing value reads 「請填寫資料」 alone: the line sits under the empty field
+      if (/: required$/.test(e)) return { field, text: '請填寫資料' };
       const rule = MESSAGE_RULES.find(([re]) => re.test(e));
       const text = rule ? rule[1](e.match(rule[0])) : e;
+      // one example's line: `example` is its index among the filled example rows
+      const example = /^examples\[(\d+)\]\.(hanji|tl)$/.exec(field);
+      if (example) return { field: example[2], example: Number(example[1]), text: `例句${FIELD_LABELS[example[2]]}：${text}` };
       return { field, text: `${FIELD_LABELS[field] ?? field}：${text}` };
     });
 }

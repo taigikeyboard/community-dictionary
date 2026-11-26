@@ -54,7 +54,7 @@
   --bubble-shadow: light-dark(rgba(0, 28, 70, 0.09), rgba(0, 0, 0, 0.45));
   /* from the BBC News chart palette (bbc/bbplot): its blue, the same in both themes (3.3:1 on the
      dark card, enough for a bar), which every tag bubble tints with (strengths below) and the charts
-     fill with; its yellow, for the form's construction notice */
+     fill with, and the form tips tint with; its yellow, for the form's construction notice */
   --hue-blue: #1380a1;
   --hue-yellow: #faab18;
   /* the charts' lines, after bbplot: grey gridlines (#cbcbcb), a dark baseline at zero (#333333),
@@ -413,7 +413,7 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 
 .form { display: grid; gap: 2rem; }
 .field { display: grid; gap: 0.5rem; margin: 0; padding: 0; border: 0; min-width: 0; }
-.field > label, .field > legend { padding: 0; color: var(--text); font-weight: 600; }
+.field > label, .field > legend, .field > .field-label { padding: 0; color: var(--text); font-weight: 600; }
 .field .error { color: var(--danger); font-size: 0.875rem; }
 /* the form's own fields (not the word rows inside their box) are lifted by a shadow, with no border
    until focused or invalid */
@@ -422,16 +422,13 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 .field > input[aria-invalid="true"], .field > textarea[aria-invalid="true"] { border-color: var(--danger); }
 
 
-/* words: one numbered row per word, number + Hanji/Japanese + Tâi-lô + remove, in a box of their
-   own; the fields below the box are shared by every word. --word-number and --word-gap (number
-   column, grid gap) line up the head, the rows, their error lines and the popover */
-.words-block { --word-number: 1.25rem; --word-gap: 0.75rem; padding: 1.25rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--surface-shadow); }
+/* the form's pair lists (詞條, 例句), each in a white box: one numbered row
+   each, number + Hanji/Japanese + Tâi-lô + remove. --word-number and --word-gap (number column,
+   grid gap) line up the rows, their error lines and the popover */
+.form-box { --word-number: 1.25rem; --word-gap: 0.75rem; padding: 1.25rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--surface-shadow); }
 .words { display: grid; gap: 0.75rem; counter-reset: word; }
 .word-fields { position: relative; display: grid; grid-template-columns: var(--word-number) 1fr 1fr 36px; gap: var(--word-gap); align-items: center; }
-/* the head's empty number cell, so its labels sit over the inputs */
-.words-head::before { content: ""; }
 .words .word-fields::before { counter-increment: word; content: counter(word); color: var(--secondary); font-size: 0.875rem; text-align: right; font-variant-numeric: tabular-nums; }
-.words-head { color: var(--secondary); font-size: 0.875rem; }
 .word .error { margin-top: 0.375rem; padding-left: calc(var(--word-number) + var(--word-gap)); }
 .word .matches { left: calc(var(--word-number) + var(--word-gap)); }
 .icon-button .icon-add, .word-slot .icon-button .icon-remove { display: none; }
@@ -503,6 +500,15 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 input.pill-input { position: absolute; top: calc(100% + 8px); left: 0; z-index: 10; width: 10rem; min-height: 0; background: var(--card); box-shadow: var(--menu-shadow); }
 input.pill-input.align-end { left: auto; right: 0; }
 .form-notice { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; color: var(--secondary); font-size: 0.9375rem; }
+.account { margin: 0; color: var(--secondary); font-size: 0.9375rem; }
+.link-button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
+.link-button:hover { text-decoration: underline; }
+.submitted { display: grid; justify-items: start; gap: 1rem; }
+.submitted p { margin: 0; }
+/* the form's tips: the tag bubbles' blue at their tint, shaped like the construction notice */
+.submit-tips { margin: -1rem 0 2rem; padding: 0.875rem 1.125rem; border-radius: var(--radius); background: color-mix(in srgb, var(--hue-blue) var(--tint), var(--card)); color: var(--heading); }
+.submit-tips ol { margin: 0; padding-left: 1.25rem; display: grid; gap: 0.375rem; }
+.pair-fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--word-gap); }
 
 
 

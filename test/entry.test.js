@@ -42,7 +42,10 @@ test('valid entries: every field but tl is optional', () => {
   // a missing word: Hanji and Tâi-lô only
   assert.deepEqual(errorsFor({ accents: [], note: '' }), []);
   // a new word that is also an accent variation
-  assert.deepEqual(errorsFor({ meaning: '網紅', example: '伊是網紅。' }), []);
+  assert.deepEqual(errorsFor({ meaning: '網紅', examples: [{ hanji: '伊是網紅。', tl: 'I sī bāng-âng.' }, { hanji: '', tl: 'Tsit-ê.' }] }), []);
+  assert.deepEqual(errorsFor({ examples: [{ hanji: '', tl: 'I sī\nbāng-âng.' }] }), ['examples[0].tl: must be one line']);
+  assert.deepEqual(errorsFor({ examples: [{ hanji: '', tl: '' }] }), ['examples[0]: empty']);
+  assert.deepEqual(errorsFor({ examples: [{ tl: 'a', hanji: 'b' }] }), ['examples[0]: must be an object with hanji and tl, in that order']);
   assert.deepEqual(errorsFor({ hanji: '做khang-khuè', tl: 'tsò-khang-khuè' }), []);
   assert.deepEqual(errorsFor({ tl: 'tsau2-khi3' }), []);
   assert.deepEqual(errorsFor({ tl: 'o͘' }), []);

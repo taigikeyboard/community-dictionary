@@ -1,4 +1,5 @@
-import { ACCENT_OTHER, ACCENTS, TAG_LIMIT } from '../lib/entry.js';
+import { ACCENT_OTHER, ACCENTS, LIMITS, MAX_EXAMPLES, TAG_LIMIT } from '../lib/entry.js';
+import { currentUser, signIn, signOut, submitErrorText, submitWords, WorkerError } from './account.js';
 import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
 import {
@@ -274,51 +275,61 @@ function choiceGroup(name, label, content) {
 // reports keyCode 229 with isComposing already false) belongs to the IME, not the form.
 const imeKey = (event) => event.isComposing || event.keyCode === 229;
 
-// 腔口: one pill per accent, full names, 其他 last as lib/entry.js lists them. Ticking 其他 opens
-// the same floating input as the tags' ＋ (required with 其他 by lib/entry.js, any words, not only a place name); what is typed shows
-// on the pill as 其他：… and goes in `place`. Unticking 其他 clears it.
-function accentGroup() {
-  const pills = h('div', { class: 'pills' }, ACCENTS.filter((a) => a !== ACCENT_OTHER).map((a) => pill('accents', a, a)));
-  const other = pill('accents', ACCENT_OTHER, ACCENT_OTHER);
-  const box = other.querySelector('input');
-  const text = other.querySelector('span');
-  const value = h('input', { type: 'hidden', name: 'place', value: '' });
-  const custom = h('input', { type: 'text', id: 'f-place', class: 'pill-input', 'aria-label': '其他腔口', 'aria-describedby': 'e-place', autocomplete: 'off', hidden: true });
-  const slot = h('span', { class: 'tag-add' }, other, custom, value);
-  pills.append(slot);
-  const show = () => {
-    text.textContent = value.value ? `${ACCENT_OTHER}：${value.value}` : ACCENT_OTHER;
+// 腔口: one pill per accent, full names as lib/entry.js lists them, then a ＋ like the tags'. ＋
+// opens an input floating under it; what is typed (any words, not only a place name) becomes one
+// more pill before ＋, already ticked. That pill is the accent 其他 with the text in `place`
+// (lib/entry.js allows one), so typing again replaces its text; unticking it leaves `place` out.
+function accentGroup({ accents = [], place = '' } = {}) {
+  const add = h('button', { class: 'pill-add', type: 'button', 'aria-label': '其他腔口', 'aria-expanded': 'false', title: '其他腔口' }, icon('plus'));
+  const custom = h('input', { type: 'text', id: 'f-place', class: 'pill-input', 'aria-label': '其他腔口', 'aria-describedby': 'e-place', autocomplete: 'off', maxlength: LIMITS.place, hidden: true });
+  const slot = h('span', { class: 'tag-add' }, add, custom);
+  const pills = h('div', { class: 'pills' }, ACCENTS.filter((a) => a !== ACCENT_OTHER).map((a) => pill('accents', a, a, { checked: accents.includes(a) })), slot);
+  // the 其他 pill, made on the first text typed; its hidden `place` is disabled (left out of the
+  // form data) while the pill is unticked
+  let other = null;
+  const setOther = (text, checked) => {
+    if (!other) {
+      other = pill('accents', ACCENT_OTHER, '');
+      const value = h('input', { type: 'hidden', name: 'place' });
+      other.append(value);
+      const box = other.querySelector('input[type="checkbox"]');
+      box.addEventListener('change', () => {
+        value.disabled = !box.checked;
+      });
+      slot.before(other);
+    }
+    other.querySelector('span').textContent = text;
+    other.querySelector('input[type="hidden"]').value = text;
+    other.querySelector('input[type="checkbox"]').checked = checked;
+    other.querySelector('input[type="hidden"]').disabled = !checked;
   };
-  // an 其他 near the right edge opens its input leftward, so it stays inside the column
+  if (place !== '') setOther(place, accents.includes(ACCENT_OTHER));
+  // a ＋ near the right edge opens its input leftward, so it stays inside the column
   const editing = (on) => {
+    add.setAttribute('aria-expanded', String(on));
     custom.hidden = !on;
     if (!on) return;
     custom.classList.remove('align-end');
     custom.classList.toggle('align-end', slot.offsetLeft + custom.offsetWidth > pills.clientWidth);
-    custom.value = value.value;
+    custom.value = other?.querySelector('input[type="hidden"]').value ?? '';
     custom.focus();
   };
   const commit = () => {
-    value.value = custom.value.normalize('NFC').trim();
-    show();
+    const text = custom.value.normalize('NFC').trim();
+    if (text !== '') setOther(text, true);
     editing(false);
   };
-  box.addEventListener('change', () => {
-    if (box.checked) return editing(true);
-    value.value = '';
-    show();
-    editing(false);
-  });
+  add.addEventListener('click', () => editing(true));
   custom.addEventListener('keydown', (event) => {
     if (imeKey(event)) return;
     if (event.key === 'Escape') {
       editing(false);
-      box.focus();
+      add.focus();
     } else if (event.key === 'Enter') {
       // Enter keeps what is typed instead of submitting the form
       event.preventDefault();
       commit();
-      box.focus();
+      add.focus();
     }
   });
   custom.addEventListener('blur', () => !custom.hidden && commit());
@@ -328,11 +339,13 @@ function accentGroup() {
 // 標籤: the site's tags as pills, several may be picked, and a ＋ pill after the last one. ＋ opens
 // an input floating under it, so opening it never reflows the pills; an added tag becomes one more
 // pill before ＋, already ticked, read and unticked like the others.
-function tagGroup() {
+function tagGroup(checked = []) {
   const add = h('button', { class: 'pill-add', type: 'button', 'aria-label': '家己加標籤', 'aria-expanded': 'false', title: '家己加標籤' }, icon('plus'));
   const custom = h('input', { type: 'text', class: 'pill-input', 'aria-label': '家己加標籤', autocomplete: 'off', maxlength: TAG_LIMIT, hidden: true });
   const slot = h('span', { class: 'tag-add' }, add, custom);
-  const pills = h('div', { class: 'pills' }, TAGS.map((tag) => pill('tags', tag.name, tag.name)), slot);
+  // a restored draft's own tags come back as ticked pills after the site's
+  const own = checked.filter((name) => !TAG_NAMES.includes(name)).map((name) => pill('tags', name, name, { checked: true }));
+  const pills = h('div', { class: 'pills' }, TAGS.map((tag) => pill('tags', tag.name, tag.name, { checked: checked.includes(tag.name) })), own, slot);
   // a ＋ near the right edge opens its input leftward, so it stays inside the column; ＋ moves each
   // time a tag is added before it, so this runs then too
   const place = () => {
@@ -382,12 +395,13 @@ const wordValues = (row) => ({
   tl: row.querySelector('[name="tl"]').value,
 });
 
-// One word: Hanji/Japanese and Tâi-lô inputs, the row's button and its error line. The button
-// removes the word, or on the slot row (see wordList) shows ＋ and moves the caret into it.
+// One row of a pair list (a word, or an example sentence): Hanji/Japanese and Tâi-lô inputs, the
+// row's button and its error line. The button removes the row, or on the slot row (see pairList)
+// shows ＋ and moves the caret into it. The column names are the inputs' placeholders.
 function wordRow(list) {
   const n = nextWordId++;
   const button = h('button', { class: 'icon-button', type: 'button' }, icon('close', 'icon icon-remove'), icon('plus', 'icon icon-add'));
-  const hanji = h('input', { type: 'text', name: 'hanji', 'aria-label': '漢字、日語', 'aria-describedby': `e-word-${n}` });
+  const hanji = h('input', { type: 'text', name: 'hanji', 'aria-label': '漢字、日語', placeholder: '漢字、日語', 'aria-describedby': `e-word-${n}` });
   const row = h(
     'div',
     { class: 'word' },
@@ -395,7 +409,7 @@ function wordRow(list) {
       'div',
       { class: 'word-fields' },
       hanji,
-      h('input', { type: 'text', name: 'tl', class: 'romanized', spellcheck: 'false', autocapitalize: 'off', 'aria-label': '台羅', 'aria-describedby': `e-word-${n}` }),
+      h('input', { type: 'text', name: 'tl', class: 'romanized', spellcheck: 'false', autocapitalize: 'off', 'aria-label': '台羅', placeholder: '台羅', 'aria-describedby': `e-word-${n}` }),
       button,
     ),
     h('div', { class: 'error', id: `e-word-${n}`, hidden: true }),
@@ -414,14 +428,14 @@ function wordRow(list) {
 const isBlankRow = (row) => isBlankWord(wordValues(row));
 
 // The row the next pasted line goes into: the empty row below `row`, else a new row inserted there.
-// At the limit the empty slot row at the end gives up its place; past it, null.
-function nextPasteRow(list, row) {
+// At the limit (`max`) the empty slot row at the end gives up its place; past it, null.
+function nextPasteRow(list, row, max, newRow) {
   const next = row.nextElementSibling;
   if (next && isBlankRow(next)) return next;
   const spare = list.lastElementChild;
-  if (list.children.length >= MAX_WORDS && spare !== row && isBlankRow(spare)) spare.remove();
-  if (list.children.length >= MAX_WORDS) return null;
-  const inserted = wordRow(list);
+  if (list.children.length >= max && spare !== row && isBlankRow(spare)) spare.remove();
+  if (list.children.length >= max) return null;
+  const inserted = newRow();
   row.after(inserted);
   return inserted;
 }
@@ -429,8 +443,8 @@ function nextPasteRow(list, row) {
 // Pasted lines fill one row each: the first the row pasted into, the rest the empty row below or a
 // new row inserted there, so words already typed further down stay. Tab-separated cells (a
 // spreadsheet's copy) fill the Hanji and Tâi-lô columns from the column pasted into. Returns how
-// many lines did not fit under MAX_WORDS.
-function pasteWords(list, input, text) {
+// many lines did not fit under `max`.
+function pasteWords(list, input, text, max, newRow) {
   const names = ['hanji', 'tl'];
   const firstColumn = names.indexOf(input.name);
   const lines = text
@@ -441,7 +455,7 @@ function pasteWords(list, input, text) {
   let row = input.closest('.word');
   let placed = 0;
   for (const cells of lines) {
-    if (placed > 0) row = nextPasteRow(list, row);
+    if (placed > 0) row = nextPasteRow(list, row, max, newRow);
     if (!row) break;
     cells.forEach((cell, i) => {
       row.querySelector(`[name="${names[firstColumn + i]}"]`).value = cell;
@@ -452,20 +466,19 @@ function pasteWords(list, input, text) {
   return lines.length - placed;
 }
 
-// Words grow on their own: below the filled rows there is always one empty slot row, drawn
-// faint with a ＋, and typing into it adds the next one (up to MAX_WORDS). The first row is a
-// plain row even while empty, so a fresh form shows the first word and the slot below it.
-// Enter moves on (Hanji → Tâi-lô → next row) instead of submitting the form. `onFilled(count)`
-// hears the number of filled rows after every change; `onDropped(count)` about pasted lines past
-// MAX_WORDS.
-function wordList({ onFilled, onDropped }) {
+// The form's two pair lists: the words, in their own box, and the example sentences.
+const WORD_LIST = { max: MAX_WORDS, add: '加一个詞', remove: '提掉這个詞' };
+const EXAMPLE_LIST = { max: MAX_EXAMPLES, add: '加一句例句', remove: '提掉這句例句' };
+
+// Rows grow on their own: below the filled rows there is always one empty slot row, drawn
+// faint with a ＋, and typing into it adds the next one (up to `kind.max`). The first row is a
+// plain row even while empty, so a fresh list shows the first row and the slot below it.
+// Enter moves on (Hanji → Tâi-lô → next row) instead of submitting the form. `onDropped(count)`
+// hears about pasted lines past the limit; `initial` fills the first rows (a restored draft).
+// Returns the list element; the caller places it.
+function pairList(kind, { onDropped, initial = [] }) {
   const list = h('div', { class: 'words' });
-  const section = h(
-    'div',
-    { class: 'field words-block' },
-    h('div', { class: 'word-fields words-head', 'aria-hidden': 'true' }, h('span', {}, '漢字、日語'), h('span', {}, '台羅'), h('span')),
-    list,
-  );
+  const newRow = () => wordRow(list);
   const refresh = () => {
     // clearing the second-to-last row leaves two empty rows at the end; keep one
     while (list.children.length > 2) {
@@ -473,22 +486,25 @@ function wordList({ onFilled, onDropped }) {
       if (!isBlankRow(last) || !isBlankRow(last.previousElementSibling) || last.contains(document.activeElement)) break;
       last.remove();
     }
-    while (list.children.length < 2) list.append(wordRow(list));
-    if (!isBlankRow(list.lastElementChild) && list.children.length < MAX_WORDS) list.append(wordRow(list));
-    let filled = 0;
+    while (list.children.length < 2) list.append(newRow());
+    if (!isBlankRow(list.lastElementChild) && list.children.length < kind.max) list.append(newRow());
     for (const row of list.children) {
       const blank = isBlankRow(row);
-      if (!blank) filled += 1;
       const slot = blank && row === list.lastElementChild && row !== list.firstElementChild;
       row.classList.toggle('word-slot', slot);
       const button = row.querySelector('.icon-button');
-      button.setAttribute('aria-label', slot ? '加一个詞' : '提掉這个詞');
-      button.title = slot ? '加一个詞' : '提掉';
+      button.setAttribute('aria-label', slot ? kind.add : kind.remove);
+      button.title = slot ? kind.add : '提掉';
       // an empty first row has nothing to remove
       button.hidden = blank && row === list.firstElementChild;
     }
-    onFilled(filled);
   };
+  for (const word of initial) {
+    const row = newRow();
+    row.querySelector('[name="hanji"]').value = word.hanji;
+    row.querySelector('[name="tl"]').value = word.tl;
+    list.append(row);
+  }
   list.addEventListener('input', refresh);
   list.addEventListener('words-changed', refresh);
   list.addEventListener('keydown', (event) => {
@@ -502,40 +518,44 @@ function wordList({ onFilled, onDropped }) {
     const text = event.clipboardData?.getData('text/plain') ?? '';
     if (event.target.tagName !== 'INPUT' || !/[\n\t]/.test(text.trim())) return;
     event.preventDefault();
-    const dropped = pasteWords(list, event.target, text);
+    const dropped = pasteWords(list, event.target, text, kind.max, newRow);
     if (dropped > 0) onDropped(dropped);
   });
   refresh();
-  return { section, list };
+  return list;
 }
 
-function readShared(form) {
+// The filled rows of a pair list, as { hanji, tl }.
+const filledPairs = (list) => [...list.children].map(wordValues).filter((pair) => !isBlankWord(pair));
+
+function readShared(form, exampleList) {
   const data = new FormData(form);
   return {
     accents: data.getAll('accents'),
     tags: data.getAll('tags'),
     place: data.get('place') ?? '',
     meaning: data.get('meaning') ?? '',
-    example: data.get('example') ?? '',
+    examples: filledPairs(exampleList),
     note: data.get('note') ?? '',
   };
 }
 
-// Errors with a `row` go to that word's line (several joined); the rest to their field's slot.
-function showErrors(form, rowElements, errors) {
+// Errors with a `row` go to that word's line, with an `example` to that filled example row's line
+// (several joined); the rest to their field's slot.
+function showErrors(form, rowElements, exampleRows, errors) {
   for (const el of form.querySelectorAll('.error')) {
     el.hidden = true;
     el.textContent = '';
   }
   for (const el of form.querySelectorAll('[aria-invalid]')) el.removeAttribute('aria-invalid');
-  for (const { field: name, row, text } of errors) {
-    if (row === undefined) {
+  for (const { field: name, row, example, text } of errors) {
+    if (row === undefined && example === undefined) {
       const el = form.querySelector(`#e-${name}`);
       el.textContent = text;
       el.hidden = false;
       form.querySelector(`#f-${name}`)?.setAttribute('aria-invalid', 'true');
     } else {
-      const rowEl = rowElements[row];
+      const rowEl = example === undefined ? rowElements[row] : exampleRows[example];
       const el = rowEl.querySelector('.error');
       el.textContent = el.textContent ? `${el.textContent}；${text}` : text;
       el.hidden = false;
@@ -544,31 +564,95 @@ function showErrors(form, rowElements, errors) {
   }
 }
 
+// The form's words and fields, kept in sessionStorage across the GitHub sign-in round trip.
+const DRAFT_KEY = 'submit-draft';
+
+function saveDraft(form, wordList, exampleList) {
+  sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ words: filledPairs(wordList), ...readShared(form, exampleList) }));
+}
+
+// The saved draft, once (it is removed as it is read); null when there is none or it is unreadable.
+function takeDraft() {
+  const text = sessionStorage.getItem(DRAFT_KEY);
+  sessionStorage.removeItem(DRAFT_KEY);
+  try {
+    const draft = JSON.parse(text);
+    const strings = (list) => Array.isArray(list) && list.every((v) => typeof v === 'string');
+    const pairs = (list) => Array.isArray(list) && list.every((p) => typeof p?.hanji === 'string' && typeof p?.tl === 'string');
+    if (!draft || !pairs(draft.words) || !pairs(draft.examples) || !strings(draft.accents) || !strings(draft.tags)) return null;
+    return draft;
+  } catch {
+    return null;
+  }
+}
+
+// The tips above the form, numbered: one list item per tip, each a string or h() nodes.
+const SUBMIT_TIPS = [
+  ['提交資料需要登入 GitHub 口座，若無口座請先去', h('a', { href: 'https://github.com/signup', target: '_blank', rel: 'noopener' }, '申請'), '。'],
+  ['為著整理資料方便，台羅請使用教育部台語羅馬字。'],
+  ['若無漢字、日語，彼欄會當留空。'],
+  ['解說、例句會當留空，但是盡量鼓勵寫清楚。'],
+];
+
+const submitTips = () => h('section', { class: 'submit-tips', 'aria-label': '填寫提示' }, h('ol', {}, SUBMIT_TIPS.map((tip) => h('li', {}, tip))));
+
+const wordLabel = (entry) => [entry.hanji, entry.tl].filter(Boolean).join(' ');
+
 function renderSubmit() {
   const open = WORKER_URL !== '';
+  const draft = open ? takeDraft() : null;
   const notice = h('p', { class: 'form-notice', role: 'status', hidden: true });
   const say = (text) => {
     notice.textContent = text;
     notice.hidden = false;
   };
-  // The label grows with the count ("檢查 3 个詞"); a hidden copy of its longest form, stacked in the
-  // same grid cell, holds the button at that width so it never changes size while typing.
-  const submitBase = open ? '登入 GitHub 送出' : '提交';
+  // 「登入 GitHub 提交」 while signed out, 「提交」 once signed in; a hidden copy of the longer label,
+  // stacked in the same grid cell, holds the button at that width so it never changes size when
+  // the session loads or the contributor signs out.
+  const signedOutLabel = '登入 GitHub 提交';
+  let user = null;
   const submitLabel = h('span');
+  const showLabel = () => {
+    submitLabel.textContent = !open || user ? '提交' : signedOutLabel;
+  };
   const submit = h(
     'button',
-    // grey and unpressable until submissions open (Phase 2); the tooltip says why
+    // grey and unpressable while no Worker is configured; the tooltip says why
     { class: 'button button-steady', type: 'submit', disabled: !open, title: open ? null : '提交猶未開放' },
-    h('span', { class: 'button-sizer', 'aria-hidden': 'true' }, `${submitBase} ${MAX_WORDS} 个詞`),
+    h('span', { class: 'button-sizer', 'aria-hidden': 'true' }, signedOutLabel),
     submitLabel,
   );
-  const words = wordList({
-    onFilled: (count) => {
-      submitLabel.textContent = `${submitBase}${count > 0 ? ` ${count} 个詞` : ''}`;
-    },
-    onDropped: (dropped) => say(`一擺上濟 ${MAX_WORDS} 个詞，有 ${dropped} 个無貼入去。`),
+  // who is signed in, with 登出; empty while signed out
+  const account = h('p', { class: 'account', hidden: true });
+  const showAccount = () => {
+    account.hidden = !user;
+    if (!user) return account.replaceChildren();
+    const out = h('button', { class: 'link-button', type: 'button' }, '登出');
+    out.addEventListener('click', async () => {
+      await signOut().catch(() => {});
+      user = null;
+      showAccount();
+      showLabel();
+    });
+    account.replaceChildren(`用 ${user.login} 提交 · `, out);
+  };
+  const session = open ? currentUser() : Promise.resolve(null);
+  session.then((found) => {
+    user = found;
+    showAccount();
+    showLabel();
   });
-  matchesPopover(words.list, (el) => {
+
+  showLabel();
+  const words = pairList(WORD_LIST, {
+    onDropped: (dropped) => say(`一擺上濟 ${MAX_WORDS} 个詞，有 ${dropped} 个無貼入去。`),
+    initial: draft?.words ?? [],
+  });
+  const examples = pairList(EXAMPLE_LIST, {
+    onDropped: (dropped) => say(`例句上濟 ${MAX_EXAMPLES} 句，有 ${dropped} 句無貼入去。`),
+    initial: draft?.examples ?? [],
+  });
+  matchesPopover(words, (el) => {
     const row = el.closest('.word');
     return row && { anchor: row.querySelector('.word-fields'), values: () => wordValues(row) };
   }, WORD_ROW_LIMIT);
@@ -576,54 +660,123 @@ function renderSubmit() {
   const form = h(
     'form',
     { class: 'form submit-form', novalidate: true },
-    words.section,
-    field('meaning', '意思', textInput('meaning')),
-    field('example', '例句', textInput('example')),
-    accentGroup(),
-    tagGroup(),
+    h(
+      'div',
+      { class: 'field form-box' },
+      h('span', { class: 'field-label' }, '詞條'),
+      words,
+    ),
+    field('meaning', '解說', textInput('meaning')),
+    // 例句 in the same white box as 詞條 (styles.css .form-box)
+    h('div', { class: 'field form-box' }, h('span', { class: 'field-label' }, '例句'), examples, errorSlot('examples')),
+    accentGroup(draft ?? {}),
+    tagGroup(draft?.tags ?? []),
     field('note', '說明', textInput('note', { multiline: true })),
-    h('div', { class: 'actions' }, submit, notice),
+    h('div', { class: 'actions' }, submit, account, notice),
   );
+  for (const name of ['meaning', 'note']) {
+    if (typeof draft?.[name] === 'string') form.elements[name].value = draft[name];
+  }
+
+  // Editing a row or a field clears its error line at once; the next 提交 checks everything again.
+  const clearError = (event) => {
+    const scope = event.target.closest('.word') ?? event.target.closest('.field');
+    if (!scope) return;
+    for (const el of scope.querySelectorAll('.error:not([hidden])')) {
+      el.hidden = true;
+      el.textContent = '';
+    }
+    for (const el of scope.querySelectorAll('[aria-invalid]')) el.removeAttribute('aria-invalid');
+    if (scope.getAttribute('aria-invalid')) scope.removeAttribute('aria-invalid');
+  };
+  form.addEventListener('input', clearError);
+  form.addEventListener('change', clearError);
 
   let confirmedKeys = null;
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (submit.disabled) return;
     notice.hidden = true;
-    const rowElements = [...words.list.children];
-    const { entries, errors } = await checkBatch(readShared(form), rowElements.map(wordValues));
-    showErrors(form, rowElements, errors);
+    const rowElements = [...words.children];
+    const exampleRows = [...examples.children].filter((row) => !isBlankRow(row));
+    const shared = readShared(form, examples);
+    const { entries, errors } = await checkBatch(shared, rowElements.map(wordValues));
+    showErrors(form, rowElements, exampleRows, errors);
     if (errors.length > 0) return;
+    const signedIn = await session.then(() => user);
 
-    // Another contributor's earlier submission does not block (D10); the contributor confirms
-    // once for this set of words.
+    // One's own earlier pair is refused; another contributor's does not block (D10), the
+    // contributor confirms once for this set of words.
     const already = [];
+    const mine = [];
     try {
       const rows = await loadRows();
-      for (const { entry } of entries) {
-        const dup = await duplicateStatus(rows, entry.hanji, entry.tl);
-        if (dup.status === 'attested') already.push(`${[entry.hanji, entry.tl].filter(Boolean).join(' ')}：${dup.contributors.join('、')} 已經提交過`);
+      for (const { entry, row } of entries) {
+        const dup = await duplicateStatus(rows, entry.hanji, entry.tl, signedIn?.id);
+        if (dup.status === 'mine') mine.push({ field: 'tl', row, text: '你已經提交過這个詞' });
+        if (dup.status === 'attested') already.push(`${wordLabel(entry)}：${dup.contributors.join('、')} 已經提交過`);
       }
     } catch {
       say(LOAD_ERROR);
       return;
     }
+    if (mine.length > 0) return showErrors(form, rowElements, exampleRows, mine);
     const keys = entries.map((e) => e.key).join(',');
     if (already.length > 0 && confirmedKeys !== keys) {
       confirmedKeys = keys;
       say(`${already.join('。')}。腔口無仝抑是有補充，請寫佇「說明」才閣送一擺。`);
       return;
     }
-    if (!open) say(`${entries.length} 个詞格式無問題。提交猶未開放。`);
-    // Phase 2: sign in through the Worker and POST the entries to its /submit endpoint.
+    if (!open) return say(`${entries.length} 个詞格式無問題。提交猶未開放。`);
+    // signing in leaves the page; the draft brings the form back as it was
+    const goSignIn = () => {
+      saveDraft(form, words, examples);
+      signIn('#/submit');
+    };
+    if (!signedIn) return goSignIn();
+
+    submit.disabled = true;
+    say('送出中…');
+    try {
+      const pullRequest = await submitWords({ ...shared, words: entries.map(({ entry }) => ({ hanji: entry.hanji, tl: entry.tl })) });
+      renderSubmitted(pullRequest, entries.length);
+    } catch (err) {
+      // the session ran out (24 hours) between loading the form and pressing 提交
+      if (err instanceof WorkerError && err.status === 401) return goSignIn();
+      const labelOf = (key) => wordLabel(entries.find((e) => e.key === key)?.entry ?? { hanji: key, tl: '' });
+      say(submitErrorText(err, labelOf));
+    } finally {
+      submit.disabled = false;
+    }
   });
 
   document.title = `提交新詞 · ${SITE_TITLE}`;
-  // until submissions open, a notice says the site is still being built
+  // while no Worker is configured, a notice says the site is still being built
   const building = open
     ? null
     : h('p', { class: 'construction-note', role: 'note' }, icon('cone'), '網站當咧做');
-  view.replaceChildren(backButton(), hero('提交新詞'), building, form);
-  sync();
+  view.replaceChildren(...[backButton(), hero('提交新詞'), building, submitTips(), form].filter(Boolean));
+}
+
+// After a submission: the pull request the Worker opened, where the maintainer reviews the words.
+function renderSubmitted(pullRequest, count) {
+  // only a GitHub page is linked, whatever the reply held
+  const url = /^https:\/\/github\.com\//.test(pullRequest?.url) ? pullRequest.url : null;
+  const again = h('button', { class: 'button', type: 'button' }, '閣提交');
+  again.addEventListener('click', renderSubmit);
+  view.replaceChildren(
+    backButton(),
+    hero('提交成功'),
+    h(
+      'div',
+      { class: 'submitted' },
+      h('p', {}, `${count} 个詞送出去矣，審查了就會收錄。`),
+      url ? h('p', {}, h('a', { href: url, target: '_blank', rel: 'noopener' }, `看審查進度（#${pullRequest.number}）`)) : null,
+      again,
+    ),
+  );
+  window.scrollTo(0, 0);
+  view.querySelector('h1').focus({ preventScroll: true });
 }
 
 // The card a word bubble opens (tag-map.js onWord): the word's cards as its word page shows them
@@ -752,7 +905,7 @@ function cardActions(row, route) {
   );
 }
 
-// One word card. Community rows merge their attestations (accents, meaning, example, note,
+// One word card. Community rows merge their attestations (accents, meaning, examples, note,
 // contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
 // the card leads with the word, linked to its own page (tag pages); a word page already names it
 // in the heading.
@@ -763,8 +916,9 @@ function wordCard(row, { headword }) {
   const accents = unique(attestations.flatMap((a) => a.accents.map((accent) => (accent === ACCENT_OTHER && a.place ? a.place : accent))));
   const details = [
     ['腔口', accents.join('、')],
-    ['意思', pick('meaning').join('\n')],
-    ['例句', pick('example').join('\n')],
+    ['解說', pick('meaning').join('\n')],
+    // each example as its Hanji line over its Tâi-lô line
+    ['例句', unique(attestations.flatMap((a) => a.examples.map((e) => [e.hanji, e.tl].filter(Boolean).join('\n')))).join('\n')],
     ['說明', pick('note').join('\n')],
   ].filter(([, value]) => value !== '');
   const contributors = attestations.length > 0 ? pick('contributor') : (row.contributors ?? []);

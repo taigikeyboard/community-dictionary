@@ -10,7 +10,7 @@ export const accentEntry = () => ({
   tags: ['食食'],
   place: '',
   meaning: '',
-  example: '',
+  examples: [],
   note: '鹿港講 pueh。',
   contributor: 'octocat',
   contributor_id: 583231,

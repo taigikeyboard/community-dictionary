@@ -142,7 +142,7 @@ test('compile merges attestations of one pair into one row', async () => {
   assert.deepEqual(rows[0].attestations.map((a) => a.contributor), ['mallory', 'octocat']);
   assert.equal(
     toCsv(rows),
-    'key,hanji,tl,accents,tags,place,meaning,example,note,contributors\r\n' +
+    'key,hanji,tl,accents,tags,place,meaning,examples,note,contributors\r\n' +
       `${KEY},八,pueh,三峽偏泉腔; 鹿港偏泉腔,食食; 𨑨迌,,,,"a, ""b""\n鹿港講 pueh。",mallory; octocat\r\n`,
   );
 });

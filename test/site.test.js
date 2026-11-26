@@ -52,7 +52,7 @@ test('checkForm + describeErrors give Taiwanese messages per field', () => {
   const { errors } = checkForm({ hanji: '', tl: 'pueh!', accents: ['其他'], note: '' });
   assert.deepEqual(describeErrors(errors), [
     { field: 'tl', text: '台羅：干焦會當用台羅字母、調符、數字、空格佮「-」' },
-    { field: 'place', text: '其他腔口：愛填' },
+    { field: 'place', text: '請填寫資料' },
   ]);
   const ok = checkForm({ hanji: ' 八', tl: 'pueh ', accents: ['鹿港偏泉腔'], note: '' });
   assert.deepEqual(ok.errors, []);
@@ -93,7 +93,7 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
   ]);
   assert.deepEqual(entries, []);
   assert.deepEqual(errors, [
-    { field: 'place', text: '其他腔口：愛填' },
+    { field: 'place', text: '請填寫資料' },
     { field: 'hanji', row: 3, text: '漢字、日語：干焦會當用漢字、假名、台羅字母佮「-」' },
   ]);
 
@@ -107,7 +107,7 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
 
   // a lone blank row still reports the missing Tâi-lô
   const blank = await checkBatch({ ...shared, place: '澎湖' }, [{ hanji: '', tl: '' }]);
-  assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '台羅：愛填' }]);
+  assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '請填寫資料' }]);
 });
 
 test('searchItaigi: hanji, each variant reading; exact, then prefix, then the rest', () => {
