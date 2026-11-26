@@ -29,7 +29,7 @@ import { TAG_NAMES, TAGS } from './tags.js';
 
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
-const SITE_TITLE = '台語齒盤社群辭典';
+const SITE_TITLE = '台語齒盤群眾辭典';
 
 // a page's title, and a lead line under it (a tag's Tâi-lô, `isReading`, follows the 台羅 switch)
 const hero = (title, lead, { isReading = false } = {}) =>
