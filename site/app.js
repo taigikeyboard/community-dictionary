@@ -39,10 +39,10 @@ const hero = (title, lead, { isReading = false } = {}) =>
 // step back through them)
 let navigatedInside = false;
 
-// The 「‹ 轉去」 button above a subpage's title (the top bar has no links): back to the page the reader
+// The 「‹ 頂一頁」 button above a subpage's title (the top bar has no links): back to the page the reader
 // came from on this site, or the homepage when the page was opened directly.
 function backButton() {
-  const button = h('button', { class: 'back-link', type: 'button' }, icon('back'), '轉去');
+  const button = h('button', { class: 'back-link', type: 'button' }, icon('back'), '頂一頁');
   button.addEventListener('click', () => {
     if (navigatedInside) history.back();
     else location.hash = '#/';
