@@ -10,7 +10,7 @@
   "routes": [{ "pattern": "dict-api.taigikeyboard.tw", "custom_domain": true }],
   "observability": { "enabled": true },
   "vars": {
-    // Client ID of the GitHub App taigi-dictionary-submit (public; not a secret).
+    // Client ID of the GitHub App 台語齒盤群眾辭典 TaigiKeyboard, slug `taigikeyboard` (public; not a secret).
     "GITHUB_CLIENT_ID": "Iv23lizVTV2DDdURodB1",
     "GITHUB_REPO": "taigikeyboard/community-dictionary",
     "BASE_BRANCH": "main",

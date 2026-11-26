@@ -128,7 +128,7 @@ One pull request per phase.
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
 | 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Done 2026-11-26, deployed |
 | 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — first slice live; sign-in, submit, "My submissions" and "submitted" wait for Phase 2 |
-| 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Done 2026-11-26 — App `taigi-dictionary-submit` (public), Worker deployed, test pull request #1 opened by the bot with the contributor as commit author, `validate` passed in submission mode, closed unmerged; the site form is not wired yet (Phase 3) |
+| 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Done 2026-11-26 — App 「台語齒盤群眾辭典 TaigiKeyboard」 (slug `taigikeyboard`, bot `taigikeyboard[bot]` = `SUBMIT_APP_LOGIN`; created as `taigi-dictionary-submit`, renamed the same day — a rename changes the slug and bot login, so update the variable with it), public, Worker deployed, test pull request #1 opened by the bot with the contributor as commit author, `validate` passed in submission mode, closed unmerged; the site form is not wired yet (Phase 3) |
 
 ### Phase 1 — schema and checks
 
