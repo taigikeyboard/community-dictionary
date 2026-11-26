@@ -177,6 +177,8 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 | Edit | an entry in the contributor's open submission is read from and edited on that branch (no new pull request, no cap check); otherwise from the base branch in a new pull request. An unchanged pair keeps its file, directory and `contributor`; a changed pair moves to `entries/<current login>/` |
 | Pull request body | `Submitted by @<login>` (so GitHub notifies them of the review), the Hanji / Tâi-lô list, and the CC0 1.0 line (D4) |
 | Local run | `make worker-dev` (wrangler dev on 127.0.0.1:8787, `--local-upstream` so the callback URL stays local); secrets in `worker/.dev.vars` from `worker/.dev.vars.example` |
+| Abuse limits | Only the caps for now. A per-user rate limit (Workers rate-limit binding), a blocked-ids list and `concurrency` in `validate.yml` were raised by the 2026-11-26 security review (a few accounts can exhaust GitHub's secondary write limit; 20 accounts fill `CAP_TOTAL`; an org block does not reach App-opened pull requests); maintainer 2026-11-26: launch first and observe |
+| Trusted origin | All of `https://taigikeyboard.tw`, which every org project page shares; script on any of them can act for the signed-in visitor (2026-11-26 review). A dedicated origin would reverse D1 |
 
 ### Phase 3 — site
 
@@ -195,7 +197,8 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
    Set the repository variable `SUBMIT_APP_LOGIN` to its bot login (`<app-slug>[bot]`) so CI treats its pull requests as submissions.
 2. Convert the private key to PKCS#8 and store the three secrets with `wrangler secret put`.
 3. Point a subdomain of `taigikeyboard.tw` at the Worker.
-4. Enable Pages; protect `main` with a ruleset that requires a pull request and does not put the App on the bypass list.
+4. Enable Pages; protect `main` with a ruleset that requires a pull request and does not put the App on the bypass list. Done 2026-11-26: ruleset `require-pr` (pull request, merge or rebase only per D7, required check `validate`, not strict) with repository admins bypassing so the maintainer still pushes to `main` directly (maintainer); `protect-main` (no deletion, no force push) stays without bypass.
+5. Make the App public ("Any account"): GitHub lets only members of the owning organization authorize a private App, and contributors are not members. Installations on other accounts are never used — the Worker resolves the installation by `GITHUB_REPO`.
 
 ## Best practices alignment
 
