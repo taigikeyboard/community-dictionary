@@ -1,6 +1,7 @@
 // Signed values (HMAC-SHA256) and the cookies that carry them: the sign-in session and the
 // short-lived OAuth state. A value is `<base64url JSON>.<base64url signature>` with an `exp`
-// (Unix seconds) inside, so the Worker needs no storage to trust it later.
+// (Unix seconds) and a `use` inside, so the Worker needs no storage to trust it later, and a
+// value signed for one use (the OAuth state) is never accepted as another (the session).
 
 const encoder = new TextEncoder();
 
@@ -26,14 +27,15 @@ function hmacKey(secret) {
   ]);
 }
 
-export async function sign(secret, payload) {
-  const body = base64url(encoder.encode(JSON.stringify(payload)));
+export async function sign(secret, use, payload) {
+  const body = base64url(encoder.encode(JSON.stringify({ ...payload, use })));
   const sig = await crypto.subtle.sign('HMAC', await hmacKey(secret), encoder.encode(body));
   return `${body}.${base64url(new Uint8Array(sig))}`;
 }
 
-// Returns the payload, or null when the value is malformed, forged or expired.
-export async function verify(secret, value, now = Date.now()) {
+// Returns the payload, or null when the value is malformed, forged, expired or signed for
+// another use.
+export async function verify(secret, use, value, now = Date.now()) {
   if (typeof value !== 'string') return null;
   const [body, sig, extra] = value.split('.');
   if (!body || !sig || extra !== undefined) return null;
@@ -41,7 +43,7 @@ export async function verify(secret, value, now = Date.now()) {
     const ok = await crypto.subtle.verify('HMAC', await hmacKey(secret), fromBase64url(sig), encoder.encode(body));
     if (!ok) return null;
     const payload = JSON.parse(new TextDecoder().decode(fromBase64url(body)));
-    return typeof payload.exp === 'number' && payload.exp * 1000 > now ? payload : null;
+    return payload.use === use && typeof payload.exp === 'number' && payload.exp * 1000 > now ? payload : null;
   } catch {
     return null;
   }
@@ -58,6 +60,6 @@ export function readCookie(request, name) {
 // HttpOnly: page scripts never see the value. SameSite=Lax: the site (taigikeyboard.tw) and the
 // Worker (a subdomain) are the same site, so the site's credentialed fetch carries it, while
 // other sites' cross-site POSTs do not.
-export function cookie(name, value, { path = '/', maxAge }) {
-  return `${name}=${value}; Path=${path}; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+export function cookie(name, value, { maxAge }) {
+  return `${name}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
 }

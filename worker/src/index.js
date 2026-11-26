@@ -1,13 +1,15 @@
 import { authorizeUrl, exchangeCode, api } from './github.js';
 import { cookie, randomToken, readCookie, sign, verify, base64url } from './session.js';
+import { LOGIN_RE } from '../../lib/entry.js';
 import { submitEdit, submitNew, SubmitError, withdraw } from './submit.js';
 
 // Submission Worker: GitHub sign-in for the static site, and the endpoints that turn a filled-in
 // form into a pull request. Routes: GET /login, /callback, /session; POST /logout, /submit,
 // /withdraw.
 
-const SESSION_COOKIE = 'session';
-const OAUTH_COOKIE = 'oauth';
+// __Host-: Secure, Path=/ and no Domain, so a sibling *.taigikeyboard.tw page cannot plant one.
+const SESSION_COOKIE = '__Host-session';
+const OAUTH_COOKIE = '__Host-oauth';
 const SESSION_SECONDS = 24 * 3600;
 const OAUTH_SECONDS = 10 * 60;
 const MAX_BODY_BYTES = 64 * 1024;
@@ -42,9 +44,10 @@ function redirect(location, cookies = []) {
   return new Response(null, { status: 302, headers });
 }
 
-// Where the browser lands after sign-in: a hash route of the site, nothing else.
+// Where the browser lands after sign-in: a hash route of the site, nothing else (percent-encoded,
+// since a Location header takes ASCII only).
 function returnUrl(env, ret) {
-  return env.SITE_URL + (typeof ret === 'string' && /^#\/[^\s]*$/.test(ret) ? ret : '#/');
+  return env.SITE_URL + (typeof ret === 'string' && /^#\/[^\s]*$/.test(ret) ? encodeURI(ret) : '#/');
 }
 
 async function login(env, request) {
@@ -53,26 +56,32 @@ async function login(env, request) {
   const verifier = randomToken();
   const challenge = base64url(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
   const ret = url.searchParams.get('return');
-  const oauth = await sign(env.SESSION_KEY, { state, verifier, ret, exp: Math.floor(Date.now() / 1000) + OAUTH_SECONDS });
+  const oauth = await sign(env.SESSION_KEY, OAUTH_COOKIE, { state, verifier, ret, exp: Math.floor(Date.now() / 1000) + OAUTH_SECONDS });
   const redirectUri = `${url.origin}/callback`;
   return redirect(authorizeUrl(env, { state, challenge, redirectUri }), [
-    cookie(OAUTH_COOKIE, oauth, { path: '/callback', maxAge: OAUTH_SECONDS }),
+    cookie(OAUTH_COOKIE, oauth, { maxAge: OAUTH_SECONDS }),
   ]);
 }
 
 async function callback(env, request) {
   const url = new URL(request.url);
-  const oauth = await verify(env.SESSION_KEY, readCookie(request, OAUTH_COOKIE));
-  const clearOauth = cookie(OAUTH_COOKIE, '', { path: '/callback', maxAge: 0 });
+  const oauth = await verify(env.SESSION_KEY, OAUTH_COOKIE, readCookie(request, OAUTH_COOKIE));
+  const clearOauth = cookie(OAUTH_COOKIE, '', { maxAge: 0 });
   const code = url.searchParams.get('code');
   // Denied consent, an expired attempt or a forged state all end on the site, signed out.
   if (!oauth || !code || url.searchParams.get('state') !== oauth.state) {
     return redirect(returnUrl(env, oauth?.ret), [clearOauth]);
   }
-  const userToken = await exchangeCode(env, { code, verifier: oauth.verifier, redirectUri: `${url.origin}/callback` });
-  // id and login are read once from GitHub; the user token is dropped right after.
-  const user = await api(userToken, 'GET', '/user');
-  const session = await sign(env.SESSION_KEY, {
+  let user;
+  try {
+    const userToken = await exchangeCode(env, { code, verifier: oauth.verifier, redirectUri: `${url.origin}/callback` });
+    // id and login are read once from GitHub; the user token is dropped right after.
+    user = await api(userToken, 'GET', '/user');
+  } catch (err) {
+    console.error(`worker: sign-in failed: ${err.message}`);
+    return redirect(returnUrl(env, oauth.ret), [clearOauth]);
+  }
+  const session = await sign(env.SESSION_KEY, SESSION_COOKIE, {
     id: user.id,
     login: user.login,
     exp: Math.floor(Date.now() / 1000) + SESSION_SECONDS,
@@ -81,11 +90,14 @@ async function callback(env, request) {
 }
 
 async function currentUser(env, request) {
-  const session = await verify(env.SESSION_KEY, readCookie(request, SESSION_COOKIE));
-  return session && { id: session.id, login: session.login };
+  const session = await verify(env.SESSION_KEY, SESSION_COOKIE, readCookie(request, SESSION_COOKIE));
+  // Defence in depth behind the signature: the identity must look like a GitHub account.
+  if (!session || !Number.isSafeInteger(session.id) || session.id <= 0 || !LOGIN_RE.test(session.login)) return null;
+  return { id: session.id, login: session.login };
 }
 
 async function readBody(request) {
+  if (Number(request.headers.get('Content-Length')) > MAX_BODY_BYTES) throw new SubmitError(413, 'too_large');
   const text = await request.text();
   if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) throw new SubmitError(413, 'too_large');
   try {

@@ -65,7 +65,7 @@ class Repo {
     const found = [];
     for (let page = 1; ; page++) {
       const batch = await this.call('GET', `/pulls?state=open&per_page=100&page=${page}`);
-      found.push(...batch.filter((pr) => pr.head.repo?.full_name === this.name && pr.head.ref.startsWith(BRANCH_PREFIX)));
+      found.push(...batch.filter((pr) => pr.head.repo?.full_name.toLowerCase() === this.name.toLowerCase() && pr.head.ref.startsWith(BRANCH_PREFIX)));
       if (batch.length < 100) return found;
     }
   }
@@ -76,6 +76,8 @@ class Repo {
     for (const pr of prs) {
       for (const file of await this.call('GET', `/pulls/${pr.number}/files?per_page=100`)) {
         files.set(file.filename, { pr, status: file.status });
+        // GitHub may pair a changed-pair edit's add + delete into one rename.
+        if (file.status === 'renamed') files.set(file.previous_filename, { pr, status: 'removed' });
       }
     }
     return files;
@@ -138,10 +140,17 @@ class Repo {
   }
 }
 
+// A missing or malformed cap is a deployment error: fail closed rather than run uncapped.
+function capValue(env, name) {
+  const value = Number(env[name]);
+  if (!Number.isInteger(value) || value < 0) throw new Error(`${name} is not a whole number: ${env[name]}`);
+  return value;
+}
+
 function checkCaps(env, user, openPrs) {
   const own = openPrs.filter((pr) => pr.head.ref.startsWith(`${BRANCH_PREFIX}${user.id}/`));
-  if (own.length >= Number(env.CAP_PER_CONTRIBUTOR)) throw new SubmitError(429, 'cap_contributor');
-  if (openPrs.length >= Number(env.CAP_TOTAL)) throw new SubmitError(429, 'cap_total');
+  if (own.length >= capValue(env, 'CAP_PER_CONTRIBUTOR')) throw new SubmitError(429, 'cap_contributor');
+  if (openPrs.length >= capValue(env, 'CAP_TOTAL')) throw new SubmitError(429, 'cap_total');
 }
 
 function prBody(user, lines) {

@@ -142,7 +142,7 @@ afterEach(() => {
 });
 
 async function sessionCookie(user = USER) {
-  return `session=${await sign(env.SESSION_KEY, { ...user, exp: Math.floor(Date.now() / 1000) + 3600 })}`;
+  return `__Host-session=${await sign(env.SESSION_KEY, '__Host-session', { ...user, exp: Math.floor(Date.now() / 1000) + 3600 })}`;
 }
 
 async function post(path, body, { origin = SITE, user = USER } = {}) {
@@ -170,7 +170,7 @@ describe('sign-in', () => {
     const done = await worker.fetch(new Request(`${WORKER}/callback?code=good&state=${state}`, { headers: { Cookie: oauth } }), env);
     assert.equal(done.status, 302);
     assert.equal(done.headers.get('Location'), `${SITE}/community-dictionary/#/submit`);
-    const session = done.headers.getSetCookie().find((c) => c.startsWith('session=')).split(';')[0];
+    const session = done.headers.getSetCookie().find((c) => c.startsWith('__Host-session=')).split(';')[0];
 
     const me = await worker.fetch(new Request(`${WORKER}/session`, { headers: { Cookie: session, Origin: SITE } }), env);
     assert.deepEqual(await me.json(), USER);
@@ -183,8 +183,18 @@ describe('sign-in', () => {
     const oauth = start.headers.get('Set-Cookie').split(';')[0];
     const done = await worker.fetch(new Request(`${WORKER}/callback?code=good&state=forged`, { headers: { Cookie: oauth } }), env);
     assert.equal(done.headers.get('Location'), `${SITE}/community-dictionary/#/`);
-    assert.ok(!done.headers.getSetCookie().some((c) => c.startsWith('session=') && !c.startsWith('session=;')));
+    assert.ok(!done.headers.getSetCookie().some((c) => c.startsWith('__Host-session=') && !c.startsWith('__Host-session=;')));
     assert.ok(!gh.calls.includes('POST /login/oauth/access_token'));
+  });
+
+  it('ends signed out, on the site, when GitHub refuses the code', async () => {
+    const start = await worker.fetch(new Request(`${WORKER}/login?return=%23%2Ftag%2F食食`), env);
+    const oauth = start.headers.get('Set-Cookie').split(';')[0];
+    const state = new URL(start.headers.get('Location')).searchParams.get('state');
+    const done = await worker.fetch(new Request(`${WORKER}/callback?code=junk&state=${state}`, { headers: { Cookie: oauth } }), env);
+    assert.equal(done.status, 302);
+    assert.equal(done.headers.get('Location'), `${SITE}/community-dictionary/#/tag/%E9%A3%9F%E9%A3%9F`);
+    assert.ok(!done.headers.getSetCookie().some((c) => c.startsWith('__Host-session=')));
   });
 
   it('never returns to a page outside the site', async () => {
@@ -195,8 +205,20 @@ describe('sign-in', () => {
     assert.equal(done.headers.get('Location'), `${SITE}/community-dictionary/#/`);
   });
 
+  it('never accepts the OAuth state cookie as a session', async () => {
+    const start = await worker.fetch(new Request(`${WORKER}/login`), env);
+    const oauthValue = start.headers.get('Set-Cookie').split(';')[0].slice('__Host-oauth='.length);
+    const res = await worker.fetch(new Request(`${WORKER}/session`, { headers: { Cookie: `__Host-session=${oauthValue}` } }), env);
+    assert.equal(res.status, 401);
+    const submit = await worker.fetch(
+      new Request(`${WORKER}/submit`, { method: 'POST', headers: { Origin: SITE, Cookie: `__Host-session=${oauthValue}` }, body: '{}' }),
+      env,
+    );
+    assert.equal(submit.status, 401);
+  });
+
   it('rejects a forged session', async () => {
-    const res = await worker.fetch(new Request(`${WORKER}/session`, { headers: { Cookie: `session=${await sign('wrong-key', { ...USER, exp: 9e9 })}` } }), env);
+    const res = await worker.fetch(new Request(`${WORKER}/session`, { headers: { Cookie: `__Host-session=${await sign('wrong-key', '__Host-session', { ...USER, exp: 9e9 })}` } }), env);
     assert.equal(res.status, 401);
   });
 });
@@ -221,9 +243,26 @@ describe('POST guards', () => {
     assert.equal(gh.calls.length, 0);
   });
 
+  it('refuses an oversized body before reading it', async () => {
+    const res = await worker.fetch(
+      new Request(`${WORKER}/submit`, { method: 'POST', headers: { Origin: SITE, Cookie: await sessionCookie(), 'Content-Length': '70000' }, body: '{}' }),
+      env,
+    );
+    assert.equal(res.status, 413);
+  });
+
+  it('fails closed when a cap is not configured', async () => {
+    const res = await worker.fetch(
+      new Request(`${WORKER}/submit`, { method: 'POST', headers: { Origin: SITE, Cookie: await sessionCookie() }, body: JSON.stringify({ words: [{ tl: 'a' }], ...form }) }),
+      { ...env, CAP_TOTAL: undefined },
+    );
+    assert.equal(res.status, 502);
+    assert.equal(gh.pulls.length, 0);
+  });
+
   it('logs out by clearing the cookie', async () => {
     const res = await post('/logout', {});
-    assert.match(res.headers.get('Set-Cookie'), /^session=; Path=\/; Max-Age=0/);
+    assert.match(res.headers.get('Set-Cookie'), /^__Host-session=; Path=\/; Max-Age=0/);
   });
 });
 
