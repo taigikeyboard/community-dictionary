@@ -141,17 +141,32 @@ async function route(env, request) {
   return json(env, request, 404, { error: 'not_found' });
 }
 
+async function handle(request, env) {
+  try {
+    return await route(env, request);
+  } catch (err) {
+    if (err instanceof SubmitError) {
+      return json(env, request, err.status, { error: err.code, ...err.details });
+    }
+    // Details go to the Worker log; the contributor sees a generic retry message.
+    console.error(`worker: ${request.method} ${new URL(request.url).pathname} failed: ${err.stack ?? err}`);
+    return json(env, request, 502, { error: 'try_later' });
+  }
+}
+
+// One year; the browser then refuses plain HTTP to this host, so nothing on the path can strip TLS.
+const HSTS = 'max-age=31536000; includeSubDomains';
+
 export default {
   async fetch(request, env) {
-    try {
-      return await route(env, request);
-    } catch (err) {
-      if (err instanceof SubmitError) {
-        return json(env, request, err.status, { error: err.code, ...err.details });
-      }
-      // Details go to the Worker log; the contributor sees a generic retry message.
-      console.error(`worker: ${request.method} ${new URL(request.url).pathname} failed: ${err.stack ?? err}`);
-      return json(env, request, 502, { error: 'try_later' });
+    const url = new URL(request.url);
+    // Plain HTTP never reaches the routes: a man in the middle could read or alter it.
+    if (url.protocol === 'http:' && url.hostname !== 'localhost' && url.hostname !== '127.0.0.1') {
+      url.protocol = 'https:';
+      return new Response(null, { status: 308, headers: { Location: url.toString(), 'Cache-Control': 'no-store' } });
     }
+    const response = await handle(request, env);
+    if (url.protocol === 'https:') response.headers.set('Strict-Transport-Security', HSTS);
+    return response;
   },
 };

@@ -240,6 +240,20 @@ describe('sign-in', () => {
   });
 });
 
+describe('transport', () => {
+  it('sends plain HTTP to HTTPS before any route runs', async () => {
+    const res = await worker.fetch(new Request('http://dict-api.taigikeyboard.tw/login?return=%23%2F'), env);
+    assert.equal(res.status, 308);
+    assert.equal(res.headers.get('Location'), `${WORKER}/login?return=%23%2F`);
+    assert.equal(res.headers.get('Set-Cookie'), null);
+  });
+
+  it('sets HSTS on every HTTPS response', async () => {
+    const res = await worker.fetch(new Request(`${WORKER}/session`), env);
+    assert.equal(res.headers.get('Strict-Transport-Security'), 'max-age=31536000; includeSubDomains');
+  });
+});
+
 describe('POST guards', () => {
   it('refuses other origins before anything else', async () => {
     const res = await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }], ...form }, { origin: 'https://evil.example' });
