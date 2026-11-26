@@ -1,5 +1,5 @@
 import { ACCENT_OTHER, ACCENTS, LIMITS, MAX_EXAMPLES, TAG_LIMIT } from '../lib/entry.js';
-import { currentUser, signIn, signOut, submitErrorText, submitWords, WorkerError } from './account.js';
+import { currentUser, signIn, submitErrorText, submitWords, WorkerError } from './account.js';
 import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
 import {
@@ -622,24 +622,9 @@ function renderSubmit() {
     h('span', { class: 'button-sizer', 'aria-hidden': 'true' }, signedOutLabel),
     submitLabel,
   );
-  // who is signed in, with 登出; empty while signed out
-  const account = h('p', { class: 'account', hidden: true });
-  const showAccount = () => {
-    account.hidden = !user;
-    if (!user) return account.replaceChildren();
-    const out = h('button', { class: 'link-button', type: 'button' }, '登出');
-    out.addEventListener('click', async () => {
-      await signOut().catch(() => {});
-      user = null;
-      showAccount();
-      showLabel();
-    });
-    account.replaceChildren(`用 ${user.login} 提交 · `, out);
-  };
   const session = open ? currentUser() : Promise.resolve(null);
   session.then((found) => {
     user = found;
-    showAccount();
     showLabel();
   });
 
@@ -672,7 +657,7 @@ function renderSubmit() {
     accentGroup(draft ?? {}),
     tagGroup(draft?.tags ?? []),
     field('note', '說明', textInput('note', { multiline: true })),
-    h('div', { class: 'actions' }, submit, account, notice),
+    h('div', { class: 'actions' }, submit, notice),
   );
   for (const name of ['meaning', 'note']) {
     if (typeof draft?.[name] === 'string') form.elements[name].value = draft[name];
@@ -739,7 +724,7 @@ function renderSubmit() {
     say('送出中…');
     try {
       const pullRequest = await submitWords({ ...shared, words: entries.map(({ entry }) => ({ hanji: entry.hanji, tl: entry.tl })) });
-      renderSubmitted(pullRequest, entries.length);
+      renderSubmitted(pullRequest);
     } catch (err) {
       // the session ran out (24 hours) between loading the form and pressing 提交
       if (err instanceof WorkerError && err.status === 401) return goSignIn();
@@ -759,20 +744,17 @@ function renderSubmit() {
 }
 
 // After a submission: the pull request the Worker opened, where the maintainer reviews the words.
-function renderSubmitted(pullRequest, count) {
+function renderSubmitted(pullRequest) {
   // only a GitHub page is linked, whatever the reply held
   const url = /^https:\/\/github\.com\//.test(pullRequest?.url) ? pullRequest.url : null;
-  const again = h('button', { class: 'button', type: 'button' }, '閣提交');
-  again.addEventListener('click', renderSubmit);
   view.replaceChildren(
     backButton(),
     hero('提交成功'),
     h(
       'div',
       { class: 'submitted' },
-      h('p', {}, `${count} 个詞送出去矣，審查了就會收錄。`),
+      h('p', {}, '提交 ê 詞當咧處理，感謝你的貢獻，勞力！'),
       url ? h('p', {}, h('a', { href: url, target: '_blank', rel: 'noopener' }, `看審查進度（#${pullRequest.number}）`)) : null,
-      again,
     ),
   );
   window.scrollTo(0, 0);

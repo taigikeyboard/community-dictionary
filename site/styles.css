@@ -500,9 +500,6 @@ input::placeholder, textarea::placeholder { color: var(--secondary); opacity: 0.
 input.pill-input { position: absolute; top: calc(100% + 8px); left: 0; z-index: 10; width: 10rem; min-height: 0; background: var(--card); box-shadow: var(--menu-shadow); }
 input.pill-input.align-end { left: auto; right: 0; }
 .form-notice { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; color: var(--secondary); font-size: 0.9375rem; }
-.account { margin: 0; color: var(--secondary); font-size: 0.9375rem; }
-.link-button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
-.link-button:hover { text-decoration: underline; }
 .submitted { display: grid; justify-items: start; gap: 1rem; }
 .submitted p { margin: 0; }
 /* the form's tips: the tag bubbles' blue at their tint, shaped like the construction notice */

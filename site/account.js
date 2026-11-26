@@ -39,8 +39,6 @@ export function signIn(hash) {
   location.assign(`${WORKER_URL}/login?return=${encodeURIComponent(hash)}`);
 }
 
-export const signOut = () => call('POST', '/logout');
-
 // → { url, number } of the pull request.
 export async function submitWords(body) {
   return (await call('POST', '/submit', body)).pullRequest;
