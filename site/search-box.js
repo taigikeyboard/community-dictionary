@@ -1,8 +1,9 @@
 import { loadItaigiIndex, loadRows } from './data.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
-import { findExisting, searchItaigi, wordRoute } from './logic.js';
-import { t, tParts } from './strings.js';
+import { findExisting, searchItaigi, searchTags, tagRoute, wordRoute } from './logic.js';
+import { TAGS } from './tags.js';
+import { t, tagLabel, tParts } from './strings.js';
 import { readings, tlSpan } from './word-parts.js';
 
 // The popover of words already collected (the 揣詞 search box and the form's word rows) and the
@@ -19,12 +20,19 @@ function resultItem(row, { exact = false, linked = false } = {}) {
   return h('li', { class: exact ? 'exact' : null }, linked ? h('a', { class: 'result-link', href: wordRoute(row.hanji, row.tl) }, head) : head);
 }
 
+// One tag row of the search box: #label and the tag's Tâi-lô (site tags only), linked to its cards.
+function tagItem(name) {
+  const reading = TAGS.find((tag) => tag.name === name)?.tl;
+  const head = h('span', { class: 'result-head' }, h('span', { class: 'result-hanji tag' }, tagLabel(name)), reading ? h('span', { class: 'result-tl tl' }, reading) : null);
+  return h('li', {}, h('a', { class: 'result-link', href: tagRoute(name) }, head));
+}
+
 // Popover of words already collected, under whatever field `locate` picks inside `root`:
 // locate(element) → { anchor, values() → { hanji, tl } } or null. It floats over the page, so
 // opening it never moves anything below, and it stays closed while nothing matches. Loads the
-// community entries on first use; the search box (`isSearch`) also lists iTaigi rows below them
-// (CC0, no attribution required) and links every row to its cards. A failed load is retried on
-// the next keystroke. `onRender` runs after every update (rows replaced, opened or closed); the
+// community entries on first use; the search box (`isSearch`) also lists matching tags above
+// them and iTaigi rows below them (CC0, no attribution required) and links every row to its
+// cards. A failed load is retried on the next keystroke. `onRender` runs after every update (rows replaced, opened or closed); the
 // panel and its list are returned for the search box's keyboard control.
 export function matchesPopover(root, locate, limit, { isSearch = false, onRender = () => {} } = {}) {
   const results = h('ul', { class: 'results' });
@@ -38,10 +46,12 @@ export function matchesPopover(root, locate, limit, { isSearch = false, onRender
     const { hanji, tl } = active ? active.values() : { hanji: '', tl: '' };
     const found = rows ? findExisting(rows, hanji, tl, limit) : [];
     const foundItaigi = itaigi ? searchItaigi(itaigi, hanji, limit) : [];
-    panel.hidden = found.length === 0 && foundItaigi.length === 0;
+    const foundTags = isSearch ? searchTags(rows ?? [], hanji, limit) : [];
+    panel.hidden = found.length === 0 && foundItaigi.length === 0 && foundTags.length === 0;
     if (!panel.hidden) {
       if (panel.parentElement !== active.anchor) active.anchor.append(panel);
       results.replaceChildren(
+        ...foundTags.map(tagItem),
         ...found.map(({ row, exact }) => resultItem(row, { exact, linked: isSearch })),
         ...foundItaigi.map((row) => resultItem(row, { linked: true })),
       );

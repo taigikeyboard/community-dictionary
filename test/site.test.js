@@ -15,6 +15,7 @@ import {
   searchItaigi,
   parseRoute,
   searchRows,
+  searchTags,
   tagCircles,
   tagRoute,
   wordRoute,
@@ -205,4 +206,18 @@ test('strings: every language has every key; issues and tags follow the language
   // an unknown stored value falls back to Taiwanese
   setLanguage('xx');
   assert.equal(tagLabel('食食'), '食食');
+});
+
+test('searchTags matches a tag by name, ja / en label or tl, and contributors own tags by name', () => {
+  const tagged = [{ attestations: [{ tags: ['身軀', '阿公 ê 話'] }] }];
+  assert.deepEqual(searchTags(tagged, '身軀'), ['身軀']);
+  assert.deepEqual(searchTags(tagged, 'body'), ['身軀']);
+  assert.deepEqual(searchTags(tagged, '病気'), ['病疼']);
+  assert.deepEqual(searchTags(tagged, 'tshit'), ['𨑨迌']);
+  assert.deepEqual(searchTags(tagged, '阿公'), ['阿公 ê 話']);
+  // exact first: 動物 itself before 植物 (both contain 物)
+  assert.deepEqual(searchTags(tagged, '動物'), ['動物']);
+  // 食食 too: its ja label 食べ物 holds 物
+  assert.deepEqual(searchTags(tagged, '物').slice(0, 3), ['食食', '動物', '植物']);
+  assert.deepEqual(searchTags(tagged, ' '), []);
 });

@@ -8,7 +8,7 @@ import {
   prepareEntry,
 } from '../lib/entry.js';
 import { describeIssues, t } from './strings.js';
-import { TAG_NAMES } from './tags.js';
+import { TAG_NAMES, TAGS } from './tags.js';
 
 // Browser-free site logic: search, form → entry, duplicate rules, Taiwanese error messages.
 
@@ -73,6 +73,31 @@ export function searchItaigi(index, query, limit = 50) {
     }
   }
   return [...exact, ...prefix, ...rest].slice(0, limit);
+}
+
+// Tags matching the query, for the search box: the site's tags by name, by ja / en label (case-free)
+// or by a tl syllable start, and contributors' own tags (from community rows) by name. Exact
+// matches first, then the site's tags in list order, then contributors' own in first-seen order.
+export function searchTags(rows, query, limit = 50) {
+  const q = query.trim();
+  if (q === '') return [];
+  const lower = q.toLowerCase();
+  const folded = foldSearch(q);
+  const exact = [];
+  const rest = [];
+  for (const tag of TAGS) {
+    const labels = [tag.ja, tag.en.toLowerCase()];
+    if (tag.name === q || labels.includes(lower)) exact.push(tag.name);
+    else if (tag.name.includes(q) || labels.some((label) => label.includes(lower)) || (folded !== '' && `-${foldSearch(tag.tl)}`.includes(`-${folded}`))) {
+      rest.push(tag.name);
+    }
+  }
+  const own = new Set(rows.flatMap((row) => row.attestations.flatMap((a) => a.tags)).filter((tag) => !TAG_NAMES.includes(tag)));
+  for (const tag of own) {
+    if (tag === q) exact.push(tag);
+    else if (tag.includes(q)) rest.push(tag);
+  }
+  return [...exact, ...rest].slice(0, limit);
 }
 
 // Every word carrying `tag` (a name: from the site's list or a contributor's own), for the tag's
