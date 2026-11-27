@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compile } from './compile.js';
@@ -20,7 +20,8 @@ const D3_MODULES = ['d3-color', 'd3-dispatch', 'd3-ease', 'd3-force', 'd3-hierar
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'site'), { recursive: true });
 for (const file of ['index.html', 'styles.css', 'favicon.svg']) cpSync(join(root, 'site', file), join(dist, file));
-for (const file of ['account.js', 'app.js', 'config.js', 'dom.js', 'icons.js', 'logic.js', 'settings.js', 'sidebar.js', 'story.js', 'tag-map.js', 'tags.js']) cpSync(join(root, 'site', file), join(dist, 'site', file));
+// every site module, so a new one needs no edit here (index.html's modulepreload list does)
+for (const file of readdirSync(join(root, 'site')).filter((name) => name.endsWith('.js'))) cpSync(join(root, 'site', file), join(dist, 'site', file));
 // the D3 modules the homepage's tag bubbles load (ES module builds, npm dependencies), by the
 // names index.html's import map gives them
 mkdirSync(join(dist, 'vendor'));

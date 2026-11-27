@@ -66,6 +66,7 @@ function randomSample(pool, count) {
 
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+
 // loadTags() → tag-map.json entries; fallback() → what the box shows if the map cannot load;
 // onWord({ hanji, tl }, link) runs when a word bubble is clicked (instead of following its link);
 // onZoomIn() when a tag is zoomed into (a page can start loading what a word click will need).
@@ -91,7 +92,7 @@ export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} 
         drawn = `${width}x${height}`;
         current?.stop();
         // the entrance plays on the first draw only, not when a resize redraws the map
-        current = draw(d3, tags, box, bar, all, width, height, { entrance: current === null, onWord, onZoomIn });
+        current = draw({ d3, tags, box, bar, all, width, height, entrance: current === null, onWord, onZoomIn });
       });
       observer.observe(box);
       back.addEventListener('click', () => current?.zoomOut({ refocus: true }));
@@ -104,11 +105,61 @@ export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} 
 }
 
 // Draws the map for a width × height box and sets it moving (with the entrance when `entrance`);
-// `all` is the bar's link to the zoomed tag's page. Returns { zoomOut, stop }.
-function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord = null, onZoomIn = () => {} } = {}) {
+// `bar` is the bar under the box and `all` its link to the zoomed tag's page. Returns
+// { zoomOut, stop }.
+function draw({ d3, tags, box, bar, all, width, height, entrance = false, onWord = null, onZoomIn = () => {} }) {
   const aspect = width / height;
   const wordCount = width < 600 ? PHONE_WORDS : WIDE_WORDS;
-  // start from a tight pack, then let the forces settle it before the first paint
+  const { nodes, reach, collide, simulation, rootView } = settle(d3, tags, width, height, aspect);
+  const { map, bubbles, packWords } = buildMap({ d3, tags, nodes, rootView, aspect, wordCount, onWord });
+  box.replaceChildren(map);
+
+  // each tick: ease every body towards its hover size, then place it at that size times its
+  // entrance factor
+  const place = () => {
+    for (const { node, group, body } of bubbles) {
+      node.scale += (node.grow - node.scale) * HOVER_EASE;
+      group.setAttribute('transform', `translate(${node.x} ${node.y})`);
+      body.setAttribute('transform', `scale(${node.scale * node.entry})`);
+    }
+  };
+  simulation.on('tick', place);
+  const entranceTimer = entrance && !reducedMotion.matches ? playEntrance(d3, nodes, simulation, place) : null;
+  place();
+
+  const camera = makeCamera(d3, map, rootView, width, height);
+  const zoom = zoomControls({ map, bar, all, bubbles, nodes, reach, collide, simulation, place, packWords, wordCount, aspect, rootView, camera, onZoomIn });
+  const pan = panControls({ map, camera, rootView, aspect, width });
+
+  // hovering a tag swells it and the forces push its neighbours aside, unless the map is zoomed in
+  // or being dragged
+  const swell = (index, grow) => {
+    if (zoom.isZoomed() || pan.isDragging() || reducedMotion.matches) return;
+    nodes[index].grow = grow;
+    collide.radius(reach);
+    simulation.alpha(Math.max(simulation.alpha(), 0.5)).restart();
+  };
+  bubbles.forEach((b, i) => {
+    b.group.addEventListener('pointerenter', () => swell(i, HOVER_GROWTH));
+    b.group.addEventListener('pointerleave', () => swell(i, 1));
+  });
+
+  camera.moveTo(rootView);
+  bar.dataset.empty = 'true';
+  return {
+    zoomOut: zoom.zoomOut,
+    stop: () => {
+      simulation.stop();
+      camera.stop();
+      entranceTimer?.stop();
+    },
+  };
+}
+
+// The tags' circles for a width × height box: a tight pack (logic.js tagCircles) that the forces
+// settle before the first paint, the simulation (stopped) that later moves them, and the root view
+// around them.
+function settle(d3, tags, width, height, aspect) {
   const { circles } = tagCircles(
     tags.map((tag) => tag.count),
     width,
@@ -142,7 +193,13 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
   // a view is [centre x, centre y, width], as d3.interpolateZoom takes it; the root view leaves
   // room for a swollen circle at the edge
   const rootView = [(settled.left + settled.right) / 2, (settled.top + settled.bottom) / 2, 1.12 * Math.max(settled.right - settled.left, (settled.bottom - settled.top) * aspect)];
-  const tagView = (node) => [node.x, node.y, 2.04 * node.r * Math.max(1, aspect)];
+  return { nodes, reach, collide, simulation, rootView };
+}
+
+// The <svg>: one bubble per tag, drawn around (0, 0) and placed by the simulation, each holding its
+// shadow, its circle, its words and its name. Returns the svg, the bubbles and `packWords`, which
+// zoomControls uses to repack a tag's words.
+function buildMap({ d3, tags, nodes, rootView, aspect, wordCount, onWord }) {
   // one gradient for every shadow: solid until just under the circle's edge, clear at its own rim
   const shadowGradient = svg(
     'radialGradient',
@@ -152,15 +209,10 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
   );
   const map = svg('svg', { class: 'tag-map-svg' }, svg('defs', {}, shadowGradient));
   // The viewBox is set once, to the root view; every other view (a zoom, a pan) is drawn as a CSS
-  // transform of the whole <svg>. A viewBox change re-lays out all ~5,800 SVG nodes (a visible hitch);
-  // a transform only redraws them, and the browser re-renders the still layer sharp at its scale.
+  // transform of the whole <svg> (makeCamera). A viewBox change re-lays out all ~5,800 SVG nodes (a
+  // visible hitch); a transform only redraws them, and the browser re-renders the still layer sharp
+  // at its scale.
   map.setAttribute('viewBox', `${rootView[0] - rootView[2] / 2} ${rootView[1] - rootView[2] / aspect / 2} ${rootView[2]} ${rootView[2] / aspect}`);
-  const show = ([x, y, w]) => {
-    const k = rootView[2] / w;
-    const cx = ((x - rootView[0]) * width) / rootView[2] + width / 2;
-    const cy = ((y - rootView[1]) * width) / rootView[2] + height / 2;
-    map.style.transform = `translate(${width / 2 - k * cx}px, ${height / 2 - k * cy}px) scale(${k})`;
-  };
 
   // the words fill a circle a little inside the tag's (radius r), each bubble holding the Hanji over
   // its Tâi-lô (the first reading of several); a bubble's radius follows the wider of the two lines
@@ -195,7 +247,7 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
 
   // each tag drawn around (0, 0); the simulation moves the group and scales its body. Its words start
   // as the pool's first few, the same on every visit (unzoomed they are only a tint); each zoom into
-  // the tag repacks a fresh random draw (zoomIn)
+  // the tag repacks a fresh random draw (zoomControls)
   const bubbles = tags.map((tag, i) => {
     const { r } = nodes[i];
     const words = packWords(r, tag.words.slice(0, wordCount));
@@ -220,75 +272,80 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
     return { tag, node: nodes[i], target, words, wordLayer, body, group: svg('g', { class: 'tag-bubble' }, body) };
   });
   map.append(...bubbles.map((b) => b.group));
-  box.replaceChildren(map);
+  return { map, bubbles, packWords };
+}
 
-  // each tick: ease every body towards its hover size, then place it at that size times its
-  // entrance factor
-  const place = () => {
-    for (const { node, group, body } of bubbles) {
-      node.scale += (node.grow - node.scale) * HOVER_EASE;
-      group.setAttribute('transform', `translate(${node.x} ${node.y})`);
-      body.setAttribute('transform', `scale(${node.scale * node.entry})`);
+// The entrance, on its own timer (the simulation may cool before the last bubble is due): bubbles
+// bloom from the centre outwards, each springing open past its size and settling back, while a
+// gentle reheat eases them out from slightly drawn in. Returns the timer.
+function playEntrance(d3, nodes, simulation, place) {
+  const order = [...nodes].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
+  order.forEach((node, rank) => {
+    const share = rank / Math.max(1, order.length - 1);
+    node.delay = ENTRANCE_SPAN_MS * share ** 1.3 + (Math.random() - 0.5) * ENTRANCE_JITTER_MS;
+    node.entry = 0;
+    node.x *= ENTRANCE_SPREAD;
+    node.y *= ENTRANCE_SPREAD;
+  });
+  const pop = d3.easeBackOut.overshoot(1.4);
+  const timer = d3.timer((elapsed) => {
+    let done = true;
+    for (const node of nodes) {
+      const progress = Math.min(1, Math.max(0, (elapsed - node.delay) / ENTRANCE_POP_MS));
+      node.entry = progress === 0 ? 0 : pop(progress);
+      if (progress < 1) done = false;
     }
-  };
-  simulation.on('tick', place);
-  // the entrance runs on its own timer (the simulation may cool before the last bubble is due):
-  // bubbles bloom from the centre outwards, each springing open past its size and settling back,
-  // while a gentle reheat eases them out from slightly drawn in
-  let entranceTimer = null;
-  if (entrance && !reducedMotion.matches) {
-    const order = [...nodes].sort((a, b) => Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y));
-    order.forEach((node, rank) => {
-      const share = rank / Math.max(1, order.length - 1);
-      node.delay = ENTRANCE_SPAN_MS * share ** 1.3 + (Math.random() - 0.5) * ENTRANCE_JITTER_MS;
-      node.entry = 0;
-      node.x *= ENTRANCE_SPREAD;
-      node.y *= ENTRANCE_SPREAD;
-    });
-    const pop = d3.easeBackOut.overshoot(1.4);
-    entranceTimer = d3.timer((elapsed) => {
-      let done = true;
-      for (const node of nodes) {
-        const progress = Math.min(1, Math.max(0, (elapsed - node.delay) / ENTRANCE_POP_MS));
-        node.entry = progress === 0 ? 0 : pop(progress);
-        if (progress < 1) done = false;
-      }
-      place();
-      if (done) entranceTimer.stop();
-    });
-    simulation.alpha(0.3).restart();
-  }
-  place();
+    place();
+    if (done) timer.stop();
+  });
+  simulation.alpha(0.3).restart();
+  return timer;
+}
 
+// The view the map shows, drawn as a CSS transform of the whole <svg> against its fixed viewBox
+// (the root view): moveTo jumps to a view, zoomTo eases there (d3.interpolateZoom), halt stops a
+// zoom where it is, stop just stops its timer.
+function makeCamera(d3, map, rootView, width, height) {
   let view = rootView;
-  let zoomTimer = null;
-  let focused = null;
-  let drag = null;
-  const swell = (index, grow) => {
-    if (focused !== null || drag?.start || reducedMotion.matches) return;
-    nodes[index].grow = grow;
-    collide.radius(reach);
-    simulation.alpha(Math.max(simulation.alpha(), 0.5)).restart();
+  let timer = null;
+  const moveTo = (next) => {
+    view = next;
+    const [x, y, w] = next;
+    const k = rootView[2] / w;
+    const cx = ((x - rootView[0]) * width) / rootView[2] + width / 2;
+    const cy = ((y - rootView[1]) * width) / rootView[2] + height / 2;
+    map.style.transform = `translate(${width / 2 - k * cx}px, ${height / 2 - k * cy}px) scale(${k})`;
   };
-  const zoom = (target) => {
-    zoomTimer?.stop();
+  const zoomTo = (target) => {
+    timer?.stop();
     const path = d3.interpolateZoom(view, target);
     if (reducedMotion.matches) {
-      view = target;
       map.classList.remove('moving');
-      return show(view);
+      return moveTo(target);
     }
     map.classList.add('moving');
-    zoomTimer = d3.timer((elapsed) => {
+    timer = d3.timer((elapsed) => {
       const t = Math.min(1, elapsed / ZOOM_MS);
-      view = path(d3.easeCubicInOut(t));
-      show(view);
+      moveTo(path(d3.easeCubicInOut(t)));
       if (t === 1) {
-        zoomTimer.stop();
+        timer.stop();
         map.classList.remove('moving');
       }
     });
   };
+  const halt = () => {
+    timer?.stop();
+    map.classList.remove('moving');
+  };
+  return { view: () => view, moveTo, zoomTo, halt, stop: () => timer?.stop() };
+}
+
+// Zooming into a tag and back out. A click (or Enter / Space) on a tag zooms in until it fills the
+// box and repacks a fresh draw of its words, which then take clicks and Tab; a click on the empty
+// space around the circles (or zoomOut) zooms back out. Returns { zoomOut, isZoomed }.
+function zoomControls({ map, bar, all, bubbles, nodes, reach, collide, simulation, place, packWords, wordCount, aspect, rootView, camera, onZoomIn }) {
+  const tagView = (node) => [node.x, node.y, 2.04 * node.r * Math.max(1, aspect)];
+  let focused = null;
   // marks the focused tag (or none): its words take clicks and Tab, the others dim, the bar fills;
   // the bodies hold still while zoomed in
   const focus = (index) => {
@@ -320,18 +377,16 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
     simulation.stop();
     place();
     focus(index);
-    zoom(tagView(nodes[index]));
+    camera.zoomTo(tagView(nodes[index]));
   };
   const zoomOut = ({ refocus = false } = {}) => {
     if (focused === null) return;
     const was = bubbles[focused].target;
     focus(null);
-    zoom(rootView);
+    camera.zoomTo(rootView);
     if (refocus) was.focus({ preventScroll: true });
   };
   bubbles.forEach((b, i) => {
-    b.group.addEventListener('pointerenter', () => swell(i, HOVER_GROWTH));
-    b.group.addEventListener('pointerleave', () => swell(i, 1));
     b.target.addEventListener('click', () => focused !== i && zoomIn(i));
     b.target.addEventListener('keydown', (event) => {
       if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -339,13 +394,16 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
       if (focused !== i) zoomIn(i);
     });
   });
-  // a click on the empty space around the circles zooms out
   map.addEventListener('click', (event) => {
     if (event.target === map) zoomOut();
   });
+  return { zoomOut, isZoomed: () => focused !== null };
+}
 
-  // dragging with the mouse pans the view (touch keeps scrolling the page), the centre kept within
-  // the map; the click that ends a drag is swallowed before any bubble sees it
+// Dragging with the mouse pans the view (touch keeps scrolling the page), the centre kept within
+// the map; the click that ends a drag is swallowed before any bubble sees it. Returns
+// { isDragging }.
+function panControls({ map, camera, rootView, aspect, width }) {
   const reachX = rootView[2] / 2;
   const reachY = rootView[2] / aspect / 2;
   const keepInside = ([x, y, w]) => [
@@ -353,6 +411,7 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
     Math.min(rootView[1] + reachY, Math.max(rootView[1] - reachY, y)),
     w,
   ];
+  let drag = null;
   let dragged = false;
   map.addEventListener('pointerdown', (event) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
@@ -365,15 +424,13 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
     if (!drag.start) {
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
       // a zoom still under way stops where it is
-      zoomTimer?.stop();
-      map.classList.remove('moving');
-      drag.start = view;
+      camera.halt();
+      drag.start = camera.view();
       map.setPointerCapture(drag.id);
       map.classList.add('panning');
     }
     const perPx = drag.start[2] / width;
-    view = keepInside([drag.start[0] - dx * perPx, drag.start[1] - dy * perPx, drag.start[2]]);
-    show(view);
+    camera.moveTo(keepInside([drag.start[0] - dx * perPx, drag.start[1] - dy * perPx, drag.start[2]]));
   });
   const endDrag = () => {
     if (drag?.start) {
@@ -397,14 +454,5 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
     },
     true,
   );
-  show(view);
-  bar.dataset.empty = 'true';
-  return {
-    zoomOut,
-    stop: () => {
-      simulation.stop();
-      zoomTimer?.stop();
-      entranceTimer?.stop();
-    },
-  };
+  return { isDragging: () => Boolean(drag?.start) };
 }

@@ -37,8 +37,8 @@ export function storySections(loadStats) {
 // One section: its title, centred, over its chart.
 const section = (title, chart) => h('section', { class: 'story-section' }, h('h2', { class: 'story-title' }, title), chart);
 
-// A ranked bar: its label (a link when `href`), a track filled to `share`, its count; `tip` its
-// tooltip.
+// A ranked bar: its label (a link when `href`; text or nodes otherwise), a track filled to `share`,
+// its count; `tip` its tooltip.
 const bar = ({ label, href, share, count, color, index, tip }) =>
   withTip(
     h(
@@ -96,19 +96,20 @@ function sections(stats) {
       h(
         'ol',
         { class: 'story-columns' },
-        stats.lengths.map((b, index) =>
-          withTip(
+        stats.lengths.map((b, index) => {
+          const label = b.orLonger ? `${b.length} 字以上` : `${b.length} 字`;
+          return withTip(
             h(
-            'li',
-            // no link inside, so the column itself takes Tab for its tooltip
-            { class: 'story-column', tabindex: '0', style: `--share: ${b.count / longest}; --i: ${index}; --bar: ${neutral}` },
-            h('span', { class: 'story-column-count' }, number(b.count)),
-            h('span', { class: 'story-column-track' }, h('span', { class: 'story-column-fill' })),
-            h('span', { class: 'story-column-label' }, b.orLonger ? `${b.length} 字以上` : `${b.length} 字`),
+              'li',
+              // no link inside, so the column itself takes Tab for its tooltip
+              { class: 'story-column', tabindex: '0', style: `--share: ${b.count / longest}; --i: ${index}; --bar: ${neutral}` },
+              h('span', { class: 'story-column-count' }, number(b.count)),
+              h('span', { class: 'story-column-track' }, h('span', { class: 'story-column-fill' })),
+              h('span', { class: 'story-column-label' }, label),
             ),
-            { color: neutral, title: b.orLonger ? `${b.length} 字以上` : `${b.length} 字`, value: `${number(b.count)} 个詞`, lines: [`占全部 ê ${percent(b.count, stats.words)}`] },
-          ),
-        ),
+            { color: neutral, title: label, value: `${number(b.count)} 个詞`, lines: [`占全部 ê ${percent(b.count, stats.words)}`] },
+          );
+        }),
       ),
     ),
     topPair
@@ -118,32 +119,21 @@ function sections(stats) {
             'ol',
             { class: 'story-bars story-pairs' },
             stats.pairs.map((pair, index) =>
-              withTip(
-              h(
-                'li',
-                {
-                  class: 'story-bar',
-                  style: `--share: ${pair.count / topPair.count}; --i: ${index}; --bar: ${neutral}`,
-                },
-                h(
-                  'span',
-                  { class: 'story-bar-label' },
-                  pair.tags.flatMap((name, i) => [
-                    i > 0 ? ' · ' : null,
-                    h('a', { href: tagRoute(name) }, name),
-                  ]),
-                ),
-                h('span', { class: 'story-bar-track' }, h('span', { class: 'story-bar-fill' })),
-                h('span', { class: 'story-bar-count' }, number(pair.count)),
-              ),
-              // each tag's share: how many of its words also carry the other
-              {
+              bar({
+                // each tag of the pair links to its own page
+                label: pair.tags.flatMap((name, i) => [i > 0 ? ' · ' : null, h('a', { href: tagRoute(name) }, name)]),
+                share: pair.count / topPair.count,
+                count: pair.count,
                 color: neutral,
-                title: pair.tags.join(' · '),
-                value: `${number(pair.count)} 个詞`,
-                lines: pair.tags.map((name) => `占${name} ê ${percent(pair.count, countByTag.get(name))}`),
-              },
-              ),
+                index,
+                // each tag's share: how many of its words also carry the other
+                tip: {
+                  color: neutral,
+                  title: pair.tags.join(' · '),
+                  value: `${number(pair.count)} 个詞`,
+                  lines: pair.tags.map((name) => `占${name} ê ${percent(pair.count, countByTag.get(name))}`),
+                },
+              }),
             ),
           ),
         )

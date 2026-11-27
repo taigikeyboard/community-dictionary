@@ -62,15 +62,23 @@
   <!-- every module app.js reaches, the D3 modules and the bubble data, fetched at once instead of one
        import level after another (the homepage's map waited on four round trips) -->
   <link rel="modulepreload" href="lib/entry.js">
+  <link rel="modulepreload" href="site/account.js">
+  <link rel="modulepreload" href="site/cards.js">
   <link rel="modulepreload" href="site/config.js">
+  <link rel="modulepreload" href="site/data.js">
   <link rel="modulepreload" href="site/dom.js">
+  <link rel="modulepreload" href="site/form.js">
   <link rel="modulepreload" href="site/icons.js">
   <link rel="modulepreload" href="site/logic.js">
+  <link rel="modulepreload" href="site/page.js">
+  <link rel="modulepreload" href="site/search-box.js">
   <link rel="modulepreload" href="site/settings.js">
   <link rel="modulepreload" href="site/sidebar.js">
   <link rel="modulepreload" href="site/story.js">
+  <link rel="modulepreload" href="site/submit-page.js">
   <link rel="modulepreload" href="site/tag-map.js">
   <link rel="modulepreload" href="site/tags.js">
+  <link rel="modulepreload" href="site/word-parts.js">
   <link rel="modulepreload" href="vendor/d3-color.min.mjs">
   <link rel="modulepreload" href="vendor/d3-dispatch.min.mjs">
   <link rel="modulepreload" href="vendor/d3-ease.min.mjs">
@@ -171,7 +179,7 @@
       </p>
     </div>
   </header>
-  <!-- read aloud, never drawn: short confirmations such as 已複製 (site/app.js) -->
+  <!-- read aloud, never drawn: short confirmations such as 已複製 (site/cards.js) -->
   <p id="status" class="unseen" role="status"></p>
   <main id="view">
     <noscript>這个網站愛開 JavaScript 才會當用。</noscript>

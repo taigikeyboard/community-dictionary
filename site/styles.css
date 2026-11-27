@@ -172,7 +172,7 @@ main { flex: 1; width: 100%; max-width: calc(var(--measure) + 3rem); margin: 0 a
 .hero { padding: 0 0 2.5rem; text-align: center; }
 .hero h1 { margin: 0; color: var(--heading); font-size: 3.5rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
 .hero h1:focus { outline: none; }
-/* a subpage's 「‹ 頂一頁」 (app.js backButton) takes a fixed row above the title; the homepage, which has
+/* a subpage's 「‹ 頂一頁」 (page.js backButton) takes a fixed row above the title; the homepage, which has
    none, leaves the same row empty, so every page's title sits at the same height */
 .back-link { display: inline-flex; align-items: center; gap: 0.125rem; height: 1.75rem; margin: 0 0 1rem; padding: 0 0.375rem 0 0.125rem; border: 0; border-radius: var(--radius-inner); background: none; color: var(--accent); font: inherit; font-size: 1.0625rem; cursor: pointer; transition: var(--button-transition); }
 .back-link:hover { background: var(--ghost-hover); }
@@ -199,7 +199,7 @@ main > .hero:first-child { margin-top: 2.75rem; }
 .result-tl, .result-head .poj, .result-head .tps { color: var(--secondary); font-size: 0.9375rem; overflow-wrap: anywhere; }
 /* the exact match is marked as with a highlighter pen */
 .exact .result-hanji { padding: 0 0.125em; border-radius: 3px; background: linear-gradient(transparent 45%, var(--highlight) 45%); color: var(--heading); font-weight: 600; }
-/* --- the search box (the 揣詞 page, app.js): icon, input and the "/" hint in .search-field, the
+/* --- the search box (the 揣詞 page, search-box.js): icon, input and the "/" hint in .search-field, the
    menu under the whole box --- */
 .search { position: relative; }
 .search-field { position: relative; }
@@ -234,8 +234,8 @@ main > .hero:first-child { margin-top: 2.75rem; }
 /* the homepage's main view: the map fills what the window leaves under the title (svh, so a phone's
    address bar showing or hiding never redraws it), in a column wider than the other pages' */
 .tag-map { height: clamp(26rem, calc(100svh - 15.5rem - var(--announce-height)), 58rem); }
-main[data-page="search"] { max-width: calc(var(--measure-wide) + 3rem); }
-main[data-page="search"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s var(--ease-emphasized) both; }
+main[data-page="home"] { max-width: calc(var(--measure-wide) + 3rem); }
+main[data-page="home"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s var(--ease-emphasized) both; }
 /* the homepage's title and lead fade up as the page opens (the bubbles enter in site/tag-map.js);
    transform and opacity only, so nothing around them moves */
 @keyframes rise-in {
@@ -379,7 +379,7 @@ a.story-bar-label:hover, .story-bar-label a:hover { color: var(--accent); text-d
 .story-column:focus { outline: none; }
 .story-column:focus-visible .story-column-fill { box-shadow: 0 0 0 3px var(--ring); }
 
-/* a word bubble's card (app.js openWordTip): a floating panel beside the bubble, holding the word's
+/* a word bubble's card (cards.js openWordTip): a floating panel beside the bubble, holding the word's
    cards without their own shadow */
 .tag-map-section { position: relative; }
 .word-tip { position: absolute; z-index: 25; width: min(22rem, 100%); max-height: 100%; overflow-y: auto; padding: 0.25rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--menu-shadow); animation: tip-in var(--duration-feedback) ease-out; }
@@ -667,7 +667,7 @@ body:has(> main[data-page="submit"]) .announce-cta:not(.announce-find) { visibil
 .announce-find { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); background: transparent; }
 .announce-find:hover { background: rgba(255, 255, 255, 0.12); }
 .announce-find:active { background: rgba(255, 255, 255, 0.2); }
-body:has(> main[data-page="find"]) .announce-find { visibility: hidden; }
+body:has(> main[data-page="search"]) .announce-find { visibility: hidden; }
 /* the 揣詞 page's box: as wide as a reading line under the title, its menu exactly as wide */
 main > .search { max-width: 36rem; margin: 0 auto; }
 main > .search input[type="search"] { padding-left: 2.5rem; border-radius: var(--radius-round); background: var(--card); }

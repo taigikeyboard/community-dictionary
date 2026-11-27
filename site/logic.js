@@ -169,11 +169,15 @@ export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
 export const contributorRoute = (name) => `#/contributor/${encodeURIComponent(name)}`;
 export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${encodeURIComponent(tl)}`;
 
-// location.hash → { page, ... }; anything unknown or undecodable is the search page.
+// A word as one line, "Hanji Tâi-lô" (either may be empty), as 複製詞目 copies it and the form names it.
+export const wordLabel = ({ hanji, tl }) => [hanji, tl].filter(Boolean).join(' ');
+// A word's name in a title: its Hanji, or its Tâi-lô when it has none.
+export const wordTitle = ({ hanji, tl }) => hanji || tl;
+
+// location.hash → { page, ... }; anything unknown or undecodable is the homepage.
 export function parseRoute(hash) {
   if (hash === '#/submit') return { page: 'submit' };
-  // the 揣詞 page ('find': 'search' names the homepage, which once held the search box)
-  if (hash === '#/search') return { page: 'find' };
+  if (hash === '#/search') return { page: 'search' };
   const parts = hash.split('/');
   try {
     if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {
@@ -186,9 +190,9 @@ export function parseRoute(hash) {
       return { page: 'word', hanji: decodeURIComponent(parts[2]), tl: decodeURIComponent(parts[3]) };
     }
   } catch {
-    // a malformed %-escape: fall through to search
+    // a malformed %-escape: fall through to the homepage
   }
-  return { page: 'search' };
+  return { page: 'home' };
 }
 
 const pairKey = (hanji, tl) => `${normalizeHanji(hanji)}\n${normalizeTl(tl)}`;

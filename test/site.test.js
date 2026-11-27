@@ -146,18 +146,18 @@ test('iTaigi rows: search order (exact, prefix, rest) and the card-page lookups'
   assert.deepEqual(wordsByContributor(rows, index, 'nobody'), { community: [], itaigi: [] });
 });
 
-test('routes: tag and word pages round-trip, anything else is search', () => {
+test('routes: tag and word pages round-trip, anything else is the homepage', () => {
   assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
-  assert.deepEqual(parseRoute('#/search'), { page: 'find' });
-  // the 說明 page is gone (2026-11-26): its old link lands on search
-  assert.deepEqual(parseRoute('#/about'), { page: 'search' });
+  assert.deepEqual(parseRoute('#/search'), { page: 'search' });
+  // the 說明 page is gone (2026-11-26): its old link lands on the homepage
+  assert.deepEqual(parseRoute('#/about'), { page: 'home' });
   assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });
   assert.deepEqual(parseRoute(contributorRoute('阿明')), { page: 'contributor', name: '阿明' });
   // a "/" inside a reading stays inside the tl part
   assert.deepEqual(parseRoute(wordRoute('青花', 'tshenn-hue/tshinn-hue')), { page: 'word', hanji: '青花', tl: 'tshenn-hue/tshinn-hue' });
   // community words may have no Hanji
   assert.deepEqual(parseRoute(wordRoute('', 'pueh')), { page: 'word', hanji: '', tl: 'pueh' });
-  for (const hash of ['', '#/', '#/tag/', '#/tag/%E0', '#/word/x', '#/nothing']) assert.deepEqual(parseRoute(hash), { page: 'search' });
+  for (const hash of ['', '#/', '#/tag/', '#/tag/%E0', '#/word/x', '#/nothing']) assert.deepEqual(parseRoute(hash), { page: 'home' });
 });
 
 test('packCircles: no two circles overlap, the largest sits at the centre, same input → same layout', () => {
