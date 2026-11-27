@@ -1,4 +1,4 @@
-import { currentUser } from './account.js';
+import { currentUser, signOut } from './account.js';
 import { cardList, closeWordTip, openWordTip } from './cards.js';
 import { loadItaigiIndex, loadRows, loadStats, loadTagMap } from './data.js';
 import { h } from './dom.js';
@@ -99,12 +99,23 @@ function translateStatic() {
   for (const el of document.querySelectorAll('[data-i18n-title]')) el.setAttribute('title', t(el.dataset.i18nTitle));
 }
 
-// The bar's 你好！ @login, once the session says who is signed in; blank while signed out.
+// The bar's 你好！ @login and 登出, once the session says who is signed in; blank while signed out.
+// 登出 ends the session and redraws the current page signed out.
 let signedIn = null;
-const greeting = document.querySelector('.account-greeting');
+const greeting = document.querySelector('.greeting-text');
+const signOutButton = document.querySelector('.account-greeting .link-button');
 const showGreeting = () => {
   greeting.textContent = signedIn ? t('account.greeting', { login: signedIn.login }) : '';
+  signOutButton.hidden = !signedIn;
 };
+signOutButton.addEventListener('click', async () => {
+  signOutButton.disabled = true;
+  await signOut();
+  signOutButton.disabled = false;
+  signedIn = null;
+  showGreeting();
+  route();
+});
 
 setLanguage(document.documentElement.dataset.lang);
 translateStatic();

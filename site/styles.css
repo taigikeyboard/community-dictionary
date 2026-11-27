@@ -701,9 +701,13 @@ body:has(> main[data-page="submit"]) .announce-submit { visibility: hidden; }
 .announce-outline:hover { background: rgba(255, 255, 255, 0.12); }
 .announce-outline:active { background: rgba(255, 255, 255, 0.2); }
 body:has(> main[data-page="search"]) .announce-find { visibility: hidden; }
-/* the right end of the bar: 你好！ @login once signed in (site/app.js); in its own column, so the
-   centred announcement and buttons never move when it appears */
-.account-greeting { grid-column: 3; justify-self: end; margin: 0; font-size: 1rem; color: rgba(255, 255, 255, 0.85); text-align: right; overflow-wrap: anywhere; }
+/* the right end of the bar: 你好！ @login and 登出 once signed in (site/app.js); in its own column,
+   so the centred announcement and buttons never move when it appears */
+.account-greeting { grid-column: 3; justify-self: end; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; gap: 0.25rem 0.75rem; margin: 0; font-size: 1rem; color: rgba(255, 255, 255, 0.85); text-align: right; overflow-wrap: anywhere; }
+.link-button { padding: 0; border: 0; background: none; color: #fff; font: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.45); text-underline-offset: 0.2em; cursor: pointer; transition: text-decoration-color var(--duration-feedback); }
+.link-button:hover { text-decoration-color: #fff; }
+.link-button:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
+.link-button:disabled { opacity: 0.6; cursor: default; }
 body:has(> main[data-page="mine"]) .announce-mine { visibility: hidden; }
 /* the 揣詞 page's box: as wide as a reading line under the title, its menu exactly as wide */
 main > .search { max-width: 36rem; margin: 0 auto; }
