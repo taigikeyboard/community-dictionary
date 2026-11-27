@@ -13,3 +13,5 @@ dist/
 .wrangler/
 .DS_Store
 .classify-cache/
+# 教典 export for scripts/check-hanji.js (CC BY-ND, not redistributed)
+*.ods

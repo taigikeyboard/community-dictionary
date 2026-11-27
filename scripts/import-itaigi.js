@@ -5,7 +5,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { TAG_NAMES, TAGS } from '../site/tags.js';
+import { TAG_NAMES } from '../site/tags.js';
 import { ITAIGI_URL, MIN_ROWS, parseItaigi } from './itaigi.js';
 
 // One-off, run by the maintainer: downloads itaigi.tw's export, tags every (Hanji, Tâi-lô) pair
@@ -21,7 +21,7 @@ import { ITAIGI_URL, MIN_ROWS, parseItaigi } from './itaigi.js';
 const KAUTIAN_SHARD_URL = (n) => `https://taigikeyboard.tw/kautian-mirror/data/entries/${n}.json`;
 const KAUTIAN_SHARDS = 61;
 const BATCH_SIZE = 200;
-const MAX_TAGS = 2;
+const MAX_CLASSIFIED_TAGS = 2;
 
 // 教典 category → tag. Categories left out (stroke counts, 泛稱, 相關用語, …) say nothing about meaning.
 const CATEGORY_TAGS = {
@@ -64,9 +64,9 @@ const pairKey = (hanji, tl) => `${hanji}\t${tl}`;
 export const foldTl = (tl) =>
   tl
     .normalize('NFD')
-    .replace(/[̀-͙͗-ͯ]/g, '')
+    .replace(/[\u0300-\u0357\u0359-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[^a-z͘ⁿ]/g, '');
+    .replace(/[^a-z\u0358\u207f]/g, '');
 
 async function fetchJson(url) {
   const res = await fetch(url);
@@ -87,13 +87,44 @@ async function loadKautianTags() {
         if (tag) tags.add(tag);
       }
       if (tags.size === 0) continue;
-      for (const tl of entry.tl) byPair.set(`${entry.hanzi}|${foldTl(tl)}`, [...tags].slice(0, MAX_TAGS));
+      for (const tl of entry.tl) byPair.set(`${entry.hanzi}|${foldTl(tl)}`, [...tags].slice(0, MAX_CLASSIFIED_TAGS));
     }
   }
   return byPair;
 }
 
-const TAG_LINES = TAGS.map((tag) => `${tag.name}: ${tag.scope}`).join('\n');
+// what belongs under each tag, for the classifier prompt only (never shown on the site)
+const TAG_SCOPES = Object.freeze({
+  身軀: 'body parts, the body, physical appearance',
+  病疼: 'illness, injury, medicine, health care',
+  食食: 'food, drink, dishes, snacks, eating and cooking',
+  厝宅: 'houses, buildings, rooms, furniture fixtures, living environment',
+  家私: 'tools, utensils, household objects, clothing, accessories',
+  交通: 'vehicles, roads, transport, traffic, travel logistics',
+  自然: 'weather, sky, landforms, water, minerals, natural phenomena, disasters',
+  時間: 'time, dates, seasons, festivals, frequency',
+  地號名: 'place names, countries, cities, stations, named locations',
+  動物: 'animals, birds, fish, insects and their behaviour',
+  植物: 'plants, trees, flowers, fruits and vegetables as plants, crops',
+  親情: 'family, relatives, kinship terms, marriage',
+  人物: 'kinds of people, social roles, nationalities, groups of people, address terms',
+  頭路: 'jobs, occupations, work, workplaces',
+  生理: 'business, trade, shopping, money, prices, finance',
+  社會: 'politics, law, government, military, public affairs, organisations',
+  讀冊: 'school, study, knowledge, academic subjects, language and writing',
+  科技: 'technology, computers, internet, phones, machines, science, industry',
+  運動: 'sports, exercise, games of skill',
+  𨑨迌: 'leisure, entertainment, music, film, arts, hobbies, tourism',
+  宗教: 'religion, gods, spirits, temples, rituals, customs, ceremonies',
+  心情: 'feelings, emotions, mental states, reactions',
+  性地: 'personality, character, attitude, abilities, behaviour toward others',
+  動作: 'actions and everyday verbs, body movements, activities',
+  形容: 'qualities, states, degree, colour, smell, sound-imitating words, numbers and measures',
+  俗語: 'proverbs, idioms, set phrases, slang expressions, greetings',
+  外來語: 'loanwords from Japanese, English or other languages',
+});
+
+const TAG_LINES = TAG_NAMES.map((name) => `${name}: ${TAG_SCOPES[name]}`).join('\n');
 
 function prompt(batch) {
   const wordLines = batch.map((w, i) => `${i}\t${w.hanji}\t${w.tl}\t${w.meanings.join('；')}`).join('\n');
@@ -120,7 +151,7 @@ export function parseAnswer(stdout, size) {
   }
   return Array.from({ length: size }, (_, i) => {
     if (!Array.isArray(answer[i])) throw new Error(`reply has no tag list for word ${i}: ${stdout.slice(0, 200)}`);
-    return [...new Set(answer[i].filter((t) => TAG_NAMES.includes(t)))].slice(0, MAX_TAGS);
+    return [...new Set(answer[i].filter((t) => TAG_NAMES.includes(t)))].slice(0, MAX_CLASSIFIED_TAGS);
   });
 }
 
