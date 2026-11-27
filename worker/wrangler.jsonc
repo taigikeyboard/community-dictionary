@@ -1,5 +1,5 @@
-// Submission Worker (docs/roadmap.md § Phase 2). Secrets, set with `wrangler secret put` in
-// Phase 4 and in .dev.vars for `wrangler dev`: GITHUB_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY
+// Submission Worker (docs/roadmap.md § Phase 2). Secrets, set with `wrangler secret put` and in
+// .dev.vars for `wrangler dev`: GITHUB_CLIENT_SECRET, GITHUB_APP_PRIVATE_KEY
 // (PKCS#8 PEM), SESSION_KEY.
 {
   "$schema": "./node_modules/wrangler/config-schema.json",

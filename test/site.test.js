@@ -43,7 +43,7 @@ test('searchRows matches hanji or the start of a tl syllable', () => {
 
 test('formToRaw keeps place only with the 其他 accent', () => {
   const identity = { login: 'octocat', id: 1, today: '2026-11-20' };
-  const raw = formToRaw({ hanji: '手機', tl: 'tshiú-ki', accents: ['鹿港偏泉腔'], place: 'x', meaning: '手機', example: '', note: '' }, identity);
+  const raw = formToRaw({ hanji: '手機', tl: 'tshiú-ki', accents: ['鹿港偏泉腔'], place: 'x', meaning: '手機', note: '' }, identity);
   assert.deepEqual([raw.accents, raw.place, raw.meaning], [['鹿港偏泉腔'], '', '手機']);
   assert.equal(formToRaw({ tl: 'a', accents: ['其他'], place: '澎湖' }, identity).place, '澎湖');
 });
@@ -84,7 +84,7 @@ test('findExisting: exact pair first, both fields searched', () => {
 });
 
 test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeats flagged', async () => {
-  const shared = { accents: ['其他'], place: '', meaning: '', example: '', note: '' };
+  const shared = { accents: ['其他'], place: '', meaning: '', note: '' };
   const { entries, errors } = await checkBatch(shared, [
     { hanji: '網紅', tl: 'bāng-âng' },
     { hanji: '', tl: '' },
@@ -110,7 +110,7 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
   assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '請填寫資料' }]);
 });
 
-test('searchItaigi: hanji, each variant reading; exact, then prefix, then the rest', () => {
+test('iTaigi rows: search order (exact, prefix, rest) and the card-page lookups', () => {
   const [food, plant, feeling] = ['食食', '植物', '心情'].map((name) => TAG_NAMES.indexOf(name));
   const index = indexItaigi([
     ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant], ['阿明']],

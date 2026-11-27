@@ -1,4 +1,5 @@
-// Element builders shared by the pages (app.js) and the tag bubbles (tag-map.js); children are
+// Element builders shared by the pages (app.js), the statistics (story.js) and the tag bubbles
+// (tag-map.js); children are
 // nodes or strings (always text, never parsed as HTML).
 
 export function h(tag, attrs = {}, ...children) {

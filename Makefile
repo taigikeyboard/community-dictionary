@@ -22,7 +22,7 @@ build: ## Build the site into dist/
 	node scripts/build-site.js
 
 preview: build ## Build, then serve dist/ at http://127.0.0.1:8000
-	python3 -m http.server 8000 --bind 127.0.0.1 -d dist
+	node scripts/serve.js
 
 ci: test validate build ## Same gates as the Pages workflow
 

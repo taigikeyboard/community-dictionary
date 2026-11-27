@@ -69,7 +69,7 @@ export function authorizeUrl(env, { state, challenge, redirectUri }) {
   return `${OAUTH}/authorize?${params}`;
 }
 
-// GitHub hands out PKCS#1 keys; WebCrypto imports PKCS#8 only, so Phase 4 converts it once with
+// GitHub hands out PKCS#1 keys; WebCrypto imports PKCS#8 only, so the key is converted once with
 // `openssl pkcs8 -topk8 -nocrypt -in app.pem`.
 async function importPrivateKey(pem) {
   const text = pem.replace(/\\n/g, '\n');
@@ -82,7 +82,7 @@ async function importPrivateKey(pem) {
 
 // App JWT per GitHub Docs: RS256, iat 60 s in the past against clock drift, exp ≤ 10 minutes,
 // iss = the App's client ID.
-export async function appJwt(env, now = Date.now()) {
+async function appJwt(env, now = Date.now()) {
   const seconds = Math.floor(now / 1000);
   const encode = (obj) => base64url(new TextEncoder().encode(JSON.stringify(obj)));
   const unsigned = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({ iat: seconds - 60, exp: seconds + 540, iss: env.GITHUB_CLIENT_ID })}`;

@@ -28,8 +28,7 @@ jobs:
           node-version: 26
       # the D3 modules build-site copies into dist/vendor/
       - run: npm ci
-      - run: npm test
-      - run: node scripts/validate.js
+      # tests and entry validation run in validate.yml on the same push
       - run: node scripts/build-site.js
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:

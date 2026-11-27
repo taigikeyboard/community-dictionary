@@ -1,6 +1,7 @@
 import {
   ACCENT_OTHER,
   entryKey,
+  MAX_WORDS,
   normalizeHanji,
   normalizeTl,
   prepareEntry,
@@ -84,7 +85,7 @@ export function wordsWithTag(rows, itaigi, tag) {
 }
 
 // Every word one contributor gave, for the contributor's card page: community rows any of whose
-// attestations is theirs (GitHub login), and every iTaigi row for ITAIGI_CONTRIBUTOR.
+// attestations is theirs (GitHub login), and every iTaigi row that credits the name.
 export function wordsByContributor(rows, itaigi, name) {
   return {
     community: rows.filter((row) => row.attestations.some((a) => a.contributor === name)),
@@ -162,7 +163,7 @@ export function tagCircles(counts, width, height, { fill = 0.55, gap = 6, minRad
   return { box, circles };
 }
 
-// Hash routes: #/ search, #/submit the form, #/tag/<name> a tag's cards, #/contributor/<name> a
+// Hash routes: #/ the homepage, #/search the 揣詞 page, #/submit the form, #/tag/<name> a tag's cards, #/contributor/<name> a
 // contributor's cards, #/word/<hanji>/<tl> one word's cards. Parts are URI-encoded, so a "/" inside a reading never splits the route.
 export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
 export const contributorRoute = (name) => `#/contributor/${encodeURIComponent(name)}`;
@@ -230,14 +231,11 @@ export function formToRaw(values, identity) {
 
 // The site validates before the Worker sees the form; the Worker fills in the real identity,
 // so a placeholder one stands in until sign-in.
-export const PLACEHOLDER_IDENTITY = Object.freeze({ login: 'placeholder', id: 1, today: '2000-01-01' });
+const PLACEHOLDER_IDENTITY = Object.freeze({ login: 'placeholder', id: 1, today: '2000-01-01' });
 
 export function checkForm(values, identity = PLACEHOLDER_IDENTITY) {
   return prepareEntry(formToRaw(values, identity));
 }
-
-// One submission may carry several words; each becomes its own entry file in one pull request.
-export const MAX_WORDS = 20;
 
 export const isBlankWord = (word) => word.hanji.trim() === '' && word.tl.trim() === '';
 
@@ -279,7 +277,7 @@ export async function duplicateStatus(rows, hanji, tl, contributorId) {
   return { status: 'attested', key, row, contributors: row.attestations.map((a) => a.contributor) };
 }
 
-export const FIELD_LABELS = Object.freeze({
+const FIELD_LABELS = Object.freeze({
   hanji: '漢字、日語',
   tl: '台羅',
   accents: '腔口',

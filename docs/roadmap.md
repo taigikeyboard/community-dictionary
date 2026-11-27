@@ -219,3 +219,19 @@ Deliberately not adopted:
 - **A database or KV store** — GitHub state already answers every question the Worker asks.
 - **An automated Tâi-lô validator** — D8.
 - **Fuzzy duplicate detection** — a near-duplicate reading may be the accent difference itself.
+
+## Maintenance round 2026-11-27 — cleanup, refactor, i18n
+
+Source: whole-project review (2026-11-27). Maintainer choices: delete the hidden top-bar search box,
+the submit form's "not yet open" mode and the duplicate test run in `pages.yml`; keep the Worker's
+edit / withdraw / logout routes for "My submissions"; full refactor in separate commits; preview
+through a Node static server.
+
+| Step | Scope | Status |
+|---|---|---|
+| 1 | Cleanup: `--ease-emphasized` self-reference, dead code and selectors, unused exports, small duplicates, stale comments, `scripts/serve.js` | Pending |
+| 2 | Refactor: split `site/app.js` by job, split `tag-map.js` `draw`, page ids `home` / `search` | Pending |
+| 3 | Validation errors as codes (`lib/entry.js`), one formatter for CI, a message table for the site | Pending |
+| 4 | `build-site` generates the import map and modulepreload list | Pending |
+| 5 | i18n: Taiwanese (default), Japanese, English for UI text and tag names; sidebar 語言 select; every Taiwanese Hanji checked against 教典 (sutian.moe.edu.tw) | Pending |
+| 6 | Docs: README rewrite, Phase 3 section as current state, everything outside UI text and data in English | Pending |

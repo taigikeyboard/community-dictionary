@@ -7,7 +7,7 @@ import { TAGS } from '../site/tags.js';
 // only when the data does.
 
 // words kept per tag: the pool a zoomed-in tag draws its 24 to 32 word bubbles from
-export const SAMPLE_SIZE = 150;
+const SAMPLE_SIZE = 150;
 // a sample word fits in a small bubble and reads as a word on its own: 2 to 4 characters, no spaces
 const MIN_SAMPLE_LENGTH = 2;
 const MAX_SAMPLE_LENGTH = 4;

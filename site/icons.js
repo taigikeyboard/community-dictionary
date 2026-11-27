@@ -1,11 +1,11 @@
-// Line icons (24×24, 1.5 stroke, round caps) built with createElementNS — no HTML parsing.
+import { svg } from './dom.js';
+
+// Line icons (24×24, 1.5 stroke, round caps) built as SVG elements — no HTML parsing.
 
 const PATHS = {
   back: ['M15 5l-7 7 7 7'],
   check: ['M5.5 12.5l4 4 9-9.5'],
   close: ['M6 6l12 12', 'M18 6L6 18'],
-  // a road cone: body, two stripes, base
-  cone: ['M10 4h4l3.5 13h-11L10 4z', 'M8.4 10h7.2', 'M7.6 13.5h8.8', 'M4 20h16'],
   copy: [
     'M10.75 8.5h6.5a2.25 2.25 0 0 1 2.25 2.25v6.5a2.25 2.25 0 0 1-2.25 2.25h-6.5a2.25 2.25 0 0 1-2.25-2.25v-6.5a2.25 2.25 0 0 1 2.25-2.25z',
     'M15.5 5.5v-.25A1.75 1.75 0 0 0 13.75 3.5h-7.5A1.75 1.75 0 0 0 4.5 5.25v7.5a1.75 1.75 0 0 0 1.75 1.75h.25',
@@ -19,17 +19,5 @@ const PATHS = {
   ],
 };
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-export function icon(name, className = 'icon') {
-  const svg = document.createElementNS(SVG_NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('class', className);
-  svg.setAttribute('aria-hidden', 'true');
-  for (const d of PATHS[name]) {
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('d', d);
-    svg.append(path);
-  }
-  return svg;
-}
+export const icon = (name, className = 'icon') =>
+  svg('svg', { viewBox: '0 0 24 24', class: className, 'aria-hidden': 'true' }, PATHS[name].map((d) => svg('path', { d })));

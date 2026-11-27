@@ -1,11 +1,10 @@
-import { entryKey, entryPath, parseEntryPath, prepareEntry, serializeEntry, ENTRIES_DIR } from '../../lib/entry.js';
+import { entryKey, entryPath, MAX_WORDS, parseEntryPath, prepareEntry, serializeEntry, ENTRIES_DIR } from '../../lib/entry.js';
 import { api, apiOrNull, GitHubError, installationToken } from './github.js';
 
 // New, edit and withdraw submissions: checks the contributor's rights and caps against GitHub
 // state (no database), then writes one commit on a `submit/<id>/<key>` branch and opens the pull
 // request.
 
-export const MAX_WORDS = 20;
 const BRANCH_PREFIX = 'submit/';
 const ENTRY_FIELDS = ['accents', 'tags', 'place', 'meaning', 'examples', 'note'];
 
@@ -45,7 +44,6 @@ function draftEntry(body, word, identity) {
 
 class Repo {
   constructor(env, token) {
-    this.env = env;
     this.token = token;
     this.name = env.GITHUB_REPO;
     this.base = env.BASE_BRANCH || 'main';

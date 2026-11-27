@@ -1,6 +1,5 @@
-import { ACCENT_OTHER, ACCENTS, LIMITS, MAX_EXAMPLES, TAG_LIMIT } from '../lib/entry.js';
+import { ACCENT_OTHER, ACCENTS, LIMITS, MAX_EXAMPLES, MAX_WORDS, TAG_LIMIT } from '../lib/entry.js';
 import { currentUser, signIn, submitErrorText, submitWords, WorkerError } from './account.js';
-import { WORKER_URL } from './config.js';
 import { icon } from './icons.js';
 import {
   checkBatch,
@@ -9,7 +8,6 @@ import {
   findExisting,
   indexItaigi,
   isBlankWord,
-  MAX_WORDS,
   parseRoute,
   searchItaigi,
   tagRoute,
@@ -25,8 +23,9 @@ import { storySections } from './story.js';
 import { tagMap } from './tag-map.js';
 import { TAG_NAMES, TAGS } from './tags.js';
 
-// Pages: search (community entries and iTaigi) with tag chips, the submission form, whose word rows
-// show the community entries already collected, and card pages for a tag or a word.
+// Pages: the homepage (tag bubble map and statistics), the 揣詞 search page (community entries and
+// iTaigi), the submission form, whose word rows show the community entries already collected, and
+// card pages for a tag, a contributor or a word.
 
 const view = document.getElementById('view');
 const LOAD_ERROR = '資料載入失敗，請重新整理。';
@@ -175,11 +174,8 @@ function matchesPopover(root, locate, limit, { isSearch = false, onRender = () =
 // is picked), Escape closes it (matchesPopover); the mouse picks the row it moves over. Keys pressed
 // while an input method is composing stay with the input method. The input keeps focus; the picked
 // row is announced through aria-activedescendant. Returns `render`, to run after every update.
-let menuCount = 0;
 function menuKeys(input, panel, results) {
-  // ids unique per box: the top bar's (hidden) box and the 揣詞 page's can both be in the document
-  const prefix = `search-${(menuCount += 1)}`;
-  results.id = `${prefix}-results`;
+  results.id = 'search-results';
   results.setAttribute('role', 'listbox');
   results.setAttribute('aria-label', '揣詞結果');
   input.setAttribute('role', 'combobox');
@@ -222,7 +218,7 @@ function menuKeys(input, panel, results) {
     input.removeAttribute('aria-activedescendant');
     input.setAttribute('aria-expanded', String(!panel.hidden));
     options().forEach((option, index) => {
-      option.id = `${prefix}-option-${index}`;
+      option.id = `search-option-${index}`;
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', 'false');
     });
@@ -232,7 +228,7 @@ function menuKeys(input, panel, results) {
 // One tag as a link to its cards page, drawn as #name (the # from styles.css).
 const tagLink = (name, reading = null) => h('a', { class: 'tag', href: tagRoute(name), title: reading }, name);
 
-// The top bar's search box, one for every page; results open in the same popover as the word rows.
+// The 揣詞 page's search box; results open in the same popover as the form's word rows.
 function searchBox() {
   // the blank placeholder only drives :placeholder-shown, which hides the 揤 / 揣詞 hint once
   // something is typed (a placeholder cannot draw the key's box)
@@ -312,7 +308,6 @@ function accentGroup({ accents = [], place = '' } = {}) {
     add.setAttribute('aria-expanded', String(on));
     custom.hidden = !on;
     if (!on) return;
-    custom.classList.remove('align-end');
     custom.classList.toggle('align-end', slot.offsetLeft + custom.offsetWidth > pills.clientWidth);
     custom.value = other?.querySelector('input[type="hidden"]').value ?? '';
     custom.focus();
@@ -352,7 +347,6 @@ function tagGroup(checked = []) {
   // a ＋ near the right edge opens its input leftward, so it stays inside the column; ＋ moves each
   // time a tag is added before it, so this runs then too
   const place = () => {
-    custom.classList.remove('align-end');
     custom.classList.toggle('align-end', slot.offsetLeft + custom.offsetWidth > pills.clientWidth);
   };
   const editing = (on) => {
@@ -601,8 +595,7 @@ const submitTips = () => h('section', { class: 'submit-tips', 'aria-label': '填
 const wordLabel = (entry) => [entry.hanji, entry.tl].filter(Boolean).join(' ');
 
 function renderSubmit() {
-  const open = WORKER_URL !== '';
-  const draft = open ? takeDraft() : null;
+  const draft = takeDraft();
   const notice = h('p', { class: 'form-notice', role: 'status', hidden: true });
   const say = (text) => {
     notice.textContent = text;
@@ -615,16 +608,15 @@ function renderSubmit() {
   let user = null;
   const submitLabel = h('span');
   const showLabel = () => {
-    submitLabel.textContent = !open || user ? '提交' : signedOutLabel;
+    submitLabel.textContent = user ? '提交' : signedOutLabel;
   };
   const submit = h(
     'button',
-    // grey and unpressable while no Worker is configured; the tooltip says why
-    { class: 'button button-steady', type: 'submit', disabled: !open, title: open ? null : '提交猶未開放' },
+    { class: 'button button-steady', type: 'submit' },
     h('span', { class: 'button-sizer', 'aria-hidden': 'true' }, signedOutLabel),
     submitLabel,
   );
-  const session = open ? currentUser() : Promise.resolve(null);
+  const session = currentUser();
   session.then((found) => {
     user = found;
     showLabel();
@@ -647,7 +639,7 @@ function renderSubmit() {
   // that several words must be one meaning
   const form = h(
     'form',
-    { class: 'form submit-form', novalidate: true },
+    { class: 'form', novalidate: true },
     h(
       'div',
       { class: 'field form-box' },
@@ -716,7 +708,6 @@ function renderSubmit() {
       say(`${already.join('。')}。腔口無仝抑是有補充，請寫佇「說明」才閣送一擺。`);
       return;
     }
-    if (!open) return say(`${entries.length} 个詞格式無問題。提交猶未開放。`);
     // signing in leaves the page; the draft brings the form back as it was
     const goSignIn = () => {
       saveDraft(form, words, examples);
@@ -740,11 +731,7 @@ function renderSubmit() {
   });
 
   document.title = `提交新詞 · ${SITE_TITLE}`;
-  // while no Worker is configured, a notice says the site is still being built
-  const building = open
-    ? null
-    : h('p', { class: 'construction-note', role: 'note' }, icon('cone'), '網站當咧做');
-  view.replaceChildren(...[backButton(), hero('提交新詞'), building, submitTips(), form].filter(Boolean));
+  view.replaceChildren(backButton(), hero('提交新詞'), submitTips(), form);
 }
 
 // After a submission: the pull request the Worker opened, where the maintainer reviews the words.
@@ -1032,18 +1019,11 @@ function route() {
   else renderSearch();
 }
 
-// the search box sits at the top bar's right; hidden for now (maintainer 2026-11-26), and "/" with it
-const search = searchBox();
-const searchInput = search.querySelector('input');
-search.hidden = true;
-document.querySelector('.topbar-inner').append(search);
-
-// "/" anywhere outside a text field jumps to the search box (after kautian-mirror): the 揣詞 page's,
-// else the top bar's while it is shown
+// "/" anywhere outside a text field jumps to the 揣詞 page's search box (after kautian-mirror)
 document.addEventListener('keydown', (event) => {
   if (event.key !== '/' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.target.closest('input, textarea, select, [contenteditable]')) return;
-  const target = view.querySelector(':scope > .search input') ?? (search.hidden ? null : searchInput);
+  const target = view.querySelector(':scope > .search input');
   if (!target) return;
   event.preventDefault();
   target.focus();
@@ -1052,22 +1032,16 @@ document.addEventListener('keydown', (event) => {
 initSettings(document.getElementById('settings'));
 initSidebar(document.querySelectorAll('button[aria-controls="sidebar"]'), document.getElementById('sidebar'));
 
-// The focused link is replaced along with the page, so focus moves to the new heading instead of
-// falling back to <body>, keeping keyboard and screen-reader users in place.
-
 window.addEventListener('hashchange', () => {
   navigatedInside = true;
   closeWordTip();
-  // a new page starts with an empty search box and its menu closed
-  if (searchInput.value !== '') {
-    searchInput.value = '';
-    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-  }
   route();
   window.scrollTo(0, 0);
   // the 揣詞 page puts the reader straight in its box
   const pageSearch = view.querySelector(':scope > .search input');
   if (pageSearch) return pageSearch.focus({ preventScroll: true });
+  // the focused link is replaced along with the page, so focus moves to the new heading instead of
+  // falling back to <body>, keeping keyboard and screen-reader users in place
   const heading = view.querySelector('h1');
   heading.setAttribute('tabindex', '-1');
   heading.focus({ preventScroll: true });

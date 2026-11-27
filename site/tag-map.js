@@ -216,7 +216,7 @@ function draw(d3, tags, box, bar, all, width, height, { entrance = false, onWord
     );
     // the shadow reaches 12% past the circle and sits a little low, as light from above would cast it
     const shadow = svg('circle', { class: 'tag-shadow', cy: r * 0.04, r: r * 1.12, fill: 'url(#bubble-shadow)' });
-    const body = svg('g', { class: 'tag-body' }, shadow, target, wordLayer, name);
+    const body = svg('g', {}, shadow, target, wordLayer, name);
     return { tag, node: nodes[i], target, words, wordLayer, body, group: svg('g', { class: 'tag-bubble' }, body) };
   });
   map.append(...bubbles.map((b) => b.group));

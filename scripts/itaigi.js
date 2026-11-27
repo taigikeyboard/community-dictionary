@@ -10,7 +10,7 @@ export const ITAIGI_URL = encodeURI('https://itaigi.tw/匯出資料');
 
 // The export also bundles two dictionaries iTaigi imported; they are not crowdsourced iTaigi
 // content, so they are left out, as iTaigiDataMirror does.
-export const IMPORTED_SOURCES = Object.freeze(['台文華文線頂辭典', '臺灣閩南語常用詞辭典']);
+const IMPORTED_SOURCES = Object.freeze(['台文華文線頂辭典', '臺灣閩南語常用詞辭典']);
 
 // The crowdsourced part holds about 20,000 rows; far fewer means a truncated or wrong file.
 export const MIN_ROWS = 15000;

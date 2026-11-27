@@ -62,8 +62,8 @@ export function toCsv(rows) {
 }
 
 // Writes dist/dictionary.csv and dist/search.json; returns false (after logging) on invalid entries.
-// `romanize` (tl → { poj, tps }) adds display readings to search.json; build-site passes it, while
-// CI's compile check runs without it so it needs no vendor/ submodule.
+// `romanize` (tl → { poj, tps }) adds display readings to search.json; build-site passes it; the
+// command-line run (`npm run compile`) leaves it out and needs no vendor/ submodule.
 export async function compile(root, { romanize } = {}) {
   const { checked, errors, count } = await checkTree(root);
   if (errors.length > 0) {

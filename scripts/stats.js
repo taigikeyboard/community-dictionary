@@ -7,19 +7,18 @@ import { TAG_NAMES } from '../site/tags.js';
 // word lengths in Hanji, bucketed 1 … LONGEST, the last bucket holding everything longer
 export const LONGEST = 8;
 // how many tag pairs the page lists
-export const TOP_PAIRS = 8;
+const TOP_PAIRS = 8;
 // how many community contributors the homepage shows by their GitHub picture
-export const TOP_GITHUB = 50;
+const TOP_GITHUB = 50;
 
 // One word's tag names and contributors, whichever source it comes from.
 function wordFacts(row, fromItaigi) {
   if (fromItaigi) {
-    const [hanji, tl, , , tags, contributors] = row;
-    return { hanji, tl, tags: tags.map((index) => TAG_NAMES[index]), contributors };
+    const [hanji, , , , tags, contributors] = row;
+    return { hanji, tags: tags.map((index) => TAG_NAMES[index]), contributors };
   }
   return {
     hanji: row.hanji,
-    tl: row.tl,
     tags: [...new Set(row.attestations.flatMap((a) => a.tags))],
     contributors: [...new Set(row.attestations.map((a) => a.contributor))],
   };

@@ -17,7 +17,8 @@ import { buildTagMap, sampleWords } from '../scripts/tag-map.js';
 import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
 
-// Tests for the CI validator and the compile script, on throwaway git repositories.
+// Tests for the build-time scripts: the CI validator and compile (on throwaway git repositories),
+// the iTaigi import, romanization, the tag map and the statistics.
 
 const OCTOCAT = { name: 'octocat', email: '583231+octocat@users.noreply.github.com' };
 const MALLORY = { name: 'mallory', email: '999+mallory@users.noreply.github.com' };
@@ -55,10 +56,8 @@ function makeRepo(t) {
 
 test('checkTree accepts a valid tree', async (t) => {
   const { root } = makeRepo(t);
-  {
-    const { errors, count } = await checkTree(root);
-    assert.deepEqual({ errors, count }, { errors: [], count: 1 });
-  }
+  const { errors, count } = await checkTree(root);
+  assert.deepEqual({ errors, count }, { errors: [], count: 1 });
 });
 
 test('checkTree: same contributor, same pair, two directories', async (t) => {
@@ -72,10 +71,8 @@ test('checkTree: same contributor, same pair, two directories', async (t) => {
 test('checkTree: a second contributor attesting the same pair is fine', async (t) => {
   const { root, write } = makeRepo(t);
   write(`entries/mallory/${KEY}.json`, serializeEntry({ ...accentEntry(), contributor: 'mallory', contributor_id: 999 }));
-  {
-    const { errors, count } = await checkTree(root);
-    assert.deepEqual({ errors, count }, { errors: [], count: 2 });
-  }
+  const { errors, count } = await checkTree(root);
+  assert.deepEqual({ errors, count }, { errors: [], count: 2 });
 });
 
 test('checkTree: stray file and symlink', async (t) => {
