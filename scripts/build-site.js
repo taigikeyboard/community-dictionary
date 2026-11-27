@@ -55,5 +55,10 @@ else {
   const stats = buildStats(JSON.parse(readFileSync(join(dist, 'search.json'), 'utf8')), itaigi, tagMap);
   writeFileSync(join(dist, 'stats.json'), JSON.stringify(stats));
   console.log(`build-site: ${stats.words} words, ${stats.contributors} contributors → dist/stats.json`);
+  // the sitemap the site root's robots.txt points to (taigikeyboard.github.io): the homepage only, since the
+  // card pages are hash routes, which search engines read as the homepage
+  const siteUrl = /<link rel="canonical" href="([^"]+)">/.exec(page)?.[1];
+  if (!siteUrl) throw new Error('build-site: site/index.html has no canonical link for the sitemap');
+  writeFileSync(join(dist, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n<url><loc>${siteUrl}</loc></url>\n</urlset>\n`);
   console.log('build-site: dist/ ready');
 }
