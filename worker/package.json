@@ -1,6 +1,7 @@
 {
   "name": "community-dictionary-worker",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 8787 --local-upstream 127.0.0.1:8787",

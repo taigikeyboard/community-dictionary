@@ -124,7 +124,7 @@ One pull request per phase.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | This roadmap, README, licences | In progress |
+| 0 | This roadmap, README, licences | Done 2026-11-27 — code Apache-2.0 (`LICENSE`), data CC0 1.0 (`LICENSE-DATA`) |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
 | 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Done 2026-11-26, deployed |
 | 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — sign-in, submit and the "submitted" page live 2026-11-26; "My submissions" (edit, withdraw) next |
