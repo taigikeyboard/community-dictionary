@@ -5,6 +5,7 @@ import {
   checkBatch,
   checkForm,
   contributorRoute,
+  editRoute,
   duplicateStatus,
   findExisting,
   foldSearch,
@@ -149,6 +150,10 @@ test('iTaigi rows: search order (exact, prefix, rest) and the card-page lookups'
 test('routes: tag and word pages round-trip, anything else is the homepage', () => {
   assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
   assert.deepEqual(parseRoute('#/search'), { page: 'search' });
+  assert.deepEqual(parseRoute('#/mine'), { page: 'mine' });
+  assert.deepEqual(parseRoute(editRoute('octocat', KEY)), { page: 'edit', login: 'octocat', key: KEY });
+  // only a login and a 16-hex key make an edit route
+  for (const hash of ['#/edit/octocat/xyz', '#/edit/-bad-/0123456789abcdef', '#/edit/../0123456789abcdef']) assert.deepEqual(parseRoute(hash), { page: 'home' });
   // the 說明 page is gone (2026-11-26): its old link lands on the homepage
   assert.deepEqual(parseRoute('#/about'), { page: 'home' });
   assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });

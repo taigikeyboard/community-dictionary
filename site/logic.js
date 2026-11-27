@@ -1,6 +1,7 @@
 import {
   ACCENT_OTHER,
   entryKey,
+  LOGIN_RE,
   MAX_WORDS,
   normalizeHanji,
   normalizeTl,
@@ -169,6 +170,8 @@ export function tagCircles(counts, width, height, { fill = 0.55, gap = 6, minRad
 export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
 export const contributorRoute = (name) => `#/contributor/${encodeURIComponent(name)}`;
 export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${encodeURIComponent(tl)}`;
+// one of the contributor's own entries, by its file (entries/<login>/<key>.json)
+export const editRoute = (login, key) => `#/edit/${login}/${key}`;
 
 // A word as one line, "Hanji Tâi-lô" (either may be empty), as 複製詞目 copies it and the form names it.
 export const wordLabel = ({ hanji, tl }) => [hanji, tl].filter(Boolean).join(' ');
@@ -179,6 +182,9 @@ export const wordTitle = ({ hanji, tl }) => hanji || tl;
 export function parseRoute(hash) {
   if (hash === '#/submit') return { page: 'submit' };
   if (hash === '#/search') return { page: 'search' };
+  if (hash === '#/mine') return { page: 'mine' };
+  const edit = /^#\/edit\/([^/]+)\/([0-9a-f]{16})$/.exec(hash);
+  if (edit && LOGIN_RE.test(edit[1])) return { page: 'edit', login: edit[1], key: edit[2] };
   const parts = hash.split('/');
   try {
     if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {

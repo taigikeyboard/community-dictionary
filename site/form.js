@@ -244,7 +244,8 @@ export function pairList(kind, { onDropped, initial = [] }) {
       if (!isBlankRow(last) || !isBlankRow(last.previousElementSibling) || last.contains(document.activeElement)) break;
       last.remove();
     }
-    while (list.children.length < 2) list.append(newRow());
+    // a first row and the faint next one, or the single row of a one-row list (the 修改 form)
+    while (list.children.length < Math.min(2, kind.max)) list.append(newRow());
     if (!isBlankRow(list.lastElementChild) && list.children.length < kind.max) list.append(newRow());
     for (const row of list.children) {
       const blank = isBlankRow(row);
@@ -253,8 +254,8 @@ export function pairList(kind, { onDropped, initial = [] }) {
       const button = row.querySelector('.icon-button');
       button.setAttribute('aria-label', t(slot ? kind.add : kind.remove));
       button.title = t(slot ? kind.add : 'form.remove');
-      // an empty first row has nothing to remove
-      button.hidden = blank && row === list.firstElementChild;
+      // an empty first row has nothing to remove, nor has a one-row list
+      button.hidden = (blank && row === list.firstElementChild) || kind.max === 1;
     }
   };
   for (const word of initial) {

@@ -2,7 +2,7 @@ import { ACCENT_OTHER } from '../lib/entry.js';
 import { loadItaigiIndex, loadRows } from './data.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
-import { wordLabel, wordRoute, wordsSpelled, wordTitle } from './logic.js';
+import { editRoute, wordLabel, wordRoute, wordsSpelled, wordTitle } from './logic.js';
 import { pageTitle } from './page.js';
 import { listJoin, t } from './strings.js';
 import { TAG_NAMES } from './tags.js';
@@ -55,10 +55,13 @@ const copyText = (text, doneLabel) =>
 
 // A card's 複製詞目 / 分享連結 buttons (after kautian-mirror): copy "Hanji Tâi-lô"; share the
 // word page's link (`route`) through the system share sheet, or copy the link where there is none.
-function cardActions(row, route) {
+// `own`, the signed-in contributor's attestation of this word, adds 修改 before them.
+function cardActions(row, route, own) {
+  const label = t('card.edit');
   return h(
     'div',
     { class: 'card-actions' },
+    own ? h('a', { class: 'icon-button', href: editRoute(own.contributor, row.key), title: label, 'aria-label': label }, icon('edit')) : null,
     cardAction('copy', t('card.copy'), () => copyText(wordLabel(row), t('card.copied'))),
     cardAction('share', t('card.share'), () => {
       const url = `${location.origin}${location.pathname}${route}`;
@@ -73,9 +76,10 @@ function cardActions(row, route) {
 // One word card. Community rows merge their attestations (accents, meaning, examples, note,
 // contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
 // the card leads with the word, linked to its own page (tag pages); a word page already names it
-// in the heading.
-function wordCard(row, { headword }) {
+// in the heading. `user` is the signed-in contributor, or null.
+function wordCard(row, { headword, user = null }) {
   const attestations = row.attestations ?? [];
+  const own = user ? attestations.find((a) => a.contributor_id === user.id) : null;
   const pick = (field) => unique(attestations.map((a) => a[field]));
   const tags = attestations.length > 0 ? unique(attestations.flatMap((a) => a.tags)) : (row.tags ?? []).map((index) => TAG_NAMES[index]);
   const accents = unique(attestations.flatMap((a) => a.accents.map((accent) => (accent === ACCENT_OTHER && a.place ? a.place : accent))));
@@ -109,7 +113,7 @@ function wordCard(row, { headword }) {
   return h(
     'article',
     { class: 'word-card' },
-    h('div', { class: 'card-head' }, first, cardActions(row, route)),
+    h('div', { class: 'card-head' }, first, cardActions(row, route, own)),
     second,
     details.length > 0 ? h('dl', { class: 'card-details' }, details.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])) : null,
     tagList || credit ? h('footer', { class: 'card-foot' }, tagList, credit) : null,

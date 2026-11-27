@@ -1,8 +1,10 @@
+import { currentUser } from './account.js';
 import { cardList, closeWordTip, openWordTip } from './cards.js';
 import { loadItaigiIndex, loadRows, loadStats, loadTagMap } from './data.js';
 import { h } from './dom.js';
 import { parseRoute, wordsByContributor, wordsSpelled, wordsWithTag, wordTitle } from './logic.js';
 import { backButton, hero, noteNavigation, pageTitle, view } from './page.js';
+import { renderEdit, renderMine } from './mine-page.js';
 import { searchBox } from './search-box.js';
 import { initSettings } from './settings.js';
 import { initSidebar } from './sidebar.js';
@@ -44,8 +46,9 @@ function renderCards(title, lead, pick, { headword = true } = {}) {
   document.title = pageTitle(title);
   const list = h('div', { class: headword ? 'cards' : 'cards cards-word' });
   view.replaceChildren(backButton(), hero(title, lead, { isReading: true }), list);
-  Promise.all([loadRows(), loadItaigiIndex()])
-    .then(([rows, itaigi]) => cardList(list, pick(rows, itaigi), { headword }))
+  // the session decides which cards offer 修改 (the contributor's own words)
+  Promise.all([loadRows(), loadItaigiIndex(), currentUser()])
+    .then(([rows, itaigi, user]) => cardList(list, pick(rows, itaigi), { headword, user }))
     .catch(() => list.replaceWith(h('p', { class: 'empty' }, t('data.loadError'))));
 }
 
@@ -61,7 +64,7 @@ const renderWord = (hanji, tl) =>
   renderCards(wordTitle({ hanji, tl }), null, (rows, itaigi) => wordsSpelled(rows, itaigi, hanji, tl), { headword: false });
 
 // Hash routes (logic.js parseRoute): the homepage at #/ and any unknown hash, the 揣詞 page at
-// #/search, the form at #/submit, cards at #/tag/<name>, #/contributor/<name> and
+// #/search, the form at #/submit, 我的提交 at #/mine, 修改 at #/edit/<login>/<key>, cards at #/tag/<name>, #/contributor/<name> and
 // #/word/<hanji>/<tl>.
 function route() {
   const target = parseRoute(location.hash);
@@ -69,6 +72,8 @@ function route() {
   view.dataset.page = target.page;
   if (target.page === 'submit') renderSubmit();
   else if (target.page === 'search') renderSearch();
+  else if (target.page === 'mine') renderMine();
+  else if (target.page === 'edit') renderEdit(target.login, target.key);
   else if (target.page === 'tag') renderTag(target.tag);
   else if (target.page === 'contributor') renderContributor(target.name);
   else if (target.page === 'word') renderWord(target.hanji, target.tl);

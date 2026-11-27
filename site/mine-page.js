@@ -1,0 +1,102 @@
+import { currentUser, ownSubmissions, signIn } from './account.js';
+import { loadRows } from './data.js';
+import { h } from './dom.js';
+import { editRoute, wordRoute, wordTitle } from './logic.js';
+import { backButton, hero, pageTitle, view } from './page.js';
+import { accountLine, renderSubmit } from './submit-page.js';
+import { t } from './strings.js';
+
+// The 我的提交 page (the signed-in contributor's words, in review and collected, each with 修改) and
+// the 修改 page's loading step (it finds the entry, then draws the form). Both need a GitHub
+// sign-in; the Worker checks ownership again on every edit.
+
+// Signed out: what the page needs and a button that signs in and comes back to this page.
+function signInPrompt() {
+  const button = h('button', { class: 'button', type: 'button' }, t('mine.signIn'));
+  button.addEventListener('click', () => signIn(location.hash));
+  return h('div', { class: 'mine-signin' }, h('p', {}, t('mine.signInHint')), button);
+}
+
+// The community attestations that carry this contributor's id, as { key, login, hanji, tl, entry }.
+function collectedBy(rows, user) {
+  return rows.flatMap((row) =>
+    row.attestations
+      .filter((a) => a.contributor_id === user.id)
+      .map((a) => ({ key: row.key, login: a.contributor, hanji: row.hanji, tl: row.tl, entry: { hanji: row.hanji, tl: row.tl, ...a } })),
+  );
+}
+
+// An open submission's file as the same shape; its path names the login and key.
+function inReview(submission) {
+  const [, login, file] = submission.path.split('/');
+  const { entry } = submission;
+  return { key: file.replace(/\.json$/, ''), login, hanji: entry.hanji, tl: entry.tl, entry, pullRequest: submission.pullRequest };
+}
+
+// One word of the list: the word (a link to its cards), its review link when in review, and 修改.
+function mineItem(word) {
+  const review = word.pullRequest && /^https:\/\/github\.com\//.test(word.pullRequest.url)
+    ? h('a', { class: 'mine-review', href: word.pullRequest.url, target: '_blank', rel: 'noopener' }, t('submit.progress', { number: word.pullRequest.number }))
+    : null;
+  return h(
+    'li',
+    { class: 'mine-item' },
+    h('a', { class: 'mine-word', href: wordRoute(word.hanji, word.tl) }, wordTitle(word)),
+    word.hanji ? h('span', { class: 'mine-tl tl' }, word.tl) : null,
+    review,
+    h('a', { class: 'mine-edit', href: editRoute(word.login, word.key) }, t('card.edit')),
+  );
+}
+
+const mineSection = (title, words) =>
+  words.length > 0 ? h('section', { class: 'mine-section' }, h('h2', { class: 'mine-heading' }, title), h('ul', { class: 'mine-list' }, words.map(mineItem))) : null;
+
+export function renderMine() {
+  document.title = pageTitle(t('mine.title'));
+  const body = h('div', { class: 'mine' }, h('p', { class: 'empty' }, t('data.loading')));
+  view.replaceChildren(backButton(), hero(t('mine.title')), body);
+  currentUser().then(async (user) => {
+    if (!body.isConnected) return;
+    if (!user) return body.replaceChildren(signInPrompt());
+    try {
+      const [submissions, rows] = await Promise.all([ownSubmissions(), loadRows()]);
+      if (!body.isConnected) return;
+      const pending = submissions.map(inReview);
+      const collected = collectedBy(rows, user);
+      body.replaceChildren(
+        ...[
+          mineSection(t('mine.inReview'), pending),
+          mineSection(t('mine.collected'), collected),
+          pending.length + collected.length === 0 ? h('p', { class: 'empty' }, t('mine.none')) : null,
+          accountLine(user, { withMine: false }),
+        ].filter(Boolean),
+      );
+    } catch {
+      body.replaceChildren(h('p', { class: 'empty' }, t('data.loadError')));
+    }
+  });
+}
+
+// The 修改 page for entries/<login>/<key>.json: the copy in the contributor's open submission when
+// there is one (the Worker edits that branch), else the collected one; only an entry carrying the
+// signed-in id is offered.
+export function renderEdit(login, key) {
+  document.title = pageTitle(t('edit.title'));
+  const body = h('div', { class: 'mine' }, h('p', { class: 'empty' }, t('data.loading')));
+  view.replaceChildren(backButton(), hero(t('edit.title')), body);
+  const path = `entries/${login}/${key}.json`;
+  currentUser().then(async (user) => {
+    if (!body.isConnected) return;
+    if (!user) return body.replaceChildren(signInPrompt());
+    try {
+      const [submissions, rows] = await Promise.all([ownSubmissions(), loadRows()]);
+      if (!body.isConnected) return;
+      const found = submissions.map(inReview).find((word) => word.login === login && word.key === key)
+        ?? collectedBy(rows, user).find((word) => word.login === login && word.key === key);
+      if (!found || found.entry.contributor_id !== user.id) return body.replaceChildren(h('p', { class: 'empty' }, t('edit.notFound')));
+      renderSubmit({ edit: { path, key, entry: found.entry } });
+    } catch {
+      body.replaceChildren(h('p', { class: 'empty' }, t('data.loadError')));
+    }
+  });
+}

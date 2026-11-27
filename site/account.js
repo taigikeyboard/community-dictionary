@@ -40,7 +40,17 @@ export function signIn(hash) {
   location.assign(`${WORKER_URL}/login?return=${encodeURIComponent(hash)}`);
 }
 
-// → { url, number } of the pull request.
+// Ends the session (the Worker clears its cookie); a failure leaves it to expire on its own.
+export async function signOut() {
+  await call('POST', '/logout').catch(() => {});
+}
+
+// The signed-in contributor's open submissions: [{ path, entry, pullRequest: { url, number } }].
+export async function ownSubmissions() {
+  return (await call('GET', '/mine')).submissions;
+}
+
+// → { url, number } of the pull request. A body with `path` edits that entry instead.
 export async function submitWords(body) {
   return (await call('POST', '/submit', body)).pullRequest;
 }
@@ -50,6 +60,7 @@ export function submitErrorText(err, labelOf) {
   const code = err instanceof WorkerError ? err.data.error : null;
   if (code === 'already_submitted') return t('worker.already_submitted', { words: listJoin((err.data.keys ?? []).map(labelOf)) });
   if (code === 'invalid') return t('worker.invalid', { details: listJoin(describeIssues(err.data.issues ?? []).map((found) => found.text)) });
-  if (['cap_contributor', 'cap_total', 'too_large'].includes(code)) return t(`worker.${code}`);
+  if (['cap_contributor', 'cap_total', 'too_large', 'unchanged'].includes(code)) return t(`worker.${code}`);
+  if (code === 'not_owner' || code === 'not_found') return t('edit.notFound');
   return t('worker.try_later');
 }
