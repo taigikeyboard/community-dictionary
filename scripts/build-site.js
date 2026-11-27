@@ -15,13 +15,26 @@ import { buildTagMap } from './tag-map.js';
 // repo root from this file's location, so the build works from any working directory
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(root, 'dist');
-const D3_MODULES = ['d3-color', 'd3-dispatch', 'd3-ease', 'd3-force', 'd3-hierarchy', 'd3-interpolate', 'd3-quadtree', 'd3-timer'];
+// the D3 packages are the npm dependencies (package.json), each shipped as its ES module build
+const D3_MODULES = Object.keys(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).dependencies).filter((name) => name.startsWith('d3-'));
+const SITE_MODULES = readdirSync(join(root, 'site')).filter((name) => name.endsWith('.js'));
+const LIB_MODULES = readdirSync(join(root, 'lib')).filter((name) => name.endsWith('.js'));
+
+// The block index.html holds at <!-- build-site:modules -->: the import map and the preload list.
+function moduleTags() {
+  const imports = Object.fromEntries(D3_MODULES.map((name) => [name, `./vendor/${name}.min.mjs`]));
+  const preload = [...LIB_MODULES.map((name) => `lib/${name}`), ...SITE_MODULES.map((name) => `site/${name}`), ...D3_MODULES.map((name) => `vendor/${name}.min.mjs`)];
+  return [`  <script type="importmap">${JSON.stringify({ imports })}</script>`, ...preload.map((href) => `  <link rel="modulepreload" href="${href}">`)].join('\n');
+}
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'site'), { recursive: true });
-for (const file of ['index.html', 'styles.css', 'favicon.svg']) cpSync(join(root, 'site', file), join(dist, file));
-// every site module, so a new one needs no edit here (index.html's modulepreload list does)
-for (const file of readdirSync(join(root, 'site')).filter((name) => name.endsWith('.js'))) cpSync(join(root, 'site', file), join(dist, 'site', file));
+for (const file of ['styles.css', 'favicon.svg']) cpSync(join(root, 'site', file), join(dist, file));
+const page = readFileSync(join(root, 'site', 'index.html'), 'utf8');
+if (!page.includes('<!-- build-site:modules -->')) throw new Error('build-site: site/index.html lost its <!-- build-site:modules --> marker');
+writeFileSync(join(dist, 'index.html'), page.replace('  <!-- build-site:modules -->', moduleTags()));
+// every site module, so a new one needs no edit anywhere
+for (const file of SITE_MODULES) cpSync(join(root, 'site', file), join(dist, 'site', file));
 // the D3 modules the homepage's tag bubbles load (ES module builds, npm dependencies), by the
 // names index.html's import map gives them
 mkdirSync(join(dist, 'vendor'));
