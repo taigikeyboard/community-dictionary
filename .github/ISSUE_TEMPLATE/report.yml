@@ -1,0 +1,37 @@
+# Opened from a word card's 回報 button (site/cards.js), which prefills word, source and page.
+name: 回報詞的問題 Report a word
+description: 台羅、漢字、意思有毋著，抑是內容無妥當 — a wrong reading, spelling or meaning, or unsuitable content
+title: "report: "
+body:
+  - type: input
+    id: word
+    attributes:
+      label: 詞 Word
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: 來源 Source
+      description: community (entries/…) or iTaigi
+  - type: input
+    id: page
+    attributes:
+      label: 網址 Page
+  - type: dropdown
+    id: reason
+    attributes:
+      label: 問題 Problem
+      options:
+        - 台羅有毋著 Tâi-lô is wrong
+        - 漢字有毋著 Hanji is wrong
+        - 意思有毋著 Meaning is wrong
+        - 內容無妥當 Unsuitable content
+        - 欲提掉這个詞 Remove this word
+        - 其他 Other
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: 說明 Details

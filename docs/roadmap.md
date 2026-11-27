@@ -250,9 +250,9 @@ waits for review). A contributor who wants a word gone reports it.
 | Step | Commit | Scope (grounded in code) |
 |---|---|---|
 | 1 | `feat(worker)` (done) | Remove `withdraw()` (`worker/src/submit.js`) and its route (`worker/src/index.js` `ACTIONS`) with its tests; `submitEdit` refuses a 21st commit on an open submission (`GET /pulls/{n}` `commits`) with `cap_contributor`; new `GET /mine` → the signed-in contributor's open submissions only (branches `submit/<own id>/`, via `loadState`), as `[{ path, entry, pullRequest: { url, number } }]`, 401 signed out, `no-store`. Tests for each. Deploy with the site. |
-| 2 | `feat(site)` | 登出 button (`POST /logout`, already in the Worker) beside the signed-in state on the form and on 我的提交. |
-| 3 | `feat(site)` | `#/mine` 我的提交: signed out → sign-in button; signed in → accepted words (`search.json` attestations with the session's `contributor_id`) and words in review (`GET /mine`), as cards. Each own attestation (here and on every card page) gets 修改: the form for that one word, filled from the entry, posting `/submit` with `path`. |
-| 4 | `feat(site)` | 回報 on every card: a new GitHub issue from `.github/ISSUE_TEMPLATE/report.yml` (issue form; word, key, source, page URL prefilled through query parameters; reason dropdown; details). GitHub requires a sign-in to file it. |
+| 2 | `feat(site)` (done) | 登出 button (`POST /logout`, already in the Worker) beside the signed-in state on the form and on 我的提交. |
+| 3 | `feat(site)` (done) | `#/mine` 我的提交: signed out → sign-in button; signed in → accepted words (`search.json` attestations with the session's `contributor_id`) and words in review (`GET /mine`), as cards. Each own attestation (here and on every card page) gets 修改: the form for that one word, filled from the entry, posting `/submit` with `path`. |
+| 4 | `feat(site)` (done) | 回報 on every card: a new GitHub issue from `.github/ISSUE_TEMPLATE/report.yml` (issue form; word, key, source, page URL prefilled through query parameters; reason dropdown; details). GitHub requires a sign-in to file it. |
 
 Security (review 2026-11-27): identity only from GitHub `/user`; signed `__Host-` HttpOnly cookie;
 POST checks `Origin`; ownership = the stored file's `contributor_id`, read from the base branch or

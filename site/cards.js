@@ -1,4 +1,5 @@
 import { ACCENT_OTHER } from '../lib/entry.js';
+import { REPO_URL } from './config.js';
 import { loadItaigiIndex, loadRows } from './data.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
@@ -55,9 +56,18 @@ const copyText = (text, doneLabel) =>
 
 // A card's 複製詞目 / 分享連結 buttons (after kautian-mirror): copy "Hanji Tâi-lô"; share the
 // word page's link (`route`) through the system share sheet, or copy the link where there is none.
-// `own`, the signed-in contributor's attestation of this word, adds 修改 before them.
+// `own`, the signed-in contributor's attestation of this word, adds 修改 before them; 回報 opens
+// the repository's issue form with the word filled in (GitHub asks for a sign-in).
 function cardActions(row, route, own) {
   const label = t('card.edit');
+  const report = new URL(`${REPO_URL}/issues/new`);
+  report.search = new URLSearchParams({
+    template: 'report.yml',
+    title: `report: ${wordLabel(row)}`,
+    word: wordLabel(row),
+    source: row.key ? `community ${row.key}` : 'iTaigi',
+    page: `${location.origin}${location.pathname}${route}`,
+  });
   return h(
     'div',
     { class: 'card-actions' },
@@ -70,6 +80,7 @@ function cardActions(row, route, own) {
         if (error.name !== 'AbortError') console.warn('share.failed', error.name);
       });
     }),
+    h('a', { class: 'icon-button', href: report.href, target: '_blank', rel: 'noopener', title: t('card.report'), 'aria-label': t('card.report') }, icon('flag')),
   );
 }
 
