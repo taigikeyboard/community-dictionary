@@ -23,13 +23,25 @@ export function foldSearch(text) {
     .replace(/[\s-]+/g, '-');
 }
 
-// Rows from search.json whose hanji contains the query, or whose folded tl starts a syllable with it.
+// A folded reading with its syllable breaks dropped, so "kesi" meets "ke-si".
+const compact = (folded) => folded.replaceAll('-', '');
+
+// The rest of a folded reading from each syllable start, breaks dropped:
+// "-ke-si-lang" → ["kesilang", "silang", "lang"].
+const syllableTails = (folded) => folded.split('-').filter(Boolean).map((_, i, syllables) => syllables.slice(i).join(''));
+
+// Whether some syllable of a folded reading starts the compacted query, typed with or without
+// breaks: "kesi", "ke si" and "si" all meet "ke-si".
+const startsSyllable = (tails, compactQuery) => compactQuery !== '' && tails.some((tail) => tail.startsWith(compactQuery));
+
+// Rows from search.json whose hanji contains the query, or whose folded tl starts a syllable with
+// it (breaks optional).
 export function searchRows(rows, query, limit = 50) {
   const q = query.trim();
   if (q === '') return [];
-  const folded = foldSearch(q);
+  const compactQuery = compact(foldSearch(q));
   return rows
-    .filter((row) => row.hanji.includes(q) || (folded !== '' && `-${foldSearch(row.tl)}`.includes(`-${folded}`)))
+    .filter((row) => row.hanji.includes(q) || startsSyllable(syllableTails(foldSearch(row.tl)), compactQuery))
     .slice(0, limit);
 }
 
@@ -39,36 +51,41 @@ const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 // itaigi.json rows [hanji, tl, poj, tps, [tag index], [contributor]] → search index, each word
 // credited to its iTaigi contributors as itaigi.tw names them (maintainer 2026-11-26); folding runs
 // once here, not per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the
-// whole tl.
+// whole tl, both without syllable breaks (`compact`) so a query typed without breaks matches;
+// `tails` holds the whole tl's syllableTails.
 export function indexItaigi(rows) {
-  return rows.map(([hanji, tl, poj, tps, tags, contributors]) => ({
-    hanji,
-    tl,
-    poj,
-    tps,
-    tags,
-    contributors,
-    variants: tl.split('/').map(foldReading),
-    folded: foldReading(tl),
-  }));
+  return rows.map(([hanji, tl, poj, tps, tags, contributors]) => {
+    const folded = foldReading(tl);
+    return {
+      hanji,
+      tl,
+      poj,
+      tps,
+      tags,
+      contributors,
+      variants: tl.split('/').map((variant) => compact(foldReading(variant))),
+      folded: compact(folded),
+      tails: syllableTails(folded),
+    };
+  });
 }
 
-// iTaigi rows whose hanji contains the query, or whose tl starts a syllable with it; exact
-// matches first, then those starting with the query, then the rest.
+// iTaigi rows whose hanji contains the query, or whose tl starts a syllable with it (breaks
+// optional); exact matches first, then those starting with the query, then the rest.
 export function searchItaigi(index, query, limit = 50) {
   const q = query.trim();
   if (q === '') return [];
-  const folded = foldReading(q);
-  const hasTl = folded !== '-';
+  const compactQuery = compact(foldSearch(q.replaceAll('/', ' ')));
+  const hasTl = compactQuery !== '';
   const exact = [];
   const prefix = [];
   const rest = [];
   for (const row of index) {
-    if (row.hanji === q || (hasTl && (row.folded === folded || row.variants.includes(folded)))) {
+    if (row.hanji === q || (hasTl && (row.folded === compactQuery || row.variants.includes(compactQuery)))) {
       exact.push(row);
-    } else if (row.hanji.startsWith(q) || (hasTl && row.variants.some((v) => v.startsWith(folded)))) {
+    } else if (row.hanji.startsWith(q) || (hasTl && row.variants.some((v) => v.startsWith(compactQuery)))) {
       prefix.push(row);
-    } else if (row.hanji.includes(q) || (hasTl && row.folded.includes(folded))) {
+    } else if (row.hanji.includes(q) || startsSyllable(row.tails, compactQuery)) {
       rest.push(row);
     }
   }
@@ -76,19 +93,20 @@ export function searchItaigi(index, query, limit = 50) {
 }
 
 // Tags matching the query, for the search box: the site's tags by name, by ja / en label (case-free)
-// or by a tl syllable start, and contributors' own tags (from community rows) by name. Exact
-// matches first, then the site's tags in list order, then contributors' own in first-seen order.
+// or by a tl syllable start (breaks optional), and contributors' own tags (from community rows)
+// by name. Exact matches first, then the site's tags in list order, then contributors' own in
+// first-seen order.
 export function searchTags(rows, query, limit = 50) {
   const q = query.trim();
   if (q === '') return [];
   const lower = q.toLowerCase();
-  const folded = foldSearch(q);
+  const compactQuery = compact(foldSearch(q));
   const exact = [];
   const rest = [];
   for (const tag of TAGS) {
     const labels = [tag.ja, tag.en.toLowerCase()];
     if (tag.name === q || labels.includes(lower)) exact.push(tag.name);
-    else if (tag.name.includes(q) || labels.some((label) => label.includes(lower)) || (folded !== '' && `-${foldSearch(tag.tl)}`.includes(`-${folded}`))) {
+    else if (tag.name.includes(q) || labels.some((label) => label.includes(lower)) || startsSyllable(syllableTails(foldSearch(tag.tl)), compactQuery)) {
       rest.push(tag.name);
     }
   }

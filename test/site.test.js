@@ -126,6 +126,10 @@ test('iTaigi rows: search order (exact, prefix, rest) and the card-page lookups'
   // a later variant typed in full, and the whole slash-joined reading, are exact matches
   assert.deepEqual(hanji('tshinn-hue'), ['青花']);
   assert.deepEqual(hanji('tshenn-hue/tshinn-hue'), ['青花']);
+  // syllable breaks optional: typed run together, a variant is exact, a later syllable a match
+  assert.deepEqual(hanji('tshinnhue'), ['青花']);
+  assert.deepEqual(hanji('hueluí'), ['花蕊']);
+  assert.deepEqual(hanji('sianne'), ['𤺪呢']);
   assert.deepEqual(hanji(' '), []);
   // the Mandarin gloss is no longer published, so it matches nothing
   assert.deepEqual(hanji('討厭'), []);
@@ -214,6 +218,7 @@ test('searchTags matches a tag by name, ja / en label or tl, and contributors ow
   assert.deepEqual(searchTags(tagged, 'body'), ['身軀']);
   assert.deepEqual(searchTags(tagged, '病気'), ['病疼']);
   assert.deepEqual(searchTags(tagged, 'tshit'), ['𨑨迌']);
+  assert.deepEqual(searchTags(tagged, 'kesi'), ['家私']);
   assert.deepEqual(searchTags(tagged, '阿公'), ['阿公 ê 話']);
   // exact first: 動物 itself before 植物 (both contain 物)
   assert.deepEqual(searchTags(tagged, '動物'), ['動物']);
