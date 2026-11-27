@@ -30,6 +30,12 @@ jobs:
       - run: npm ci
       # tests and entry validation run in validate.yml on the same push
       - run: node scripts/build-site.js
+      # scripts/mock-worker.js (local preview only) points dist/ at a local Worker and adds fake words
+      # of the contributor `tester` (id 1000001); a deploy carrying either stops here
+      - name: Refuse mock data
+        run: |
+          grep -q "WORKER_URL = 'https://dict-api.taigikeyboard.tw'" dist/site/config.js
+          ! grep -q '"contributor_id":1000001' dist/search.json
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
