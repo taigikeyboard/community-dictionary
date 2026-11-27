@@ -37,7 +37,7 @@ const submitTips = () => {
   return h('section', { class: 'submit-tips', 'aria-label': t('submit.tips') }, h('ol', {}, tips.map((tip) => h('li', {}, tip))));
 };
 
-// The signed-in line under the form and on 我的提交: 「用 <login> 登入 · 我的提交 · 登出」; signing
+// The signed-in line under the form and on 我貢獻 ê 詞: 「用 <login> 登入 · 我貢獻 ê 詞 · 登出」; signing
 // out redraws the page signed out. Empty while signed out.
 export function accountLine(user, { withMine = true } = {}) {
   if (!user) return null;

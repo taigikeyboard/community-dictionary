@@ -1,12 +1,14 @@
 import { currentUser, ownSubmissions, signIn } from './account.js';
+import { REPO_URL } from './config.js';
 import { loadRows } from './data.js';
 import { h } from './dom.js';
+import { githubIcon, icon } from './icons.js';
 import { editRoute, wordRoute, wordTitle } from './logic.js';
 import { backButton, hero, pageTitle, view } from './page.js';
 import { accountLine, renderSubmit } from './submit-page.js';
 import { t } from './strings.js';
 
-// The 我的提交 page (the signed-in contributor's words, in review and collected, each with 修改) and
+// The 我貢獻 ê 詞 page (the signed-in contributor's words, in review and collected, each with 修改) and
 // the 修改 page's loading step (it finds the entry, then draws the form). Both need a GitHub
 // sign-in; the Worker checks ownership again on every edit.
 
@@ -33,18 +35,23 @@ function inReview(submission) {
   return { key: file.replace(/\.json$/, ''), login, hanji: entry.hanji, tl: entry.tl, entry, pullRequest: submission.pullRequest };
 }
 
-// One word of the list: the word (a link to its cards), its review link when in review, and 修改.
+// One word of the list: the word (a link to its cards), then icon buttons: on GitHub (the pull
+// request while in review, the entry's file once collected) and 修改; their words are the tooltip and
+// what a screen reader says.
+const iconLink = (href, label, glyph, external = false) =>
+  h('a', { class: 'icon-button', href, title: label, 'aria-label': label, ...(external ? { target: '_blank', rel: 'noopener' } : {}) }, glyph);
+
 function mineItem(word) {
-  const review = word.pullRequest && /^https:\/\/github\.com\//.test(word.pullRequest.url)
-    ? h('a', { class: 'mine-review', href: word.pullRequest.url, target: '_blank', rel: 'noopener' }, t('submit.progress', { number: word.pullRequest.number }))
-    : null;
+  const review = word.pullRequest && /^https:\/\/github\.com\//.test(word.pullRequest.url);
+  const github = review
+    ? iconLink(word.pullRequest.url, t('submit.progress', { number: word.pullRequest.number }), githubIcon(), true)
+    : iconLink(`${REPO_URL}/blob/main/entries/${word.login}/${word.key}.json`, t('mine.file'), githubIcon(), true);
   return h(
     'li',
     { class: 'mine-item' },
     h('a', { class: 'mine-word', href: wordRoute(word.hanji, word.tl) }, wordTitle(word)),
     word.hanji ? h('span', { class: 'mine-tl tl' }, word.tl) : null,
-    review,
-    h('a', { class: 'mine-edit', href: editRoute(word.login, word.key) }, t('card.edit')),
+    h('span', { class: 'mine-actions' }, github, iconLink(editRoute(word.login, word.key), t('card.edit'), icon('edit'))),
   );
 }
 

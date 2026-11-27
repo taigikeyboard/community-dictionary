@@ -57,7 +57,8 @@ for (const word of FAKE_WORDS) {
   const key = await entryKey(entry.hanji, entry.tl);
   gh.branches.get('main').set(`entries/${USER.login}/${key}.json`, serializeEntry(entry));
   const { hanji, tl, ...attestation } = entry;
-  rows.push({ key, hanji, tl, attestations: [attestation], poj: '', tps: '' });
+  // a restart without a new build finds them already added
+  if (!rows.some((row) => row.key === key)) rows.push({ key, hanji, tl, attestations: [attestation], poj: '', tps: '' });
 }
 writeFileSync(join(dist, 'search.json'), JSON.stringify(rows));
 const config = join(dist, 'site', 'config.js');

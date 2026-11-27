@@ -64,7 +64,7 @@ const renderWord = (hanji, tl) =>
   renderCards(wordTitle({ hanji, tl }), null, (rows, itaigi) => wordsSpelled(rows, itaigi, hanji, tl), { headword: false });
 
 // Hash routes (logic.js parseRoute): the homepage at #/ and any unknown hash, the 揣詞 page at
-// #/search, the form at #/submit, 我的提交 at #/mine, 修改 at #/edit/<login>/<key>, cards at #/tag/<name>, #/contributor/<name> and
+// #/search, the form at #/submit, 我貢獻 ê 詞 at #/mine, 修改 at #/edit/<login>/<key>, cards at #/tag/<name>, #/contributor/<name> and
 // #/word/<hanji>/<tl>.
 function route() {
   const target = parseRoute(location.hash);
