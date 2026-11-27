@@ -244,6 +244,11 @@ main[data-page="home"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s var
 /* the zoom moves the whole <svg> by a CSS transform (site/tag-map.js), so the box clips it */
 .tag-map { overflow: hidden; }
 .tag-map-svg { transform-origin: 0 0; }
+/* a moving view scales one compositor layer instead of repainting every frame (site/tag-map.js) */
+.tag-map-svg.moving { will-change: transform; }
+/* while it moves, any fade would repaint that whole layer every frame: words, names and dimming
+   change at once instead, and fade only once the view rests */
+.tag-map-svg.moving :is(.tag-bubble, .tag-name, .word-bubble.shown text) { transition: none; }
 /* the map can be dragged with the mouse (site/tag-map.js): the box clips, the drawing itself does
    not, so what a drag brings in is already there */
 .tag-map-svg { cursor: grab; }
@@ -262,7 +267,8 @@ main[data-page="home"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s var
 .tag-circle:focus { outline: none; }
 .tag-circle:focus-visible { stroke: var(--accent); stroke-width: 3; }
 .tag-bubble { transition: opacity var(--duration-ui) ease-out; }
-.tag-map-svg.zoomed .tag-bubble:not(.focused) { opacity: 0.35; }
+/* while a tag is open, the closed ones dim */
+.tag-map-svg.has-open .tag-bubble:not(.open) { opacity: 0.35; }
 .tag-map-svg text { text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 /* the name (and its Tâi-lô, lighter) over the word haze; the halo takes the circle's own tint, so it
    reads as the circle, not a white box */
@@ -271,27 +277,29 @@ main[data-page="home"] .hero { padding-bottom: 1rem; animation: rise-in 0.7s var
 .tag-hanji { fill: var(--heading); font-weight: 600; }
 .tag-tl { fill: var(--secondary); font-family: var(--system-font); }
 .tag-bubble:hover .tag-name text { stroke: color-mix(in srgb, var(--hue) var(--tint-hover), var(--card)); }
-/* zoomed in, only the focused tag speaks: its words replace its name, the other names fade */
-.tag-map-svg.zoomed .tag-name { opacity: 0; }
-/* the words: a tint until their tag is zoomed into, then readable links */
+/* an open tag's words replace its name */
+.tag-bubble.open .tag-name { opacity: 0; }
+/* the words: dots (a tint) until large enough to read, then links; they take clicks in an open tag */
 .tag-words { pointer-events: none; }
-.tag-bubble.focused .tag-words { pointer-events: auto; }
-.word-bubble circle { fill: color-mix(in srgb, var(--hue) var(--tint-word), var(--card)); transition: fill var(--duration-feedback); }
-/* out of the layout (display: none, not just transparent) until their tag is zoomed into and the
-   view has stopped: some 1,700 invisible lines otherwise cost layout on every change; they fade in
-   once shown */
-.word-bubble text { display: none; }
+.tag-bubble.open .tag-words { pointer-events: auto; }
+.word-dot { fill: color-mix(in srgb, var(--hue) var(--tint-word), var(--card)); transition: fill var(--duration-feedback); }
+/* out of the layout (display: none, not just transparent) until shown (site/tag-map.js
+   detailControls), so only the words in view are laid out; a shown word fades and swells in */
+.word-bubble text { display: none; transform-box: fill-box; transform-origin: center; }
 .word-hanji { fill: var(--heading); }
 .word-tl { fill: var(--secondary); font-family: var(--system-font); }
-.tag-map-svg:not(.moving) .tag-bubble.focused .word-bubble text { display: inline; opacity: 1; transition: opacity var(--duration-ui); }
+.word-bubble.shown text { display: inline; opacity: 1; transform: none; transition: opacity var(--duration-ui) ease-out, transform var(--duration-ui) var(--ease-emphasized); }
 @starting-style {
-  .tag-map-svg:not(.moving) .tag-bubble.focused .word-bubble text { opacity: 0; }
+  .word-bubble.shown text { opacity: 0; transform: scale(0.6); }
 }
-.word-bubble:hover circle, .word-bubble:focus-visible circle { fill: color-mix(in srgb, var(--hue) var(--tint-word-hover), var(--card)); }
+@media (prefers-reduced-motion: reduce) {
+  .word-bubble.shown text { transition: none; }
+}
+.word-bubble:hover .word-dot, .word-bubble:focus-visible .word-dot { fill: color-mix(in srgb, var(--hue) var(--tint-word-hover), var(--card)); }
 /* a word is marked by its bubble, not the site's link underline */
 .word-bubble:hover { text-decoration: none; }
 .word-bubble:focus { outline: none; }
-.word-bubble:focus-visible circle { stroke: var(--accent); stroke-width: 1.5; }
+.word-bubble:focus-visible .word-dot { stroke: var(--accent); stroke-width: 1.5; }
 .tag-map-bar { display: flex; align-items: center; justify-content: space-between; min-height: 2.5rem; margin-top: 0.5rem; }
 .tag-map-bar[data-empty="true"] > * { visibility: hidden; }
 .tag-map-back { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem; border: 0; border-radius: var(--radius-control); background: none; color: var(--accent); font: inherit; font-size: 0.9375rem; cursor: pointer; transition: var(--button-transition); }
@@ -382,6 +390,13 @@ a.story-bar-label:hover, .story-bar-label a:hover { color: var(--accent); text-d
 /* a word bubble's card (cards.js openWordTip): a floating panel beside the bubble, holding the word's
    cards without their own shadow */
 .tag-map-section { position: relative; }
+/* the ＋ / − zoom buttons, stacked at the map's upper right */
+.tag-map-zoom { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 20; display: grid; gap: 0.25rem; }
+.tag-map-zoom-button { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 0; border-radius: var(--radius-inner); background: var(--card); color: var(--secondary); box-shadow: var(--surface-shadow); cursor: pointer; transition: var(--button-transition); }
+.tag-map-zoom-button:hover { color: var(--text); background: var(--hover); }
+.tag-map-zoom-button:active { transform: var(--button-press); }
+.tag-map-zoom-button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.tag-map-zoom-button .icon { font-size: 1.125rem; }
 .word-tip { position: absolute; z-index: 25; width: min(22rem, 100%); max-height: 100%; overflow-y: auto; padding: 0.25rem; border-radius: var(--radius); background: var(--card); box-shadow: var(--menu-shadow); animation: tip-in var(--duration-feedback) ease-out; }
 .word-tip:focus { outline: none; }
 .word-tip .word-card, .word-tip .word-card:hover { box-shadow: none; }
