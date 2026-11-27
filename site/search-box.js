@@ -2,6 +2,7 @@ import { loadItaigiIndex, loadRows } from './data.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { findExisting, searchItaigi, wordRoute } from './logic.js';
+import { t, tParts } from './strings.js';
 import { readings, tlSpan } from './word-parts.js';
 
 // The popover of words already collected (the 揣詞 search box and the form's word rows) and the
@@ -27,7 +28,7 @@ function resultItem(row, { exact = false, linked = false } = {}) {
 // panel and its list are returned for the search box's keyboard control.
 export function matchesPopover(root, locate, limit, { isSearch = false, onRender = () => {} } = {}) {
   const results = h('ul', { class: 'results' });
-  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': isSearch ? '揣詞結果' : '已經有 ê 詞' }, results);
+  const panel = h('section', { class: 'matches', hidden: true, 'aria-label': t(isSearch ? 'search.results' : 'search.existing') }, results);
 
   let rows = null;
   let itaigi = null;
@@ -94,7 +95,7 @@ export function matchesPopover(root, locate, limit, { isSearch = false, onRender
 function menuKeys(input, panel, results) {
   results.id = 'search-results';
   results.setAttribute('role', 'listbox');
-  results.setAttribute('aria-label', '揣詞結果');
+  results.setAttribute('aria-label', t('search.results'));
   input.setAttribute('role', 'combobox');
   input.setAttribute('aria-autocomplete', 'list');
   input.setAttribute('aria-controls', results.id);
@@ -146,8 +147,8 @@ function menuKeys(input, panel, results) {
 export function searchBox() {
   // the blank placeholder only drives :placeholder-shown, which hides the 揤 / 揣詞 hint once
   // something is typed (a placeholder cannot draw the key's box)
-  const input = h('input', { type: 'search', 'aria-label': '揣詞', placeholder: ' ', 'aria-keyshortcuts': '/', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
-  const hint = h('span', { class: 'search-hint', 'aria-hidden': 'true' }, '揤 ', h('kbd', {}, '/'), ' 揣詞');
+  const input = h('input', { type: 'search', 'aria-label': t('search.title'), placeholder: ' ', 'aria-keyshortcuts': '/', autocomplete: 'off', spellcheck: 'false', autocapitalize: 'off' });
+  const hint = h('span', { class: 'search-hint', 'aria-hidden': 'true' }, tParts('search.hint', { key: h('kbd', {}, '/') }));
   const box = h('div', { class: 'search', role: 'search' }, h('div', { class: 'search-field' }, icon('search'), input, hint));
   let render = () => {};
   const { panel, results } = matchesPopover(box, () => ({ anchor: box, values: () => ({ hanji: input.value, tl: '' }) }), SEARCH_LIMIT, {

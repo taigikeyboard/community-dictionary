@@ -56,8 +56,8 @@ test('accent and place rules', () => {
   assert.deepEqual(errorsFor({ tl: '' }), ['tl: required']);
   assert.deepEqual(errorsFor({ accents: ['其他'] }), ['place: required']);
   assert.deepEqual(errorsFor({ place: '鹿港' }), ['place: only with accent 其他']);
-  assert.deepEqual(errorsFor({ accents: ['台北腔'] }), ['accents: unknown accent "台北腔"']);
-  assert.deepEqual(errorsFor({ accents: ['鹿港偏泉腔', '鹿港偏泉腔'] }), ['accents: duplicate accent']);
+  assert.deepEqual(errorsFor({ accents: ['台北腔'] }), ['accents: unknown choice "台北腔"']);
+  assert.deepEqual(errorsFor({ accents: ['鹿港偏泉腔', '鹿港偏泉腔'] }), ['accents: duplicate value']);
   assert.deepEqual(errorsFor({ accents: '鹿港偏泉腔' }), ['accents: must be an array of strings']);
 });
 
@@ -65,11 +65,11 @@ test('tag rules: any tag in the Hanji script, at most 5, each at most 10 charact
   // a contributor's own tag is as valid as one from the site's list
   assert.deepEqual(errorsFor({ tags: [] }), []);
   assert.deepEqual(errorsFor({ tags: ['食食', '夜市仔', 'ラーメン', 'khang-khuè'] }), []);
-  assert.deepEqual(errorsFor({ tags: ['一', '二', '三', '四', '五', '六'] }), ['tags: more than 5 tags']);
-  assert.deepEqual(errorsFor({ tags: ['食食', '食食'] }), ['tags: duplicate tag']);
+  assert.deepEqual(errorsFor({ tags: ['一', '二', '三', '四', '五', '六'] }), ['tags: more than 5']);
+  assert.deepEqual(errorsFor({ tags: ['食食', '食食'] }), ['tags: duplicate value']);
   assert.deepEqual(errorsFor({ tags: ['一二三四五六七八九十一'] }), ['tags: "一二三四五六七八九十一" longer than 10 characters']);
   assert.deepEqual(errorsFor({ tags: ['food!'] }), ['tags: "food!" only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ tags: [' 食食'] }), ['tags: " 食食" not normalized (NFC, trimmed, not empty)']);
+  assert.deepEqual(errorsFor({ tags: [' 食食'] }), ['tags: " 食食" not normalized (NFC, LF, trimmed, not empty)']);
   assert.deepEqual(errorsFor({ tags: '食食' }), ['tags: must be an array of strings']);
   // prepareEntry trims, drops blanks and repeats
   assert.deepEqual(prepareEntry(withFields({ tags: [' 食食', '', '食食'] })).entry.tags, ['食食']);
@@ -104,13 +104,13 @@ test('limits count code points, not UTF-16 units', () => {
 
 test('text must be clean, single-line and free of control characters', () => {
   assert.deepEqual(errorsFor({ hanji: ' 八' }), [
-    'hanji: not normalized (NFC, LF, trimmed)',
+    'hanji: not normalized (NFC, LF, trimmed, not empty)',
     'hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed',
   ]);
-  assert.deepEqual(errorsFor({ tl: 'pue\u0301h' }), ['tl: not normalized (NFC, LF, trimmed)']);
+  assert.deepEqual(errorsFor({ tl: 'pue\u0301h' }), ['tl: not normalized (NFC, LF, trimmed, not empty)']);
   assert.deepEqual(errorsFor({ accents: ['其他'], place: 'a\nb' }), ['place: must be one line']);
   assert.deepEqual(errorsFor({ note: 'a\r\nb' }), [
-    'note: not normalized (NFC, LF, trimmed)',
+    'note: not normalized (NFC, LF, trimmed, not empty)',
     'note: contains a control character U+000D',
   ]);
   assert.deepEqual(errorsFor({ note: 'a\u202Eb' }), ['note: contains a control character U+202E']);
@@ -131,8 +131,8 @@ test('shape: missing, unknown and mistyped fields', () => {
 
 test('prepareEntry cleans raw form input', () => {
   const raw = withFields({ hanji: ' 八 ', tl: 'pue\u0301h ', note: 'a\r\nb ', accents: ['鹿港偏泉腔', '鹿港偏泉腔'] });
-  const { entry: clean, errors } = prepareEntry(raw);
-  assert.deepEqual(errors, []);
+  const { entry: clean, issues } = prepareEntry(raw);
+  assert.deepEqual(issues, []);
   assert.equal(clean.tl, 'puéh');
   assert.equal(clean.note, 'a\nb');
 });

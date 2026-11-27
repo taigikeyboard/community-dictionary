@@ -1,6 +1,7 @@
 import { h, svg } from './dom.js';
 import { icon } from './icons.js';
 import { tagCircles, tagRoute, wordRoute } from './logic.js';
+import { formatNumber, t, tagLabel } from './strings.js';
 
 // The homepage's tag bubbles, drawn with D3: one circle per site tag, its area following how many
 // words carry the tag, the tag's sample words packed inside it as small bubbles (d3-hierarchy). The
@@ -72,7 +73,7 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // onZoomIn() when a tag is zoomed into (a page can start loading what a word click will need).
 export function tagMap(loadTags, fallback, { onWord = null, onZoomIn = () => {} } = {}) {
   const box = h('div', { class: 'tag-map' });
-  const back = h('button', { class: 'tag-map-back', type: 'button' }, icon('back'), '全部標籤');
+  const back = h('button', { class: 'tag-map-back', type: 'button' }, icon('back'), t('map.allTags'));
   // the zoomed tag's page, with every word the bubble only samples (draw() fills it in)
   const all = h('a', { class: 'tag-map-all' });
   // the bar under the map keeps its height while empty, so zooming never moves the page
@@ -250,20 +251,22 @@ function buildMap({ d3, tags, nodes, rootView, aspect, wordCount, onWord }) {
   // the tag repacks a fresh random draw (zoomControls)
   const bubbles = tags.map((tag, i) => {
     const { r } = nodes[i];
+    const label = tagLabel(tag.name);
     const words = packWords(r, tag.words.slice(0, wordCount));
     const wordLayer = svg('g', { class: 'tag-words' }, words);
     const target = svg(
       'circle',
-      { class: 'tag-circle', r, role: 'button', tabindex: '0', 'aria-label': tag.name },
-      svg('title', {}, tag.tl ? `${tag.name} ${tag.tl}` : tag.name),
+      { class: 'tag-circle', r, role: 'button', tabindex: '0', 'aria-label': label },
+      svg('title', {}, tag.tl ? `${label} ${tag.tl}` : label),
     );
-    // the name with its Tâi-lô under it
-    const nameSize = Math.min(24, Math.max(13, r * 0.3));
+    // the name with its Tâi-lô under it; a long Latin label (English) shrinks to stay inside the
+    // circle, about 0.55em per letter across 1.6 radii
+    const nameSize = Math.min(24, Math.max(13, r * 0.3), (1.6 * r) / (0.55 * [...label].length));
     const name = svg(
       'g',
       { class: 'tag-name', 'aria-hidden': 'true' },
       // 0.3em above the centre, back on it when the 台羅 switch is off (styles.css)
-      svg('text', { class: 'tag-hanji', y: -0.3 * nameSize, 'font-size': nameSize }, tag.name),
+      svg('text', { class: 'tag-hanji', y: -0.3 * nameSize, 'font-size': nameSize }, label),
       svg('text', { class: 'tag-tl', y: 0.62 * nameSize, 'font-size': 0.55 * nameSize }, tag.tl),
     );
     // the shadow reaches 12% past the circle and sits a little low, as light from above would cast it
@@ -359,7 +362,7 @@ function zoomControls({ map, bar, all, bubbles, nodes, reach, collide, simulatio
     if (index !== null) {
       const { tag } = bubbles[index];
       all.href = tagRoute(tag.name);
-      all.textContent = `看全部 ${tag.count.toLocaleString('en-US')} 个詞 →`;
+      all.textContent = t('map.seeAll', { count: formatNumber(tag.count) });
     }
   };
   const zoomIn = (index) => {

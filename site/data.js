@@ -2,8 +2,6 @@ import { indexItaigi } from './logic.js';
 
 // The site's data files (built into dist/ by scripts/build-site.js), each fetched once and cached.
 
-export const LOAD_ERROR = '資料載入失敗，請重新整理。';
-
 // Fetches and caches one JSON file; rejects on a network or HTTP failure, and a failed load is not
 // cached, so the next call retries.
 function cachedJson(path) {

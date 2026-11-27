@@ -1,9 +1,10 @@
 import { ACCENT_OTHER } from '../lib/entry.js';
-import { LOAD_ERROR, loadItaigiIndex, loadRows } from './data.js';
+import { loadItaigiIndex, loadRows } from './data.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { wordLabel, wordRoute, wordsSpelled, wordTitle } from './logic.js';
-import { SITE_TITLE } from './page.js';
+import { pageTitle } from './page.js';
+import { listJoin, t } from './strings.js';
 import { TAG_NAMES } from './tags.js';
 import { contributorLinks, readings, tagLink, tlSpan } from './word-parts.js';
 
@@ -58,11 +59,11 @@ function cardActions(row, route) {
   return h(
     'div',
     { class: 'card-actions' },
-    cardAction('copy', '複製詞目', () => copyText(wordLabel(row), '已複製')),
-    cardAction('share', '分享連結', () => {
+    cardAction('copy', t('card.copy'), () => copyText(wordLabel(row), t('card.copied'))),
+    cardAction('share', t('card.share'), () => {
       const url = `${location.origin}${location.pathname}${route}`;
-      if (!navigator.share) return copyText(url, '連結已複製');
-      navigator.share({ title: `${wordTitle(row)} · ${SITE_TITLE}`, url }).catch((error) => {
+      if (!navigator.share) return copyText(url, t('card.linkCopied'));
+      navigator.share({ title: pageTitle(wordTitle(row)), url }).catch((error) => {
         if (error.name !== 'AbortError') console.warn('share.failed', error.name);
       });
     }),
@@ -79,11 +80,11 @@ function wordCard(row, { headword }) {
   const tags = attestations.length > 0 ? unique(attestations.flatMap((a) => a.tags)) : (row.tags ?? []).map((index) => TAG_NAMES[index]);
   const accents = unique(attestations.flatMap((a) => a.accents.map((accent) => (accent === ACCENT_OTHER && a.place ? a.place : accent))));
   const details = [
-    ['腔口', accents.join('、')],
-    ['解說', pick('meaning').join('\n')],
+    [t('field.accents'), listJoin(accents)],
+    [t('field.meaning'), pick('meaning').join('\n')],
     // each example as its Hanji line over its Tâi-lô line
-    ['例句', unique(attestations.flatMap((a) => a.examples.map((e) => [e.hanji, e.tl].filter(Boolean).join('\n')))).join('\n')],
-    ['說明', pick('note').join('\n')],
+    [t('field.examples'), unique(attestations.flatMap((a) => a.examples.map((e) => [e.hanji, e.tl].filter(Boolean).join('\n')))).join('\n')],
+    [t('field.note'), pick('note').join('\n')],
   ].filter(([, value]) => value !== '');
   const contributors = attestations.length > 0 ? pick('contributor') : (row.contributors ?? []);
   // the card's foot: tags on the left, the contributors on the right as a byline (linking to their
@@ -92,14 +93,14 @@ function wordCard(row, { headword }) {
     contributors.length > 0
       ? h(
           'p',
-          { class: 'card-credit', title: '貢獻者' },
-          h('span', { class: 'unseen' }, '貢獻者：'),
+          { class: 'card-credit', title: t('card.contributors') },
+          h('span', { class: 'unseen' }, t('card.byline')),
           contributorLinks(contributors),
           // an iTaigi word names its source after its contributors, as a link to iTaigi
           attestations.length === 0 ? [' · ', h('a', { class: 'card-source', href: 'https://itaigi.tw/', rel: 'noopener' }, 'iTaigi')] : null,
         )
       : null;
-  const tagList = tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': '標籤' }, tags.map((name) => tagLink(name))) : null;
+  const tagList = tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': t('field.tags') }, tags.map((name) => tagLink(name))) : null;
   const readingLine = h('p', { class: 'card-readings' }, tlSpan(row), readings(row));
   // the card's first line (the headword, or the readings on a word page) shares a row with the
   // buttons, so a long word wraps before them instead of running under them
@@ -123,7 +124,7 @@ const CARD_PAGE_SIZE = 60;
 export function cardList(list, words, options) {
   const all = [...words.community, ...words.itaigi];
   if (all.length === 0) {
-    list.replaceWith(h('p', { class: 'empty' }, '無資料'));
+    list.replaceWith(h('p', { class: 'empty' }, t('data.empty')));
     return;
   }
   let shown = 0;
@@ -164,7 +165,7 @@ export const closeWordTip = () => closeOpenTip();
 export function openWordTip({ hanji, tl }, link) {
   closeOpenTip();
   const section = link.closest('.tag-map-section');
-  const tip = h('div', { class: 'word-tip', role: 'dialog', 'aria-label': wordTitle({ hanji, tl }), tabindex: '-1' }, h('p', { class: 'word-tip-note' }, '載入中…'));
+  const tip = h('div', { class: 'word-tip', role: 'dialog', 'aria-label': wordTitle({ hanji, tl }), tabindex: '-1' }, h('p', { class: 'word-tip-note' }, t('data.loading')));
   // beside the bubble (right if it fits, else left), centred on it, kept inside the map section
   const place = () => {
     const area = section.getBoundingClientRect();
@@ -205,5 +206,5 @@ export function openWordTip({ hanji, tl }, link) {
       place();
       tip.focus({ preventScroll: true });
     })
-    .catch(() => tip.isConnected && tip.replaceChildren(h('p', { class: 'word-tip-note' }, LOAD_ERROR)));
+    .catch(() => tip.isConnected && tip.replaceChildren(h('p', { class: 'word-tip-note' }, t('data.loadError'))));
 }

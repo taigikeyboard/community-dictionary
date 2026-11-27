@@ -1,6 +1,6 @@
 import { MAX_EXAMPLES, MAX_WORDS } from '../lib/entry.js';
 import { currentUser, signIn, submitErrorText, submitWords, WorkerError } from './account.js';
-import { LOAD_ERROR, loadRows } from './data.js';
+import { loadRows } from './data.js';
 import { h } from './dom.js';
 import {
   accentGroup,
@@ -20,22 +20,21 @@ import {
   wordValues,
 } from './form.js';
 import { checkBatch, duplicateStatus, wordLabel } from './logic.js';
-import { backButton, hero, SITE_TITLE, view } from './page.js';
+import { backButton, hero, pageTitle, view } from './page.js';
 import { matchesPopover } from './search-box.js';
+import { listJoin, sentenceJoin, t, tParts } from './strings.js';
 
 // The 提交新詞 page: the form, its checks and sending it to the Worker, and the page after it is sent.
 
 // a word row of the form lists only the closest few words already collected
 const WORD_ROW_LIMIT = 5;
 
-// The tips above the form, numbered: one list item per tip, each a string or h() nodes.
-const SUBMIT_TIPS = [
-  ['提交資料需要登入 GitHub 口座，若無口座請先去', h('a', { href: 'https://github.com/signup', target: '_blank', rel: 'noopener' }, '申請'), '。'],
-  ['為著整理資料方便，台羅請使用教育部台語羅馬字。'],
-  ['若無漢字、日語，彼欄會當留空。'],
-];
-
-const submitTips = () => h('section', { class: 'submit-tips', 'aria-label': '填寫提示' }, h('ol', {}, SUBMIT_TIPS.map((tip) => h('li', {}, tip))));
+// The tips above the form, numbered: one list item per tip, the first with a sign-up link.
+const submitTips = () => {
+  const signUp = h('a', { href: 'https://github.com/signup', target: '_blank', rel: 'noopener' }, t('submit.signUp'));
+  const tips = [tParts('submit.tipSignIn', { link: signUp }), t('submit.tipTl'), t('submit.tipHanji')];
+  return h('section', { class: 'submit-tips', 'aria-label': t('submit.tips') }, h('ol', {}, tips.map((tip) => h('li', {}, tip))));
+};
 
 export function renderSubmit() {
   const draft = takeDraft();
@@ -44,13 +43,13 @@ export function renderSubmit() {
     notice.textContent = text;
     notice.hidden = false;
   };
-  // 「登入 GitHub 提交」 while signed out, 「提交」 once signed in; a hidden copy of the longer label,
+  // the signed-out label (「登入 GitHub 提交」) while signed out, 「提交」 once signed in; a hidden copy of the longer label,
   // stacked in the same grid cell, holds the button at that width so it never changes size when
   // the session loads or the contributor signs out.
-  const signedOutLabel = '登入 GitHub 提交';
+  const signedOutLabel = t('submit.signedOut');
   const submitLabel = h('span');
   const showLabel = (user) => {
-    submitLabel.textContent = user ? '提交' : signedOutLabel;
+    submitLabel.textContent = user ? t('submit.button') : signedOutLabel;
   };
   const submit = h(
     'button',
@@ -63,11 +62,11 @@ export function renderSubmit() {
 
   showLabel(null);
   const words = pairList(WORD_LIST, {
-    onDropped: (dropped) => say(`一擺上濟 ${MAX_WORDS} 个詞，有 ${dropped} 个無貼入去。`),
+    onDropped: (dropped) => say(t('form.tooManyWords', { max: MAX_WORDS, dropped })),
     initial: draft?.words ?? [],
   });
   const examples = pairList(EXAMPLE_LIST, {
-    onDropped: (dropped) => say(`例句上濟 ${MAX_EXAMPLES} 句，有 ${dropped} 句無貼入去。`),
+    onDropped: (dropped) => say(t('form.tooManyExamples', { max: MAX_EXAMPLES, dropped })),
     initial: draft?.examples ?? [],
   });
   matchesPopover(words, (el) => {
@@ -82,16 +81,16 @@ export function renderSubmit() {
     h(
       'div',
       { class: 'field form-box' },
-      h('span', { class: 'field-label' }, '詞條'),
-      h('p', { class: 'field-hint' }, '仝一个意思 ê 詞（無仝寫法、講法）會當做伙提交；意思無仝 ê 詞，請分開提交。'),
+      h('span', { class: 'field-label' }, t('field.words')),
+      h('p', { class: 'field-hint' }, t('form.wordsHint')),
       words,
     ),
-    field('meaning', '解說', textInput('meaning')),
+    field('meaning', t('field.meaning'), textInput('meaning')),
     // 例句 in the same white box as 詞條 (styles.css .form-box)
-    h('div', { class: 'field form-box' }, h('span', { class: 'field-label' }, '例句'), examples, errorSlot('examples')),
+    h('div', { class: 'field form-box' }, h('span', { class: 'field-label' }, t('field.examples')), examples, errorSlot('examples')),
     accentGroup(draft ?? {}),
     tagGroup(draft?.tags ?? []),
-    field('note', '說明', textInput('note', { multiline: true })),
+    field('note', t('field.note'), textInput('note', { multiline: true })),
     h('div', { class: 'actions' }, submit, notice),
   );
   for (const name of ['meaning', 'note']) {
@@ -127,18 +126,18 @@ export function renderSubmit() {
       const rows = await loadRows();
       for (const { entry, row } of entries) {
         const dup = await duplicateStatus(rows, entry.hanji, entry.tl, signedIn?.id);
-        if (dup.status === 'mine') mine.push({ field: 'tl', row, text: '你已經提交過這个詞' });
-        if (dup.status === 'attested') already.push(`${wordLabel(entry)}：${dup.contributors.join('、')} 已經提交過`);
+        if (dup.status === 'mine') mine.push({ field: 'tl', row, text: t('form.mine') });
+        if (dup.status === 'attested') already.push(t('form.attested', { word: wordLabel(entry), people: listJoin(dup.contributors) }));
       }
     } catch {
-      say(LOAD_ERROR);
+      say(t('data.loadError'));
       return;
     }
     if (mine.length > 0) return showErrors(form, rowElements, exampleRows, mine);
     const keys = entries.map((e) => e.key).join(',');
     if (already.length > 0 && confirmedKeys !== keys) {
       confirmedKeys = keys;
-      say(`${already.join('。')}。腔口無仝抑是有補充，請寫佇「說明」才閣送一擺。`);
+      say(t('form.attestedAdvice', { list: sentenceJoin(already) }));
       return;
     }
     // signing in leaves the page; the draft brings the form back as it was
@@ -149,7 +148,7 @@ export function renderSubmit() {
     if (!signedIn) return goSignIn();
 
     submit.disabled = true;
-    say('送出中…');
+    say(t('submit.sending'));
     try {
       const pullRequest = await submitWords({ ...shared, words: entries.map(({ entry }) => ({ hanji: entry.hanji, tl: entry.tl })) });
       renderSubmitted(pullRequest);
@@ -163,8 +162,8 @@ export function renderSubmit() {
     }
   });
 
-  document.title = `提交新詞 · ${SITE_TITLE}`;
-  view.replaceChildren(backButton(), hero('提交新詞'), submitTips(), form);
+  document.title = pageTitle(t('submit.title'));
+  view.replaceChildren(backButton(), hero(t('submit.title')), submitTips(), form);
 }
 
 // After a submission: the pull request the Worker opened, where the maintainer reviews the words.
@@ -173,12 +172,12 @@ function renderSubmitted(pullRequest) {
   const url = /^https:\/\/github\.com\//.test(pullRequest?.url) ? pullRequest.url : null;
   view.replaceChildren(
     backButton(),
-    hero('提交成功'),
+    hero(t('submit.done')),
     h(
       'div',
       { class: 'submitted' },
-      h('p', {}, '提交 ê 詞當咧處理，感謝你的貢獻，勞力！'),
-      url ? h('p', {}, h('a', { href: url, target: '_blank', rel: 'noopener' }, `看審查進度（#${pullRequest.number}）`)) : null,
+      h('p', {}, t('submit.thanks')),
+      url ? h('p', {}, h('a', { href: url, target: '_blank', rel: 'noopener' }, t('submit.progress', { number: pullRequest.number }))) : null,
     ),
   );
   window.scrollTo(0, 0);

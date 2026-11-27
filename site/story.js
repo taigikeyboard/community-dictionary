@@ -1,5 +1,6 @@
 import { h } from './dom.js';
 import { contributorRoute, tagRoute } from './logic.js';
+import { formatNumber as number, t, tagLabel } from './strings.js';
 
 // The homepage's statistics under the bubble map (dist/stats.json, from scripts/stats.js), told as
 // a scrolling story after iNaturalist's Year in Review and Bloomberg's graphics: each section is a
@@ -12,7 +13,6 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 // a big number's count-up
 const COUNT_MS = 1400;
 
-const number = (n) => n.toLocaleString('en-US');
 const percent = (part, whole) => `${((100 * part) / whole).toFixed(1)}%`;
 // each chart row's tooltip: { color, title, tl, value, lines }
 const tips = new WeakMap();
@@ -61,43 +61,49 @@ function sections(stats) {
   return [
     // the totals, as big numbers
     section(
-      '收錄',
+      t('story.totals'),
       h(
         'dl',
         { class: 'story-numbers' },
         [
-          [stats.words, '詞'],
-          [stats.tags, '標籤'],
-          [stats.contributors, '貢獻者'],
-          [stats.multiTag, '有兩个以上標籤 ê 詞'],
+          [stats.words, t('story.words')],
+          [stats.tags, t('story.tags')],
+          [stats.contributors, t('story.contributors')],
+          [stats.multiTag, t('story.multiTag')],
         ].map(([value, label]) => h('div', { class: 'story-number' }, h('dt', {}, label), h('dd', { 'data-value': value }, number(value)))),
       ),
     ),
     section(
-      '標籤',
+      t('story.tags'),
       h(
         'ol',
         { class: 'story-bars' },
         stats.perTag.map((tag, index) =>
           bar({
-            label: tag.name,
+            label: tagLabel(tag.name),
             href: tagRoute(tag.name),
             share: tag.count / topTag.count,
             count: tag.count,
             color: neutral,
             index,
-            tip: { color: neutral, title: tag.name, tl: tag.tl, value: `${number(tag.count)} 个詞`, lines: [`占全部 ê ${percent(tag.count, stats.words)}`, `排名第 ${index + 1}`] },
+            tip: {
+              color: neutral,
+              title: tagLabel(tag.name),
+              tl: tag.tl,
+              value: t('story.wordCount', { count: number(tag.count) }),
+              lines: [t('story.shareOfAll', { percent: percent(tag.count, stats.words) }), t('story.rank', { rank: index + 1 })],
+            },
           }),
         ),
       ),
     ),
     section(
-      '詞 ê 長短',
+      t('story.lengths'),
       h(
         'ol',
         { class: 'story-columns' },
         stats.lengths.map((b, index) => {
-          const label = b.orLonger ? `${b.length} 字以上` : `${b.length} 字`;
+          const label = t(b.orLonger ? 'story.lengthOrMore' : 'story.length', { length: b.length });
           return withTip(
             h(
               'li',
@@ -107,21 +113,21 @@ function sections(stats) {
               h('span', { class: 'story-column-track' }, h('span', { class: 'story-column-fill' })),
               h('span', { class: 'story-column-label' }, label),
             ),
-            { color: neutral, title: label, value: `${number(b.count)} 个詞`, lines: [`占全部 ê ${percent(b.count, stats.words)}`] },
+            { color: neutral, title: label, value: t('story.wordCount', { count: number(b.count) }), lines: [t('story.shareOfAll', { percent: percent(b.count, stats.words) })] },
           );
         }),
       ),
     ),
     topPair
       ? section(
-          '做伙出現 ê 標籤',
+          t('story.pairs'),
           h(
             'ol',
             { class: 'story-bars story-pairs' },
             stats.pairs.map((pair, index) =>
               bar({
                 // each tag of the pair links to its own page
-                label: pair.tags.flatMap((name, i) => [i > 0 ? ' · ' : null, h('a', { href: tagRoute(name) }, name)]),
+                label: pair.tags.flatMap((name, i) => [i > 0 ? ' · ' : null, h('a', { href: tagRoute(name) }, tagLabel(name))]),
                 share: pair.count / topPair.count,
                 count: pair.count,
                 color: neutral,
@@ -129,9 +135,9 @@ function sections(stats) {
                 // each tag's share: how many of its words also carry the other
                 tip: {
                   color: neutral,
-                  title: pair.tags.join(' · '),
-                  value: `${number(pair.count)} 个詞`,
-                  lines: pair.tags.map((name) => `占${name} ê ${percent(pair.count, countByTag.get(name))}`),
+                  title: pair.tags.map(tagLabel).join(' · '),
+                  value: t('story.wordCount', { count: number(pair.count) }),
+                  lines: pair.tags.map((name) => t('story.shareOfTag', { tag: tagLabel(name), percent: percent(pair.count, countByTag.get(name)) })),
                 },
               }),
             ),
@@ -141,7 +147,7 @@ function sections(stats) {
     // the community's own contributors (GitHub accounts), most words first, by their GitHub picture
     stats.githubContributors.length > 0
       ? section(
-          '社群貢獻者',
+          t('story.faces'),
           h(
             'ol',
             { class: 'story-faces' },
@@ -151,7 +157,7 @@ function sections(stats) {
                 { style: `--i: ${index}` },
                 h(
                   'a',
-                  { class: 'story-face', href: contributorRoute(person.name), title: `${person.name} · ${number(person.count)} 个詞` },
+                  { class: 'story-face', href: contributorRoute(person.name), title: `${person.name} · ${t('story.wordCount', { count: number(person.count) })}` },
                   h('img', { src: `https://avatars.githubusercontent.com/u/${person.id}?s=128`, alt: '', width: 64, height: 64, loading: 'lazy', decoding: 'async' }),
                   h('span', { class: 'story-face-name' }, person.name),
                 ),

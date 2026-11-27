@@ -5,7 +5,6 @@ import {
   checkBatch,
   checkForm,
   contributorRoute,
-  describeErrors,
   duplicateStatus,
   findExisting,
   foldSearch,
@@ -22,6 +21,7 @@ import {
   wordsSpelled,
   wordsWithTag,
 } from '../site/logic.js';
+import { describeIssues, setLanguage, STRINGS, tagLabel, t } from '../site/strings.js';
 import { TAG_NAMES } from '../site/tags.js';
 import { accentEntry, KEY } from './fixtures.js';
 
@@ -48,23 +48,23 @@ test('formToRaw keeps place only with the 其他 accent', () => {
   assert.equal(formToRaw({ tl: 'a', accents: ['其他'], place: '澎湖' }, identity).place, '澎湖');
 });
 
-test('checkForm + describeErrors give Taiwanese messages per field', () => {
-  const { errors } = checkForm({ hanji: '', tl: 'pueh!', accents: ['其他'], note: '' });
-  assert.deepEqual(describeErrors(errors), [
+test('checkForm + describeIssues give Taiwanese messages per field', () => {
+  const { issues } = checkForm({ hanji: '', tl: 'pueh!', accents: ['其他'], note: '' });
+  assert.deepEqual(describeIssues(issues), [
     { field: 'tl', text: '台羅：干焦會當用台羅字母、調符、數字、空格佮「-」' },
     { field: 'place', text: '請填寫資料' },
   ]);
   const ok = checkForm({ hanji: ' 八', tl: 'pueh ', accents: ['鹿港偏泉腔'], note: '' });
-  assert.deepEqual(ok.errors, []);
+  assert.deepEqual(ok.issues, []);
   assert.equal(ok.entry.hanji, '八');
   // only Tâi-lô is required
-  assert.deepEqual(checkForm({ tl: 'pueh' }).errors, []);
+  assert.deepEqual(checkForm({ tl: 'pueh' }).issues, []);
   // tags: listed and own tags alike, with Taiwanese messages naming the bad tag
   assert.deepEqual(checkForm({ tl: 'pueh', tags: ['食食', '夜市仔'] }).entry.tags, ['食食', '夜市仔']);
-  assert.deepEqual(describeErrors(checkForm({ tl: 'pueh', tags: ['food!'] }).errors), [
+  assert.deepEqual(describeIssues(checkForm({ tl: 'pueh', tags: ['food!'] }).issues), [
     { field: 'tags', text: '標籤：「food!」干焦會當用漢字、假名、台羅字母佮「-」' },
   ]);
-  assert.deepEqual(describeErrors(checkForm({ tl: 'pueh', tags: ['一', '二', '三', '四', '五', '六'] }).errors), [
+  assert.deepEqual(describeIssues(checkForm({ tl: 'pueh', tags: ['一', '二', '三', '四', '五', '六'] }).issues), [
     { field: 'tags', text: '標籤：上濟 5 个' },
   ]);
 });
@@ -184,4 +184,20 @@ test('tagCircles: area follows the count above the minimum radius, the box holds
   for (const { x, y, r } of circles) {
     assert.ok(x - r >= box.left - 1e-9 && x + r <= box.right + 1e-9 && y - r >= box.top - 1e-9 && y + r <= box.bottom + 1e-9);
   }
+});
+
+test('strings: every language has every key; issues and tags follow the language', (context) => {
+  context.after(() => setLanguage('nan'));
+  for (const lang of ['ja', 'en']) assert.deepEqual(Object.keys(STRINGS[lang]).sort(), Object.keys(STRINGS.nan).sort(), lang);
+  const issues = checkForm({ tl: 'pueh', tags: ['food!'] }).issues;
+  setLanguage('en');
+  assert.deepEqual(describeIssues(issues), [{ field: 'tags', text: 'Tags: "food!" only Hanji, kana, Tâi-lô letters and "-"' }]);
+  assert.equal(t('story.wordCount', { count: 3 }), '3 words');
+  // site tags get labels, a contributor's own tag keeps its name
+  assert.deepEqual(['食食', '夜市仔'].map(tagLabel), ['Food', '夜市仔']);
+  setLanguage('ja');
+  assert.equal(tagLabel('𨑨迌'), '遊び');
+  // an unknown stored value falls back to Taiwanese
+  setLanguage('xx');
+  assert.equal(tagLabel('食食'), '食食');
 });

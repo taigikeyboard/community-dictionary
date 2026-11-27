@@ -1,4 +1,4 @@
-import { entryKey, entryPath, MAX_WORDS, parseEntryPath, prepareEntry, serializeEntry, ENTRIES_DIR } from '../../lib/entry.js';
+import { entryKey, entryPath, issue, MAX_WORDS, parseEntryPath, prepareEntry, serializeEntry } from '../../lib/entry.js';
 import { api, apiOrNull, GitHubError, installationToken } from './github.js';
 
 // New, edit and withdraw submissions: checks the contributor's rights and caps against GitHub
@@ -186,16 +186,16 @@ async function refuseHeldKeys(repo, user, ownFiles, keys) {
 export async function submitNew(env, user, body, now = Date.now()) {
   const words = body.words;
   if (!Array.isArray(words) || words.length === 0 || words.length > MAX_WORDS) {
-    throw new SubmitError(400, 'invalid', { errors: [`words: 1 to ${MAX_WORDS} words`] });
+    throw new SubmitError(400, 'invalid', { issues: [issue('words', 'word_count', { max: MAX_WORDS })] });
   }
   const identity = { contributor: user.login, contributor_id: user.id, submitted: taiwanDate(now) };
   const prepared = words.map((word) => draftEntry(body, word, identity));
-  const errors = prepared.flatMap(({ errors: list }, i) => list.map((e) => `words[${i}].${e}`));
-  if (errors.length > 0) throw new SubmitError(400, 'invalid', { errors });
+  const issues = prepared.flatMap(({ issues: list }, i) => list.map((found) => ({ ...found, field: `words[${i}].${found.field}` })));
+  if (issues.length > 0) throw new SubmitError(400, 'invalid', { issues });
 
   const entries = prepared.map(({ entry }) => entry);
   const keys = await Promise.all(entries.map((e) => entryKey(e.hanji, e.tl)));
-  if (new Set(keys).size !== keys.length) throw new SubmitError(400, 'invalid', { errors: ['words: same word twice'] });
+  if (new Set(keys).size !== keys.length) throw new SubmitError(400, 'invalid', { issues: [issue('words', 'repeated_word')] });
 
   const repo = new Repo(env, await installationToken(env));
   const { openPrs, ownFiles } = await loadState(repo, user);
@@ -218,7 +218,7 @@ export async function submitNew(env, user, body, now = Date.now()) {
 // it (so a second edit lands as one more commit there) or else from the base branch.
 async function ownedTarget(repo, user, ownFiles, path) {
   const location = typeof path === 'string' ? parseEntryPath(path) : null;
-  if (!location) throw new SubmitError(400, 'invalid', { errors: [`path: not of the form ${ENTRIES_DIR}/<login>/<key>.json`] });
+  if (!location) throw new SubmitError(400, 'invalid', { issues: [issue('path', 'not_entry_path')] });
   const open = ownFiles.get(path);
   if (open?.status === 'removed') throw new SubmitError(409, 'already_withdrawn');
   const ref = open ? open.pr.head.ref : repo.base;
@@ -235,7 +235,7 @@ export async function submitEdit(env, user, body) {
   const old = target.entry;
 
   const draft = draftEntry(body, body, { contributor: old.contributor, contributor_id: user.id, submitted: old.submitted });
-  if (draft.errors.length > 0) throw new SubmitError(400, 'invalid', { errors: draft.errors });
+  if (draft.issues.length > 0) throw new SubmitError(400, 'invalid', { issues: draft.issues });
   let entry = draft.entry;
   const newKey = await entryKey(entry.hanji, entry.tl);
   const pairChanged = newKey !== target.location.key;

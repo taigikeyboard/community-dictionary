@@ -6,6 +6,7 @@ import {
   normalizeTl,
   prepareEntry,
 } from '../lib/entry.js';
+import { describeIssues, t } from './strings.js';
 import { TAG_NAMES } from './tags.js';
 
 // Browser-free site logic: search, form → entry, duplicate rules, Taiwanese error messages.
@@ -253,15 +254,15 @@ export async function checkBatch(shared, words, identity = PLACEHOLDER_IDENTITY)
   const filled = words.filter((word) => !isBlankWord(word));
   for (const [row, word] of words.entries()) {
     if (isBlankWord(word) && (filled.length > 0 || row > 0)) continue;
-    const { entry, errors: raw } = checkForm({ ...shared, ...word }, identity);
-    for (const error of describeErrors(raw)) {
+    const { entry, issues } = checkForm({ ...shared, ...word }, identity);
+    for (const error of describeIssues(issues)) {
       if (error.field === 'hanji' || error.field === 'tl') errors.push({ ...error, row });
       else if (!errors.some((e) => e.field === error.field && e.example === error.example)) errors.push(error);
     }
-    if (raw.length > 0) continue;
+    if (issues.length > 0) continue;
     const key = await entryKey(entry.hanji, entry.tl);
     if (firstRowOfKey.has(key)) {
-      errors.push({ field: 'tl', row, text: `佮第 ${firstRowOfKey.get(key) + 1} 个詞仝款` });
+      errors.push({ field: 'tl', row, text: t('form.repeatOf', { row: firstRowOfKey.get(key) + 1 }) });
       continue;
     }
     firstRowOfKey.set(key, row);
@@ -279,48 +280,5 @@ export async function duplicateStatus(rows, hanji, tl, contributorId) {
     return { status: 'mine', key, row };
   }
   return { status: 'attested', key, row, contributors: row.attestations.map((a) => a.contributor) };
-}
-
-const FIELD_LABELS = Object.freeze({
-  hanji: '漢字、日語',
-  tl: '台羅',
-  accents: '腔口',
-  tags: '標籤',
-  place: '其他腔口',
-  meaning: '解說',
-  examples: '例句',
-  note: '說明',
-});
-
-const MESSAGE_RULES = [
-  [/^tags: more than (\d+) tags$/, (m) => `上濟 ${m[1]} 个`],
-  [/^tags: "(.+)" longer than (\d+) characters$/, (m) => `「${m[1]}」傷長，上濟 ${m[2]} 字`],
-  [/^tags: "(.+)" only Han characters/, (m) => `「${m[1]}」干焦會當用漢字、假名、台羅字母佮「-」`],
-  [/: longer than (\d+) characters$/, (m) => `傷長，上濟 ${m[1]} 字`],
-  [/: must be one line$/, () => '袂當換逝'],
-  [/: only Han characters/, () => '干焦會當用漢字、假名、台羅字母佮「-」'],
-  [/: only Latin letters/, () => '干焦會當用台羅字母、調符、數字、空格佮「-」'],
-  [/: must contain a Han character, kana or a letter$/, () => '愛有漢字、假名抑是字母'],
-  [/: must contain a letter$/, () => '愛有字母'],
-  [/: only with accent /, () => '揀「其他」腔口才需要填'],
-  [/: contains a control character/, () => '有袂當用 ê 特殊字元'],
-  [/: unknown /, () => '選項無效'],
-];
-
-// Validator messages → Taiwanese, keyed by field; unknown messages pass through unchanged.
-export function describeErrors(errors) {
-  return errors
-    .filter((e) => !/^(contributor|contributor_id|submitted):/.test(e))
-    .map((e) => {
-      const field = e.slice(0, e.indexOf(':'));
-      // a missing value reads 「請填寫資料」 alone: the line sits under the empty field
-      if (/: required$/.test(e)) return { field, text: '請填寫資料' };
-      const rule = MESSAGE_RULES.find(([re]) => re.test(e));
-      const text = rule ? rule[1](e.match(rule[0])) : e;
-      // one example's line: `example` is its index among the filled example rows
-      const example = /^examples\[(\d+)\]\.(hanji|tl)$/.exec(field);
-      if (example) return { field: example[2], example: Number(example[1]), text: `例句${FIELD_LABELS[example[2]]}：${text}` };
-      return { field, text: `${FIELD_LABELS[field] ?? field}：${text}` };
-    });
 }
 

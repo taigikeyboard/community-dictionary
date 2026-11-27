@@ -2,6 +2,7 @@ import { ACCENT_OTHER, ACCENTS, LIMITS, MAX_EXAMPLES, MAX_WORDS, TAG_LIMIT } fro
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { isBlankWord } from './logic.js';
+import { t, tagLabel } from './strings.js';
 import { TAG_NAMES, TAGS } from './tags.js';
 
 // The submission form's widgets (fields, pill groups, pair lists), its error lines and its draft.
@@ -114,7 +115,7 @@ export function accentGroup({ accents = [], place = '' } = {}) {
     other.querySelector('input[type="hidden"]').disabled = !checked;
   };
   const slot = addPill(
-    '其他腔口',
+    t('field.place'),
     { id: 'f-place', describedBy: 'e-place', maxlength: LIMITS.place },
     {
       start: () => other?.querySelector('input[type="hidden"]').value ?? '',
@@ -123,7 +124,7 @@ export function accentGroup({ accents = [], place = '' } = {}) {
   );
   const pills = h('div', { class: 'pills' }, ACCENTS.filter((a) => a !== ACCENT_OTHER).map((a) => pill('accents', a, a, { checked: accents.includes(a) })), slot);
   if (place !== '') setOther(place, accents.includes(ACCENT_OTHER));
-  return choiceGroup('accents', '腔口', h('div', {}, pills, errorSlot('place')));
+  return choiceGroup('accents', t('field.accents'), h('div', {}, pills, errorSlot('place')));
 }
 
 // 標籤: the site's tags as pills, several may be picked, and a ＋ pill after the last one; an added
@@ -137,11 +138,11 @@ export function tagGroup(checked = []) {
     else slot.before(pill('tags', name, name, { checked: true }));
   };
   // Enter adds the tag and stays ready for the next one
-  const slot = addPill('家己加標籤', { maxlength: TAG_LIMIT }, { commit: addTag, stayOpen: true });
+  const slot = addPill(t('form.ownTag'), { maxlength: TAG_LIMIT }, { commit: addTag, stayOpen: true });
   // a restored draft's own tags come back as ticked pills after the site's
   const own = checked.filter((name) => !TAG_NAMES.includes(name)).map((name) => pill('tags', name, name, { checked: true }));
-  const pills = h('div', { class: 'pills' }, TAGS.map((tag) => pill('tags', tag.name, tag.name, { checked: checked.includes(tag.name) })), own, slot);
-  return choiceGroup('tags', '標籤', pills);
+  const pills = h('div', { class: 'pills' }, TAGS.map((tag) => pill('tags', tag.name, tagLabel(tag.name), { checked: checked.includes(tag.name) })), own, slot);
+  return choiceGroup('tags', t('field.tags'), pills);
 }
 
 let nextWordId = 0;
@@ -157,7 +158,7 @@ export const wordValues = (row) => ({
 function wordRow(list) {
   const n = nextWordId++;
   const button = h('button', { class: 'icon-button', type: 'button' }, icon('close', 'icon icon-remove'), icon('plus', 'icon icon-add'));
-  const hanji = h('input', { type: 'text', name: 'hanji', 'aria-label': '漢字、日語', placeholder: '漢字、日語', 'aria-describedby': `e-word-${n}` });
+  const hanji = h('input', { type: 'text', name: 'hanji', 'aria-label': t('field.hanji'), placeholder: t('field.hanji'), 'aria-describedby': `e-word-${n}` });
   const row = h(
     'div',
     { class: 'word' },
@@ -165,7 +166,7 @@ function wordRow(list) {
       'div',
       { class: 'word-fields' },
       hanji,
-      h('input', { type: 'text', name: 'tl', class: 'romanized', spellcheck: 'false', autocapitalize: 'off', 'aria-label': '台羅', placeholder: '台羅', 'aria-describedby': `e-word-${n}` }),
+      h('input', { type: 'text', name: 'tl', class: 'romanized', spellcheck: 'false', autocapitalize: 'off', 'aria-label': t('field.tl'), placeholder: t('field.tl'), 'aria-describedby': `e-word-${n}` }),
       button,
     ),
     h('div', { class: 'error', id: `e-word-${n}`, hidden: true }),
@@ -223,8 +224,9 @@ function pasteWords(list, input, text, max, newRow) {
 }
 
 // The form's two pair lists: the words, in their own box, and the example sentences.
-export const WORD_LIST = { max: MAX_WORDS, add: '加一个詞', remove: '提掉這个詞' };
-export const EXAMPLE_LIST = { max: MAX_EXAMPLES, add: '加一句例句', remove: '提掉這句例句' };
+// `add` / `remove` are string keys (site/strings.js), worded when a row's button is drawn
+export const WORD_LIST = { max: MAX_WORDS, add: 'form.addWord', remove: 'form.removeWord' };
+export const EXAMPLE_LIST = { max: MAX_EXAMPLES, add: 'form.addExample', remove: 'form.removeExample' };
 
 // Rows grow on their own: below the filled rows there is always one empty slot row, drawn
 // faint with a ＋, and typing into it adds the next one (up to `kind.max`). The first row is a
@@ -249,8 +251,8 @@ export function pairList(kind, { onDropped, initial = [] }) {
       const slot = blank && row === list.lastElementChild && row !== list.firstElementChild;
       row.classList.toggle('word-slot', slot);
       const button = row.querySelector('.icon-button');
-      button.setAttribute('aria-label', slot ? kind.add : kind.remove);
-      button.title = slot ? kind.add : '提掉';
+      button.setAttribute('aria-label', t(slot ? kind.add : kind.remove));
+      button.title = t(slot ? kind.add : 'form.remove');
       // an empty first row has nothing to remove
       button.hidden = blank && row === list.firstElementChild;
     }

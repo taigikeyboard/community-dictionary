@@ -35,8 +35,10 @@
       const root = document.documentElement;
       // collapsed unless the reader opened it
       if (JSON.parse(localStorage.getItem("sidebar")) === "open") root.dataset.sidebar = "open";
-      const settings = JSON.parse(localStorage.getItem("settings")) || {};
-      for (const [name, value] of Object.entries(settings)) {
+      // shared with kautian-mirror, except 字型 and 語言, which are this site's own
+      const { font, lang, ...shared } = JSON.parse(localStorage.getItem("settings")) || {};
+      const own = JSON.parse(localStorage.getItem("community-settings")) || {};
+      for (const [name, value] of Object.entries({ ...shared, ...own })) {
         if (typeof value === "string") root.dataset[name] = value;
       }
     } catch {}
@@ -75,6 +77,7 @@
   <link rel="modulepreload" href="site/settings.js">
   <link rel="modulepreload" href="site/sidebar.js">
   <link rel="modulepreload" href="site/story.js">
+  <link rel="modulepreload" href="site/strings.js">
   <link rel="modulepreload" href="site/submit-page.js">
   <link rel="modulepreload" href="site/tag-map.js">
   <link rel="modulepreload" href="site/tags.js">
@@ -93,7 +96,7 @@
 <body>
   <!-- opens the sidebar: a floating button at the lower left on phones; on wide screens, once the
        sidebar is collapsed, a slim » strip down the window's left edge (styles.css) -->
-  <button class="corner-button sidebar-toggle" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄">
+  <button class="corner-button sidebar-toggle" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄" data-i18n-aria-label="nav.sidebar" data-i18n-title="nav.sidebar">
     <svg class="icon-panel" viewBox="0 0 20 20" aria-hidden="true">
       <rect x="2.75" y="4" width="14.5" height="12" rx="2.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
       <path d="M7.75 4v12" fill="none" stroke="currentColor" stroke-width="1.5"/>
@@ -105,41 +108,49 @@
   </button>
   <!-- left sidebar: docked on wide screens (site/sidebar.js slides it away); on narrow ones a popover,
        so outside click / Esc close it -->
-  <aside id="sidebar" class="sidebar" popover aria-label="側邊欄">
+  <aside id="sidebar" class="sidebar" popover aria-label="側邊欄" data-i18n-aria-label="nav.sidebar">
     <div class="sidebar-close">
-      <button class="corner-button" type="button" popovertarget="sidebar" popovertargetaction="hide" aria-label="關" title="關">
+      <button class="corner-button" type="button" popovertarget="sidebar" popovertargetaction="hide" aria-label="關" title="關" data-i18n-aria-label="nav.close" data-i18n-title="nav.close">
         <svg viewBox="0 0 20 20" aria-hidden="true">
           <path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
     </div>
     <!-- the markup's selected / checked values are the defaults (site/settings.js) -->
-    <form id="settings" aria-label="設定">
-      <label class="setting">外觀
+    <form id="settings" aria-label="設定" data-i18n-aria-label="settings.label">
+      <!-- each language in its own name, never translated -->
+      <label class="setting"><span data-i18n="settings.language">語言</span>
+        <select name="lang">
+          <option value="nan" selected>台語</option>
+          <option value="ja">日本語</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <label class="setting"><span data-i18n="settings.theme">外觀</span>
         <select name="theme">
-          <option value="auto" selected>自動</option>
-          <option value="light">淺色</option>
-          <option value="dark">暗色</option>
+          <option value="auto" selected data-i18n="settings.themeAuto">自動</option>
+          <option value="light" data-i18n="settings.themeLight">淺色</option>
+          <option value="dark" data-i18n="settings.themeDark">暗色</option>
         </select>
       </label>
-      <label class="setting">字型
+      <label class="setting"><span data-i18n="settings.font">字型</span>
         <select name="font">
-          <option value="system" selected>系統</option>
-          <option value="openhuninn">粉圓</option>
-          <option value="iansui">芫荽</option>
-          <option value="genyomin">源樣明體</option>
-          <option value="genyogothic">源樣烏體</option>
+          <option value="system" selected data-i18n="settings.fontSystem">系統</option>
+          <option value="openhuninn" data-i18n="settings.fontHuninn">粉圓</option>
+          <option value="iansui" data-i18n="settings.fontIansui">芫荽</option>
+          <option value="genyomin" data-i18n="settings.fontGenyomin">源樣明體</option>
+          <option value="genyogothic" data-i18n="settings.fontGenyogothic">源樣烏體</option>
         </select>
       </label>
-      <div class="settings-heading">選單顯示</div>
+      <div class="settings-heading" data-i18n="settings.display">選單顯示</div>
       <!-- on by default, unlike 白話字 / 方音符號: off hides Tâi-lô wherever a word also has Hanji -->
-      <label class="setting">台羅
+      <label class="setting"><span data-i18n="settings.tl">台羅</span>
         <input type="checkbox" name="tl" role="switch" checked>
       </label>
-      <label class="setting">白話字
+      <label class="setting"><span data-i18n="settings.poj">白話字</span>
         <input type="checkbox" name="poj" role="switch">
       </label>
-      <label class="setting">方音符號
+      <label class="setting"><span data-i18n="settings.tps">方音符號</span>
         <input type="checkbox" name="tps" role="switch">
       </label>
     </form>
@@ -155,7 +166,7 @@
       </div>
     </footer>
     <!-- wide screens: collapses the docked sidebar (after docusaurus.io's « bar at the sidebar's foot) -->
-    <button class="sidebar-collapse" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄">
+    <button class="sidebar-collapse" type="button" aria-controls="sidebar" aria-label="側邊欄" title="側邊欄" data-i18n-aria-label="nav.sidebar" data-i18n-title="nav.sidebar">
     <svg class="icon-chevrons" viewBox="0 0 20 20" aria-hidden="true">
       <path d="M15 5.5L10.5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="M9.5 5.5L5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -167,14 +178,14 @@
   <header class="topbar">
     <div class="topbar-inner">
       <p class="announce">
-        <span class="announce-text"><span>這个網站是一項群眾辭典實驗計畫，目的是予「群眾台語辭典」佮「群眾台語齒盤」連起來，做伙貢獻一般辭典無收錄 ê 台語新詞、腔口差。收錄 ê 詞會自動入去台語齒盤，增加輸入法 ê 詞彙量。</span><span>目前因為收集 ê 資料猶無濟，圖表猶無夠腥臊，歡迎逐家鬥陣提供台語詞，予資料庫愈來愈完整！</span></span>
+        <span class="announce-text"><span data-i18n="announce.about">這个網站是一項群眾辭典實驗計畫，目的是予「群眾台語辭典」佮「群眾台語齒盤」連起來，做伙貢獻一般辭典無收錄 ê 台語新詞、腔口差。收錄 ê 詞會自動入去台語齒盤，增加輸入法 ê 詞彙量。</span><span data-i18n="announce.invite">目前因為收集 ê 資料猶無濟，圖表猶無夠腥臊，歡迎逐家鬥陣提供台語詞，予資料庫愈來愈完整！</span></span>
         <a class="announce-cta" href="#/submit">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          提交新詞
+          <span data-i18n="submit.title">提交新詞</span>
         </a>
         <a class="announce-cta announce-find" href="#/search">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.5 15.5 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          揣詞
+          <span data-i18n="search.title">揣詞</span>
         </a>
       </p>
     </div>

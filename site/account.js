@@ -1,4 +1,5 @@
 import { WORKER_URL } from './config.js';
+import { describeIssues, listJoin, t } from './strings.js';
 
 // The site's side of the submission Worker (worker/src/index.js): the sign-in session lives in an
 // HttpOnly cookie on the Worker's host, so every call sends credentials and page scripts never see
@@ -47,10 +48,8 @@ export async function submitWords(body) {
 // What the form says for a failed submission; `labelOf(key)` names a word by its key.
 export function submitErrorText(err, labelOf) {
   const code = err instanceof WorkerError ? err.data.error : null;
-  if (code === 'already_submitted') return `你已經提交過：${(err.data.keys ?? []).map(labelOf).join('、')}。欲改請等審查了。`;
-  if (code === 'cap_contributor') return '你有幾若个提交猶咧審查，等審查了才閣提交。';
-  if (code === 'cap_total') return '這馬審查中 ê 提交傷濟，請小等才閣試。';
-  if (code === 'invalid') return `格式有問題：${(err.data.errors ?? []).join('；')}`;
-  if (code === 'too_large') return '一擺送傷濟字，請分開提交。';
-  return '暫時送袂出去，請小等才閣試。';
+  if (code === 'already_submitted') return t('worker.already_submitted', { words: listJoin((err.data.keys ?? []).map(labelOf)) });
+  if (code === 'invalid') return t('worker.invalid', { details: listJoin(describeIssues(err.data.issues ?? []).map((found) => found.text)) });
+  if (['cap_contributor', 'cap_total', 'too_large'].includes(code)) return t(`worker.${code}`);
+  return t('worker.try_later');
 }

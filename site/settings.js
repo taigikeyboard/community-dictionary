@@ -1,14 +1,29 @@
-// Settings panel (外觀, 字型, 白話字, 方音符號), after kautian-mirror's: each choice is a
-// <html data-*> attribute that styles.css keys on, saved under "settings"; index.html re-applies
-// it before first paint. kautian-mirror shares the origin and the key, so a write merges into
-// what is stored: the shared choices carry across both sites and kautian's own switches survive.
+// Settings panel (語言, 外觀, 字型, 台羅, 白話字, 方音符號), after kautian-mirror's: each choice is a
+// <html data-*> attribute that styles.css keys on; index.html re-applies the stored choices before
+// first paint. kautian-mirror shares the origin and the "settings" key, so a write merges into what
+// is stored there: 外觀 and the reading switches carry across both sites and kautian's own switches
+// survive. 字型 and 語言 are this site's own ("community-settings"): kautian-mirror stores its
+// default font (芫荽) with every change, which would otherwise replace this site's 系統 default.
 
-const STORAGE_KEY = 'settings';
+const SHARED_KEY = 'settings';
+const OWN_KEY = 'community-settings';
+const OWN_SETTINGS = new Set(['font', 'lang']);
 
 // checkboxes store "on" / "off" so every setting is a plain data-* string
 const controlValue = (control) => (control.type === 'checkbox' ? (control.checked ? 'on' : 'off') : control.value);
 
-export function initSettings(form) {
+// Merges `choices` into what `key` holds; private mode or blocked site data keeps them for this view.
+function store(key, choices) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key));
+    localStorage.setItem(key, JSON.stringify(stored && typeof stored === 'object' ? { ...stored, ...choices } : choices));
+  } catch {
+    // the choice lasts this page view
+  }
+}
+
+// `onChange(settings)` runs after every change, with all of the form's current choices.
+export function initSettings(form, onChange = () => {}) {
   const root = document.documentElement;
   // index.html already restored the stored choices onto <html>; unknown values keep the markup default
   for (const control of form.elements) {
@@ -22,12 +37,9 @@ export function initSettings(form) {
   form.addEventListener('change', () => {
     const settings = Object.fromEntries([...form.elements].map((control) => [control.name, controlValue(control)]));
     Object.assign(root.dataset, settings);
-    try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      const merged = stored && typeof stored === 'object' ? { ...stored, ...settings } : settings;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-    } catch {
-      // private mode or blocked site data: the choice lasts this page view
-    }
+    const entries = Object.entries(settings);
+    store(SHARED_KEY, Object.fromEntries(entries.filter(([name]) => !OWN_SETTINGS.has(name))));
+    store(OWN_KEY, Object.fromEntries(entries.filter(([name]) => OWN_SETTINGS.has(name))));
+    onChange(settings);
   });
 }

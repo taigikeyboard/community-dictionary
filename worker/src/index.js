@@ -1,6 +1,6 @@
 import { authorizeUrl, exchangeCode, api } from './github.js';
 import { cookie, randomToken, readCookie, sign, verify, base64url } from './session.js';
-import { LOGIN_RE } from '../../lib/entry.js';
+import { issue, LOGIN_RE } from '../../lib/entry.js';
 import { submitEdit, submitNew, SubmitError, withdraw } from './submit.js';
 
 // Submission Worker: GitHub sign-in for the static site, and the endpoints that turn a filled-in
@@ -106,7 +106,7 @@ async function readBody(request) {
   } catch {
     // reported below
   }
-  throw new SubmitError(400, 'invalid', { errors: ['body: must be a JSON object'] });
+  throw new SubmitError(400, 'invalid', { issues: [issue('body', 'not_object')] });
 }
 
 const ACTIONS = { '/submit': submitNew, '/withdraw': withdraw };

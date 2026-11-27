@@ -270,7 +270,7 @@ describe('POST guards', () => {
   it('reports invalid fields without calling GitHub', async () => {
     const res = await post('/submit', { words: [{ hanji: '八', tl: '' }], ...form });
     assert.equal(res.status, 400);
-    assert.deepEqual(res.data.errors, ['words[0].tl: required']);
+    assert.deepEqual(res.data.issues, [{ field: 'words[0].tl', code: 'required' }]);
     assert.equal(gh.calls.length, 0);
   });
 
