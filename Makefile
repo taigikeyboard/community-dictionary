@@ -1,4 +1,4 @@
-.PHONY: help setup test validate compile build preview ci worker-setup worker-dev check-hanji
+.PHONY: help setup test validate compile build preview ci worker-setup worker-dev check-hanji preview-mock
 
 ARGS ?=
 
@@ -34,3 +34,6 @@ worker-dev: ## Run the Worker locally at http://127.0.0.1:8787 (needs worker/.de
 
 check-hanji: ## Check the Taiwanese UI text's Hanji against 教典 (ODS=kautian.ods from https://sutian.moe.edu.tw/media/senn/ods/kautian.ods)
 	node scripts/check-hanji.js $(ODS)
+
+preview-mock: build ## Preview with a local fake Worker and fake GitHub: sign-in, 我的提交, 修改 (nothing is sent)
+	node scripts/mock-worker.js
