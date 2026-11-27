@@ -598,6 +598,11 @@ body:not(:has(> main[data-page="home"])) .site-footer { display: none; }
 .social-links a:active { background: rgba(255, 255, 255, 0.2); transform: var(--button-press); }
 .social-links a:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
 .social-links svg { flex: none; width: 22px; height: 22px; }
+/* the copyright and licences under the icons, quieter than the bar's announcement */
+.site-legal { margin: 1rem 0 0; color: rgba(255, 255, 255, 0.65); font-size: 0.875rem; text-align: center; }
+.site-legal a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.35); text-underline-offset: 0.2em; }
+.site-legal a:hover { color: #fff; text-decoration-color: #fff; }
+.site-legal a:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
 @media (min-width: 50rem) {
   /* docked, collapsed by default (index.html): slid out and hidden (its controls leave the tab order); display: flex overrides the closed popover's display: none so it can slide */
   .sidebar { position: fixed; display: flex; flex-direction: column; padding-top: 1.5rem; padding-bottom: 0; border-right: 1px solid var(--chart-grid); box-shadow: none; visibility: hidden; transition: transform var(--duration-panel) ease, visibility var(--duration-panel); }
