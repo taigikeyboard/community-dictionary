@@ -148,6 +148,7 @@ test('searchItaigi: hanji, each variant reading; exact, then prefix, then the re
 
 test('routes: tag and word pages round-trip, anything else is search', () => {
   assert.deepEqual(parseRoute('#/submit'), { page: 'submit' });
+  assert.deepEqual(parseRoute('#/search'), { page: 'find' });
   // the 說明 page is gone (2026-11-26): its old link lands on search
   assert.deepEqual(parseRoute('#/about'), { page: 'search' });
   assert.deepEqual(parseRoute(tagRoute('𨑨迌')), { page: 'tag', tag: '𨑨迌' });

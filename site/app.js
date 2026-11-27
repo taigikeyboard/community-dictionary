@@ -175,8 +175,11 @@ function matchesPopover(root, locate, limit, { isSearch = false, onRender = () =
 // is picked), Escape closes it (matchesPopover); the mouse picks the row it moves over. Keys pressed
 // while an input method is composing stay with the input method. The input keeps focus; the picked
 // row is announced through aria-activedescendant. Returns `render`, to run after every update.
+let menuCount = 0;
 function menuKeys(input, panel, results) {
-  results.id = 'search-results';
+  // ids unique per box: the top bar's (hidden) box and the 揣詞 page's can both be in the document
+  const prefix = `search-${(menuCount += 1)}`;
+  results.id = `${prefix}-results`;
   results.setAttribute('role', 'listbox');
   results.setAttribute('aria-label', '揣詞結果');
   input.setAttribute('role', 'combobox');
@@ -219,7 +222,7 @@ function menuKeys(input, panel, results) {
     input.removeAttribute('aria-activedescendant');
     input.setAttribute('aria-expanded', String(!panel.hidden));
     options().forEach((option, index) => {
-      option.id = `search-option-${index}`;
+      option.id = `${prefix}-option-${index}`;
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', 'false');
     });
@@ -983,6 +986,12 @@ function withWords(list, fill) {
     .catch(() => list.replaceWith(h('p', { class: 'empty' }, LOAD_ERROR)));
 }
 
+// The 揣詞 page: a search box of its own under the title; its menu lists and links the words.
+function renderFind() {
+  document.title = `揣詞 · ${SITE_TITLE}`;
+  view.replaceChildren(backButton(), hero('揣詞'), searchBox());
+}
+
 // A tag's page: every word carrying it, as cards.
 function renderTag(tag) {
   document.title = `${tag} · ${SITE_TITLE}`;
@@ -1008,13 +1017,15 @@ function renderWord(hanji, tl) {
   withWords(list, (rows, itaigi) => cardList(list, wordsSpelled(rows, itaigi, hanji, tl), { headword: false }));
 }
 
-// Hash routes (logic.js parseRoute): search at #/ and any unknown hash, the form at #/submit, cards
+// Hash routes (logic.js parseRoute): the homepage at #/ and any unknown hash, the 揣詞 page at
+// #/search, the form at #/submit, cards
 // at #/tag/<name>, #/contributor/<name> and #/word/<hanji>/<tl>.
 function route() {
   const target = parseRoute(location.hash);
   // the homepage widens the column for the bubble map (styles.css main[data-page="search"])
   view.dataset.page = target.page;
   if (target.page === 'submit') renderSubmit();
+  else if (target.page === 'find') renderFind();
   else if (target.page === 'tag') renderTag(target.tag);
   else if (target.page === 'contributor') renderContributor(target.name);
   else if (target.page === 'word') renderWord(target.hanji, target.tl);
@@ -1027,12 +1038,15 @@ const searchInput = search.querySelector('input');
 search.hidden = true;
 document.querySelector('.topbar-inner').append(search);
 
-// "/" anywhere outside a text field jumps to the search box (after kautian-mirror)
+// "/" anywhere outside a text field jumps to the search box (after kautian-mirror): the 揣詞 page's,
+// else the top bar's while it is shown
 document.addEventListener('keydown', (event) => {
-  if (search.hidden || event.key !== '/' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (event.key !== '/' || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
   if (event.target.closest('input, textarea, select, [contenteditable]')) return;
+  const target = view.querySelector(':scope > .search input') ?? (search.hidden ? null : searchInput);
+  if (!target) return;
   event.preventDefault();
-  searchInput.focus();
+  target.focus();
 });
 
 initSettings(document.getElementById('settings'));
@@ -1051,6 +1065,9 @@ window.addEventListener('hashchange', () => {
   }
   route();
   window.scrollTo(0, 0);
+  // the 揣詞 page puts the reader straight in its box
+  const pageSearch = view.querySelector(':scope > .search input');
+  if (pageSearch) return pageSearch.focus({ preventScroll: true });
   const heading = view.querySelector('h1');
   heading.setAttribute('tabindex', '-1');
   heading.focus({ preventScroll: true });

@@ -171,6 +171,8 @@ export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${e
 // location.hash → { page, ... }; anything unknown or undecodable is the search page.
 export function parseRoute(hash) {
   if (hash === '#/submit') return { page: 'submit' };
+  // the 揣詞 page ('find': 'search' names the homepage, which once held the search box)
+  if (hash === '#/search') return { page: 'find' };
   const parts = hash.split('/');
   try {
     if (parts[0] === '#' && parts[1] === 'tag' && parts.length === 3 && parts[2] !== '') {
