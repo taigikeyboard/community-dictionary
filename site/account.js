@@ -40,11 +40,6 @@ export function signIn(hash) {
   location.assign(`${WORKER_URL}/login?return=${encodeURIComponent(hash)}`);
 }
 
-// Ends the session (the Worker clears its cookie); a failure leaves it to expire on its own.
-export async function signOut() {
-  await call('POST', '/logout').catch(() => {});
-}
-
 // The signed-in contributor's open submissions: [{ path, entry, pullRequest: { url, number } }].
 export async function ownSubmissions() {
   return (await call('GET', '/mine')).submissions;

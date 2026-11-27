@@ -5,7 +5,7 @@ import { h } from './dom.js';
 import { githubIcon, icon } from './icons.js';
 import { editRoute, wordRoute, wordTitle } from './logic.js';
 import { backButton, hero, pageTitle, view } from './page.js';
-import { accountLine, renderSubmit } from './submit-page.js';
+import { renderSubmit } from './submit-page.js';
 import { t } from './strings.js';
 
 // The 我貢獻 ê 詞 page (the signed-in contributor's words, in review and collected, each with 修改) and
@@ -75,7 +75,6 @@ export function renderMine() {
           mineSection(t('mine.inReview'), pending),
           mineSection(t('mine.collected'), collected),
           pending.length + collected.length === 0 ? h('p', { class: 'empty' }, t('mine.none')) : null,
-          accountLine(user, { withMine: false }),
         ].filter(Boolean),
       );
     } catch {

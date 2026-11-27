@@ -78,7 +78,7 @@
   --measure: 980px;
   /* the announcement bar: a dark slate in both themes, a step lighter on the dark page */
   --announce-bg: light-dark(#2b3240, #323a4a);
-  --announce-height: 8rem;
+  --announce-height: 9rem;
   /* the homepage's wider column, for the bubble map */
   --measure-wide: 1400px;
   --sidebar-width: 18.75rem;
@@ -526,13 +526,6 @@ input.pill-input.align-end { left: auto; right: 0; }
 .form-notice { display: inline-flex; align-items: center; gap: 0.5rem; margin: 0; color: var(--secondary); font-size: 0.9375rem; }
 .submitted { display: grid; justify-items: start; gap: 1rem; }
 .submitted p { margin: 0; }
-/* the signed-in line under the form and on 我的提交 (site/submit-page.js accountLine); the slot
-   keeps its height while the session loads, so nothing below moves */
-.account-slot { min-height: 1.5rem; }
-.account-line { margin: 0; color: var(--secondary); font-size: 0.875rem; }
-.link-button { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; }
-.link-button:hover { text-decoration: underline; }
-.link-button:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
 /* 我的提交 (site/mine-page.js): the words in review, then the collected ones, each a white row */
 .mine { display: grid; gap: 2rem; }
 .mine-signin { display: grid; justify-items: center; gap: 1rem; text-align: center; }
@@ -594,14 +587,17 @@ input.pill-input.align-end { left: auto; right: 0; }
 @starting-style { .sidebar:popover-open { transform: translateX(-100%); } }
 .sidebar::backdrop { background: rgba(0, 0, 0, 0.3); }
 .sidebar-close { display: flex; justify-content: flex-end; margin: -0.25rem -0.5rem 0 0; }
-/* social links at the sidebar's foot (after taigikeyboard.tw/web): margin-top auto holds them at
-   the window's foot */
-.sidebar-footer { flex: none; margin-top: auto; padding-top: 2.5rem; }
-.social-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.25rem; }
-.social-links a { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: var(--radius-inner); color: var(--secondary); transition: var(--button-transition); }
-.social-links a:hover { background: var(--ghost-hover); color: var(--text); text-decoration: none; }
-.social-links a:active { background: var(--ghost-active); transform: var(--button-press); }
-.social-links svg { flex: none; width: 15px; height: 15px; }
+/* social links at the homepage's foot (after taigikeyboard.tw/web), on the announcement bar's dark
+   slate so the page closes as it opens; the icons light up the way the bar's outlined pills do.
+   Other pages leave them out */
+.site-footer { padding: 2rem 1.5rem; background: var(--announce-bg); }
+body:not(:has(> main[data-page="home"])) .site-footer { display: none; }
+.social-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
+.social-links a { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: var(--radius-control); color: rgba(255, 255, 255, 0.85); transition: var(--button-transition); }
+.social-links a:hover { background: rgba(255, 255, 255, 0.12); color: #fff; text-decoration: none; }
+.social-links a:active { background: rgba(255, 255, 255, 0.2); transform: var(--button-press); }
+.social-links a:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+.social-links svg { flex: none; width: 22px; height: 22px; }
 @media (min-width: 50rem) {
   /* docked, collapsed by default (index.html): slid out and hidden (its controls leave the tab order); display: flex overrides the closed popover's display: none so it can slide */
   .sidebar { position: fixed; display: flex; flex-direction: column; padding-top: 1.5rem; padding-bottom: 0; border-right: 1px solid var(--chart-grid); box-shadow: none; visibility: hidden; transition: transform var(--duration-panel) ease, visibility var(--duration-panel); }
@@ -609,9 +605,10 @@ input.pill-input.align-end { left: auto; right: 0; }
   body { transition: padding-left var(--duration-panel) ease; }
   :root[data-sidebar="open"] .sidebar { transform: none; visibility: visible; }
   :root[data-sidebar="open"] body { padding-left: calc(var(--sidebar-width) + 1.5rem); }
-  /* after docusaurus.io: open, a full-width « bar held at the sidebar's foot; collapsed, a slim
-     strip down the window's left edge, all of it a » button, and the page starts beside it */
-  .sidebar-collapse { position: sticky; bottom: 0; display: flex; flex: none; align-items: center; justify-content: center; height: 40px; margin: 1.5rem -1.5rem 0; padding: 0; border: 0; border-top: 1px solid var(--hairline); background: var(--sidebar-bg); color: var(--secondary); cursor: pointer; transition: var(--button-transition); }
+  /* after docusaurus.io: open, a full-width « bar held at the sidebar's foot (margin-top auto);
+     collapsed, a slim strip down the window's left edge, all of it a » button, and the page starts
+     beside it */
+  .sidebar-collapse { position: sticky; bottom: 0; display: flex; flex: none; align-items: center; justify-content: center; height: 40px; margin: auto -1.5rem 0; padding: 0; border: 0; border-top: 1px solid var(--hairline); background: var(--sidebar-bg); color: var(--secondary); cursor: pointer; transition: var(--button-transition); }
   .sidebar-collapse:hover { background: var(--button-soft); color: var(--text); }
   .sidebar-collapse:focus-visible { outline: none; box-shadow: inset 0 0 0 3px var(--ring); }
   .sidebar-collapse svg { width: 18px; height: 18px; }
@@ -684,26 +681,30 @@ input.pill-input.align-end { left: auto; right: 0; }
    part of the page, so it scrolls away with it. Every page's title starts below it at the same
    height, so switching pages never moves it --- */
 .topbar { background: var(--announce-bg); }
-.topbar-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 1rem; min-height: var(--announce-height); padding: 1.25rem 1.5rem; }
+.topbar-inner { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 1rem; min-height: var(--announce-height); padding: 1.75rem 1.5rem; }
 .topbar a:focus-visible { outline: none; border-radius: var(--radius-inner); box-shadow: 0 0 0 3px var(--ring); }
-.announce { grid-column: 2; display: flex; align-items: center; gap: 0.875rem; margin: 0; font-size: 0.9375rem; }
+.announce { grid-column: 2; display: flex; align-items: center; gap: 0.875rem; margin: 0; font-size: 1.0625rem; }
 .announce-text { max-width: 50rem; color: rgba(255, 255, 255, 0.85); line-height: 1.6; }
 /* two paragraphs: what the site is, then the invitation (next to the button) */
 .announce-text > span { display: block; }
 .announce-text > span + span { margin-top: 0.375rem; }
-.announce-cta { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.375rem 0.875rem 0.375rem 0.625rem; border-radius: var(--radius-round); background: var(--button-strong); color: #fff; font-weight: 600; white-space: nowrap; transition: var(--button-transition); }
+.announce-cta { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.375rem 0.875rem 0.375rem 0.625rem; border-radius: var(--radius-control); background: var(--button-strong); color: #fff; font-weight: 600; white-space: nowrap; transition: var(--button-transition); }
 .announce-cta svg { width: 1rem; height: 1rem; }
 .announce-cta:hover { background: var(--button-strong-hover); text-decoration: none; }
 .announce-cta:active { background: var(--button-strong-active); transform: var(--button-press); }
-.topbar a.announce-cta:focus-visible { border-radius: var(--radius-round); }
+.topbar a.announce-cta:focus-visible { border-radius: var(--radius-control); }
 /* on the form itself the button stands down, keeping its place so the bar does not shift */
-body:has(> main[data-page="submit"]) .announce-cta:not(.announce-find) { visibility: hidden; }
-/* the way to the 揣詞 page: the same pill, outlined, so 提交新詞 stays the main call; it stands down
-   on the 揣詞 page the same way */
-.announce-find { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); background: transparent; }
-.announce-find:hover { background: rgba(255, 255, 255, 0.12); }
-.announce-find:active { background: rgba(255, 255, 255, 0.2); }
+body:has(> main[data-page="submit"]) .announce-submit { visibility: hidden; }
+/* the ways to the 揣詞 and 我貢獻 ê 詞 pages: the same pill, outlined, so 提交新詞 stays the main
+   call; each stands down on its own page the same way */
+.announce-outline { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45); background: transparent; }
+.announce-outline:hover { background: rgba(255, 255, 255, 0.12); }
+.announce-outline:active { background: rgba(255, 255, 255, 0.2); }
 body:has(> main[data-page="search"]) .announce-find { visibility: hidden; }
+/* the right end of the bar: 你好！ @login once signed in (site/app.js); in its own column, so the
+   centred announcement and buttons never move when it appears */
+.account-greeting { grid-column: 3; justify-self: end; margin: 0; font-size: 1rem; color: rgba(255, 255, 255, 0.85); text-align: right; overflow-wrap: anywhere; }
+body:has(> main[data-page="mine"]) .announce-mine { visibility: hidden; }
 /* the 揣詞 page's box: as wide as a reading line under the title, its menu exactly as wide */
 main > .search { max-width: 36rem; margin: 0 auto; }
 /* the box matches the form's fields: the 12px radius, white, lifted by the surface shadow */
@@ -716,5 +717,7 @@ main > .search > .matches { left: 0; right: 0; }
 @media (max-width: 40rem) {
   .topbar-inner { gap: 0.75rem; padding: 1rem; }
   .announce-text { display: none; }
+  /* three buttons may not fit one line on a narrow phone */
+  .announce { flex-wrap: wrap; justify-content: center; gap: 0.5rem; }
 }
 

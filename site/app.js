@@ -99,13 +99,25 @@ function translateStatic() {
   for (const el of document.querySelectorAll('[data-i18n-title]')) el.setAttribute('title', t(el.dataset.i18nTitle));
 }
 
+// The bar's 你好！ @login, once the session says who is signed in; blank while signed out.
+let signedIn = null;
+const greeting = document.querySelector('.account-greeting');
+const showGreeting = () => {
+  greeting.textContent = signedIn ? t('account.greeting', { login: signedIn.login }) : '';
+};
+
 setLanguage(document.documentElement.dataset.lang);
 translateStatic();
+currentUser().then((user) => {
+  signedIn = user;
+  showGreeting();
+});
 // a new language redraws the current page in it (the reader stays where they are)
 initSettings(document.getElementById('settings'), (settings) => {
   if (settings.lang === undefined || settings.lang === language()) return;
   setLanguage(settings.lang);
   translateStatic();
+  showGreeting();
   closeWordTip();
   route();
 });

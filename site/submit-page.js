@@ -1,5 +1,5 @@
 import { MAX_EXAMPLES, MAX_WORDS } from '../lib/entry.js';
-import { currentUser, signIn, signOut, submitErrorText, submitWords, WorkerError } from './account.js';
+import { currentUser, signIn, submitErrorText, submitWords, WorkerError } from './account.js';
 import { loadRows } from './data.js';
 import { h } from './dom.js';
 import {
@@ -37,20 +37,6 @@ const submitTips = () => {
   return h('section', { class: 'submit-tips', 'aria-label': t('submit.tips') }, h('ol', {}, tips.map((tip) => h('li', {}, tip))));
 };
 
-// The signed-in line under the form and on 我貢獻 ê 詞: 「用 <login> 登入 · 我貢獻 ê 詞 · 登出」; signing
-// out redraws the page signed out. Empty while signed out.
-export function accountLine(user, { withMine = true } = {}) {
-  if (!user) return null;
-  const out = h('button', { class: 'link-button', type: 'button' }, t('account.signOut'));
-  out.addEventListener('click', async () => {
-    out.disabled = true;
-    await signOut();
-    window.dispatchEvent(new HashChangeEvent('hashchange'));
-  });
-  const mine = withMine ? [' · ', h('a', { href: '#/mine' }, t('mine.title'))] : [];
-  return h('p', { class: 'account-line' }, t('account.signedInAs', { login: user.login }), mine, ' · ', out);
-}
-
 // An entry as the form's draft shape, to fill the 修改 form.
 const entryDraft = (entry) => ({ ...entry, words: [{ hanji: entry.hanji, tl: entry.tl }] });
 
@@ -70,7 +56,6 @@ export function renderSubmit({ edit = null } = {}) {
   const showLabel = (user) => {
     submitLabel.textContent = edit ? t('edit.button') : user ? t('submit.button') : signedOutLabel;
   };
-  const account = h('div', { class: 'account-slot' });
   const submit = h(
     'button',
     { class: 'button button-steady', type: 'submit' },
@@ -78,10 +63,7 @@ export function renderSubmit({ edit = null } = {}) {
     submitLabel,
   );
   const session = currentUser();
-  session.then((user) => {
-    showLabel(user);
-    account.replaceChildren(accountLine(user) ?? '');
-  });
+  session.then(showLabel);
 
   showLabel(null);
   // the 修改 form holds its one word
@@ -117,7 +99,6 @@ export function renderSubmit({ edit = null } = {}) {
     tagGroup(draft?.tags ?? []),
     field('note', t('field.note'), textInput('note', { multiline: true })),
     h('div', { class: 'actions' }, submit, notice),
-    account,
   );
   for (const name of ['meaning', 'note']) {
     if (typeof draft?.[name] === 'string') form.elements[name].value = draft[name];
