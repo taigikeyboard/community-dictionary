@@ -1,11 +1,14 @@
 import { entryKey, entryPath, issue, MAX_WORDS, parseEntryPath, prepareEntry, serializeEntry } from '../../lib/entry.js';
 import { api, apiOrNull, GitHubError, installationToken } from './github.js';
 
-// New, edit and withdraw submissions: checks the contributor's rights and caps against GitHub
+// New and edit submissions, and the contributor's own open ones: checks the contributor's rights and caps against GitHub
 // state (no database), then writes one commit on a `submit/<id>/<key>` branch and opens the pull
 // request.
 
 const BRANCH_PREFIX = 'submit/';
+// edits to one open submission land as commits on its branch; past this many it refuses more, so a
+// signed-in account cannot keep writing to GitHub without limit (maintainer 2026-11-27)
+const MAX_SUBMISSION_COMMITS = 20;
 const ENTRY_FIELDS = ['accents', 'tags', 'place', 'meaning', 'examples', 'note'];
 
 // A refusal the contributor sees; `code` is mapped to Taiwanese text by the site.
@@ -89,6 +92,10 @@ class Repo {
       if (JSON.parse(decodeBase64Utf8(blob.content)).contributor_id === userId) owned.add(location.key);
     }
     return owned;
+  }
+
+  async commitCount(pr) {
+    return (await this.call('GET', `/pulls/${pr.number}`)).commits;
   }
 
   async readEntry(path, ref) {
@@ -220,7 +227,8 @@ async function ownedTarget(repo, user, ownFiles, path) {
   const location = typeof path === 'string' ? parseEntryPath(path) : null;
   if (!location) throw new SubmitError(400, 'invalid', { issues: [issue('path', 'not_entry_path')] });
   const open = ownFiles.get(path);
-  if (open?.status === 'removed') throw new SubmitError(409, 'already_withdrawn');
+  // an earlier edit that changed the pair moved the entry away from this path
+  if (open?.status === 'removed') throw new SubmitError(404, 'not_found');
   const ref = open ? open.pr.head.ref : repo.base;
   const entry = await repo.readEntry(path, ref);
   if (!entry) throw new SubmitError(404, 'not_found');
@@ -247,6 +255,7 @@ export async function submitEdit(env, user, body) {
   }
 
   if (!target.pr) checkCaps(env, user, openPrs);
+  else if ((await repo.commitCount(target.pr)) >= MAX_SUBMISSION_COMMITS) throw new SubmitError(429, 'cap_contributor');
   const message = `edit ${wordLabel(old)}`;
   // A changed pair adds the new file and deletes the old one in the same commit.
   const changes = pairChanged ? new Map([[entryPath(user.login, newKey), entry], [body.path, null]]) : new Map([[body.path, entry]]);
@@ -263,21 +272,16 @@ export async function submitEdit(env, user, body) {
   return repo.openPullRequest(branch, message, prBody(user, lines));
 }
 
-export async function withdraw(env, user, body) {
+// The signed-in contributor's open submissions, entry by entry: what `search.json` cannot show yet.
+// Only their own branches (submit/<id>/) are read, and only entries still carrying their id.
+export async function listOwn(env, user) {
   const repo = new Repo(env, await installationToken(env));
-  const { openPrs, ownFiles } = await loadState(repo, user);
-  const target = await ownedTarget(repo, user, ownFiles, body.path);
-
-  if (!target.pr) checkCaps(env, user, openPrs);
-  const message = `withdraw ${wordLabel(target.entry)}`;
-  const branch = await repo.writeCommit({
-    branch: target.pr?.head.ref,
-    newBranch: `${BRANCH_PREFIX}${user.id}/${target.location.key}`,
-    openPrs,
-    changes: new Map([[body.path, null]]),
-    message,
-    user,
-  });
-  if (target.pr) return { url: target.pr.html_url, number: target.pr.number };
-  return repo.openPullRequest(branch, message, prBody(user, [`\`${body.path}\``]));
+  const { ownFiles } = await loadState(repo, user);
+  const found = [];
+  for (const [path, { pr, status }] of ownFiles) {
+    if (status === 'removed' || !parseEntryPath(path)) continue;
+    const entry = await repo.readEntry(path, pr.head.ref);
+    if (entry?.contributor_id === user.id) found.push({ path, entry, pullRequest: { url: pr.html_url, number: pr.number } });
+  }
+  return found;
 }

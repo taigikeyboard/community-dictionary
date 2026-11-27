@@ -1,11 +1,11 @@
 import { authorizeUrl, exchangeCode, api } from './github.js';
 import { cookie, randomToken, readCookie, sign, verify, base64url } from './session.js';
 import { issue, LOGIN_RE } from '../../lib/entry.js';
-import { submitEdit, submitNew, SubmitError, withdraw } from './submit.js';
+import { listOwn, submitEdit, submitNew, SubmitError } from './submit.js';
 
 // Submission Worker: GitHub sign-in for the static site, and the endpoints that turn a filled-in
-// form into a pull request. Routes: GET /login, /callback, /session; POST /logout, /submit,
-// /withdraw.
+// form into a pull request. Routes: GET /login, /callback, /session, /mine; POST /logout, /submit
+// (new, or an edit when the body names a path).
 
 // __Host-: Secure, Path=/ and no Domain, so a sibling *.taigikeyboard.tw page cannot plant one.
 const SESSION_COOKIE = '__Host-session';
@@ -109,7 +109,7 @@ async function readBody(request) {
   throw new SubmitError(400, 'invalid', { issues: [issue('body', 'not_object')] });
 }
 
-const ACTIONS = { '/submit': submitNew, '/withdraw': withdraw };
+const ACTIONS = { '/submit': submitNew };
 
 async function post(env, request, path) {
   // Cross-site request forgery guard: only the site's own pages may post.
@@ -135,6 +135,11 @@ async function route(env, request) {
     if (pathname === '/session') {
       const user = await currentUser(env, request);
       return user ? json(env, request, 200, user) : json(env, request, 401, { error: 'signed_out' });
+    }
+    if (pathname === '/mine') {
+      const user = await currentUser(env, request);
+      if (!user) return json(env, request, 401, { error: 'signed_out' });
+      return json(env, request, 200, { submissions: await listOwn(env, user) });
     }
   }
   if (request.method === 'POST' && (pathname === '/logout' || pathname in ACTIONS)) return post(env, request, pathname);

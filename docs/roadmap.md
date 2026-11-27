@@ -1,6 +1,6 @@
 # Community dictionary — roadmap
 
-> **Status**: 2026-11-27 — Phases 0, 1, 2 and 4 done; Worker live at `dict-api.taigikeyboard.tw`; Phase 3 site live with sign-in and submit, Japanese and English UI; "My submissions" (edit, withdraw) still to come.
+> **Status**: 2026-11-27 — Phases 0, 1, 2 and 4 done; Worker live at `dict-api.taigikeyboard.tw`; Phase 3 site live with sign-in and submit, Japanese and English UI; "My submissions" (edit) in progress.
 
 ## Goal
 
@@ -107,16 +107,16 @@ Duplicate rules (D10), checked by listing the repository tree and the open submi
 
 A build step compiles `entries/` into one CSV and the site's search JSON, merging files with the same key into one row that lists every attesting contributor; the compiled files are build output, not tracked.
 
-### Edit and withdraw (D11)
+### Edit (D11)
 
 | Action | Pull request contains |
 |---|---|
 | Edit, pair unchanged | the same file, modified |
 | Edit, Hanji or Tâi-lô changed | new file under the new key + deletion of the old file; duplicate rules run again |
 | Edit while the first pull request is still open | one more commit on that pull request's branch |
-| Withdraw | deletion of the file |
+| Past 20 commits on one open pull request | refused (`cap_contributor`) |
 
-A withdrawn entry leaves the current data; it stays in git history and its CC0 dedication is not revoked; the withdraw screen ("My submissions") must say so.
+Withdraw was dropped (maintainer 2026-11-27): a contributor who wants an entry gone reports it, and the maintainer removes it.
 
 ## Phases
 
@@ -126,8 +126,8 @@ One pull request per phase.
 |---|---|---|
 | 0 | This roadmap, README, licences | Done 2026-11-27 — code Apache-2.0 (`LICENSE`), data CC0 1.0 (`LICENSE-DATA`) |
 | 1 | Entry schema; one validation module (field limits, character whitelists, normalization, key) used by the site, the Worker and CI; CI job that validates every changed entry and its file name; compile script | Done |
-| 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/withdraw`, session, caps, pull request creation; tests against a mocked GitHub API | Done 2026-11-26, deployed |
-| 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit, withdraw), "submitted" page with the pull request link; Pages deploy | In progress — sign-in, submit and the "submitted" page live 2026-11-26; "My submissions" (edit, withdraw) next |
+| 2 | Worker: `/login`, `/callback`, `/submit` (new and edit), `/mine` (2026-11-27; `/withdraw` removed the same day), session, caps, pull request creation; tests against a mocked GitHub API | Done 2026-11-26, deployed |
+| 3 | Site: the submission form, search over accepted entries, "My submissions" page (edit), "submitted" page with the pull request link; Pages deploy | In progress — sign-in, submit and the "submitted" page live 2026-11-26; "My submissions" (edit, withdraw) next |
 | 4 | One-time setup by the maintainer (GitHub App, Worker secrets, DNS), then an end-to-end submission on the live site | Done 2026-11-26 — App 「台語齒盤群眾辭典 TaigiKeyboard」 (slug `taigikeyboard`, bot `taigikeyboard[bot]` = `SUBMIT_APP_LOGIN`; created as `taigi-dictionary-submit`, renamed the same day — a rename changes the slug and bot login, so update the variable with it), public, Worker deployed, test pull request #1 opened by the bot with the contributor as commit author, `validate` passed in submission mode, closed unmerged |
 
 ### Phase 1 — schema and checks
@@ -157,9 +157,9 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 
 - The contributor's `id` and `login` come only from GitHub's `/user` response, never from the form.
 - Form text never reaches a shell or a template: the entry is `JSON.stringify` output, the commit message and pull request body are built from validated fields.
-- Branch `submit/<user id>/<key>`; pull request title `add` / `edit` / `withdraw <hanji> <tl>`; no labels.
+- Branch `submit/<user id>/<key>`; pull request title `add` / `edit <hanji> <tl>`; no labels.
 - One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, tags, place, meaning, examples and note; each word is its own entry file, all in one commit and one pull request (branch named after the first word's key, title and commit subject `add <n> words`, the commit body listing the words). The cap counts pull requests, not words.
-- Edit and withdraw: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair adds the new file and deletes the old one in the same commit. An edit or withdrawal of an entry still in an open submission is one more commit on that branch (fast-forward only, so a concurrent write fails rather than being lost).
+- Edit: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair adds the new file and deletes the old one in the same commit. An edit or withdrawal of an entry still in an open submission is one more commit on that branch (fast-forward only, so a concurrent write fails rather than being lost).
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
 
@@ -169,7 +169,7 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 |---|---|
 | Host | `dict-api.taigikeyboard.tw` as a Workers Custom Domain in `worker/wrangler.jsonc` (the zone is on Cloudflare); `workers_dev` off |
 | Routes | `GET /login?return=#/…` → GitHub; `GET /callback` → back to `SITE_URL` + that hash route (anything else → `#/`); `GET /session` → `{ id, login }` or 401; `POST /logout`; `POST /submit` (new: `{ words: [{ hanji, tl }], accents, tags, place, meaning, examples: [{ hanji, tl }], note }`; edit: the same fields for one word plus `path`); `POST /withdraw { path }` |
-| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_owner`, `not_found`, `unchanged`, `already_withdrawn`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
+| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_owner`, `not_found`, `unchanged`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
 | Session | 24 hours, cookie `__Host-session`; the OAuth `state` + PKCE verifier sit in a signed 10-minute `__Host-oauth` cookie (`__Host-`: no sibling subdomain can plant either); each signed value carries its use, so one is never accepted as the other; the GitHub user token is used for `/user` only and never stored |
 | Installation token | App JWT (`iss` = client ID) → `GET /repos/{repo}/installation` → token limited to this repository and `contents` + `pull_requests: write`; cached per isolate until five minutes before expiry |
 | Duplicate check | the base branch's recursive tree (a truncated tree fails closed) plus the files of the contributor's open submission pull requests |
@@ -193,7 +193,7 @@ Current state (2026-11-27). Superseded wording and dated decisions live in git h
 - **Tags**: 27 semantic tags named with 教典 headwords; the tag is the stored key and the route, translations are display labels. iTaigi pairs were tagged once by `scripts/import-itaigi.js` (教典 categories, then Claude); the tags are part of `data/itaigi.json`.
 - **iTaigi**: CC0 snapshot from itaigi.tw's official export, committed as `data/itaigi.json` and never downloaded at deploy. Words credit their iTaigi contributors, with a link to iTaigi.
 - **Submit**: signed out, the button reads 「登入 GitHub 提交」 and keeps the form in sessionStorage across sign-in; signed in, it posts `/submit` and shows 「提交成功」 with the pull request link. The form validates with `lib/entry.js` first; validation and Worker errors are issue codes worded in the reader's language. One's own earlier pair is a row error; another contributor's asks for one confirmation.
-- **Not built yet**: "My submissions" (edit, withdraw), which filters the same JSON by the signed-in id and uses the Worker's edit / withdraw routes.
+- **Not built yet**: "My submissions" (edit), planned below.
 
 ### Phase 4 — maintainer setup
 
@@ -249,7 +249,7 @@ waits for review). A contributor who wants a word gone reports it.
 
 | Step | Commit | Scope (grounded in code) |
 |---|---|---|
-| 1 | `feat(worker)` | Remove `withdraw()` (`worker/src/submit.js`) and its route (`worker/src/index.js` `ACTIONS`) with its tests; `submitEdit` refuses a 21st commit on an open submission (`GET /pulls/{n}` `commits`) with `cap_contributor`; new `GET /mine` → the signed-in contributor's open submissions only (branches `submit/<own id>/`, via `loadState`), as `[{ path, entry, pullRequest: { url, number } }]`, 401 signed out, `no-store`. Tests for each. Deploy with the site. |
+| 1 | `feat(worker)` (done) | Remove `withdraw()` (`worker/src/submit.js`) and its route (`worker/src/index.js` `ACTIONS`) with its tests; `submitEdit` refuses a 21st commit on an open submission (`GET /pulls/{n}` `commits`) with `cap_contributor`; new `GET /mine` → the signed-in contributor's open submissions only (branches `submit/<own id>/`, via `loadState`), as `[{ path, entry, pullRequest: { url, number } }]`, 401 signed out, `no-store`. Tests for each. Deploy with the site. |
 | 2 | `feat(site)` | 登出 button (`POST /logout`, already in the Worker) beside the signed-in state on the form and on 我的提交. |
 | 3 | `feat(site)` | `#/mine` 我的提交: signed out → sign-in button; signed in → accepted words (`search.json` attestations with the session's `contributor_id`) and words in review (`GET /mine`), as cards. Each own attestation (here and on every card page) gets 修改: the form for that one word, filled from the entry, posting `/submit` with `path`. |
 | 4 | `feat(site)` | 回報 on every card: a new GitHub issue from `.github/ISSUE_TEMPLATE/report.yml` (issue form; word, key, source, page URL prefilled through query parameters; reason dropdown; details). GitHub requires a sign-in to file it. |

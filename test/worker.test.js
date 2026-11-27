@@ -6,7 +6,7 @@ import { clearTokenCache } from '../worker/src/github.js';
 import { sign } from '../worker/src/session.js';
 import { accentEntry, KEY } from './fixtures.js';
 
-// Worker end to end against an in-memory GitHub: sign-in, new / edit / withdraw, caps, ownership.
+// Worker end to end against an in-memory GitHub: sign-in, new / edit, caps, ownership, own submissions.
 
 const REPO = 'taigikeyboard/community-dictionary';
 const SITE = 'https://taigikeyboard.tw';
@@ -85,6 +85,13 @@ function fakeGitHub() {
       return reply(201, pr);
     }
     let m;
+    // one pull request, with how many commits its branch has on top of main
+    if ((m = /^\/pulls\/(\d+)$/.exec(rest)) && method === 'GET') {
+      const pr = gh.pulls[Number(m[1]) - 1];
+      let commits = 0;
+      for (let sha = refs.get(pr.head.ref); sha && sha !== refs.get('main'); sha = objects.get(sha).parents[0]) commits += 1;
+      return reply(200, { ...pr, commits });
+    }
     if ((m = /^\/pulls\/(\d+)\/files$/.exec(rest))) {
       const pr = gh.pulls[Number(m[1]) - 1];
       const head = gh.branches.get(pr.head.ref);
@@ -369,7 +376,14 @@ describe('new submission', () => {
   });
 });
 
-describe('edit and withdraw', () => {
+async function get(path, { user = USER } = {}) {
+  const headers = { Origin: SITE };
+  if (user) headers.Cookie = await sessionCookie(user);
+  const res = await worker.fetch(new Request(`${WORKER}${path}`, { headers }), env);
+  return { status: res.status, data: await res.json(), headers: res.headers };
+}
+
+describe('edit', () => {
   const path = `entries/octocat/${KEY}.json`;
   beforeEach(() => gh.branches.get('main').set(path, serializeEntry(accentEntry())));
 
@@ -402,24 +416,47 @@ describe('edit and withdraw', () => {
     assert.deepEqual([res.status, res.data.error], [400, 'unchanged']);
   });
 
-  it('refuses edits and withdrawals of another contributor’s entry', async () => {
+  it('refuses an edit of another contributor’s entry', async () => {
     const edit = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'x' }, { user: OTHER });
-    const gone = await post('/withdraw', { path }, { user: OTHER });
-    assert.deepEqual([edit.status, gone.status], [403, 403]);
+    assert.equal(edit.status, 403);
     assert.equal(gh.commits.length, 0);
   });
 
-  it('withdraws by deleting the file in a pull request', async () => {
-    const res = await post('/withdraw', { path });
-    assert.equal(res.status, 200);
-    assert.equal(gh.pulls[0].title, 'withdraw 八 pueh');
-    assert.ok(!gh.branches.get(gh.pulls[0].head.ref).has(path));
-    assert.ok(gh.branches.get('main').has(path));
+  it('answers not_found for a missing file and invalid for a bad path', async () => {
+    const missing = await post('/submit', { path: 'entries/octocat/ffffffffffffffff.json', hanji: '八', tl: 'pueh', ...form });
+    const bad = await post('/submit', { path: '../etc/passwd', hanji: '八', tl: 'pueh', ...form });
+    assert.deepEqual([missing.status, bad.status], [404, 400]);
   });
 
-  it('answers not_found for a missing file and invalid for a bad path', async () => {
-    const missing = await post('/withdraw', { path: 'entries/octocat/ffffffffffffffff.json' });
-    const bad = await post('/withdraw', { path: '../etc/passwd' });
-    assert.deepEqual([missing.status, bad.status], [404, 400]);
+  it('has no withdraw route', async () => {
+    const res = await post('/withdraw', { path });
+    assert.equal(res.status, 404);
+  });
+
+  it('refuses a 21st commit on one open submission', async () => {
+    for (let n = 1; n <= 20; n += 1) {
+      const res = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: `note ${n}` });
+      assert.equal(res.status, 200, `edit ${n}`);
+    }
+    const over = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'note 21' });
+    assert.deepEqual([over.status, over.data.error], [429, 'cap_contributor']);
+    assert.equal(gh.commits.length, 20);
+  });
+});
+
+describe('own submissions', () => {
+  it('lists the signed-in contributor’s open entries only', async () => {
+    await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }], ...form });
+    await post('/submit', { words: [{ hanji: '九', tl: 'káu' }], ...form }, { user: OTHER });
+    const mine = await get('/mine');
+    assert.equal(mine.status, 200);
+    assert.equal(mine.headers.get('Cache-Control'), 'no-store');
+    assert.deepEqual(mine.data.submissions.map((s) => [s.entry.hanji, s.pullRequest.number]), [['八', 1]]);
+    assert.match(mine.data.submissions[0].path, /^entries\/octocat\/[0-9a-f]{16}\.json$/);
+  });
+
+  it('answers 401 signed out', async () => {
+    const res = await get('/mine', { user: null });
+    assert.deepEqual([res.status, res.data.error], [401, 'signed_out']);
   });
 });
