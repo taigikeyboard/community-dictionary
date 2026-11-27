@@ -6,13 +6,10 @@ import { TAG_NAMES } from '../site/tags.js';
 
 // word lengths in Hanji, bucketed 1 … LONGEST, the last bucket holding everything longer
 export const LONGEST = 8;
-// how many tag pairs and contributors the page lists
+// how many tag pairs the page lists
 export const TOP_PAIRS = 8;
-export const TOP_CONTRIBUTORS = 10;
-// the name iTaigi gives words whose contributor left none: not a person, and with over half of all
-// iTaigi words it would dwarf every real contributor, so the ranking leaves it out (maintainer
-// 2026-11-26); its words still credit it
-export const ANONYMOUS = '匿名';
+// how many community contributors the homepage shows by their GitHub picture
+export const TOP_GITHUB = 50;
 
 // One word's tag names and contributors, whichever source it comes from.
 function wordFacts(row, fromItaigi) {
@@ -51,20 +48,29 @@ export function buildStats(communityRows, itaigiRows, tagMap) {
     }
     for (const name of word.contributors) credits.set(name, (credits.get(name) ?? 0) + 1);
   }
-  const contributors = ranked(credits);
+  // community contributors only (a GitHub login and account ID on every entry), by words given; the
+  // ID names the picture, which survives a renamed login
+  const githubCredits = new Map();
+  const githubIds = new Map();
+  for (const row of communityRows) {
+    const people = new Map(row.attestations.map((a) => [a.contributor, a.contributor_id]));
+    for (const [name, id] of people) {
+      githubCredits.set(name, (githubCredits.get(name) ?? 0) + 1);
+      githubIds.set(name, id);
+    }
+  }
   return {
     words: words.length,
     tags: tagMap.length,
-    contributors: contributors.length,
+    contributors: credits.size,
     multiTag,
     perTag: tagMap.map(({ name, tl, count }) => ({ name, tl, count })).sort((a, b) => b.count - a.count),
     lengths: lengths.map((count, i) => ({ length: i + 1, count, orLonger: i + 1 === LONGEST })),
     pairs: ranked(pairs)
       .slice(0, TOP_PAIRS)
       .map(([key, count]) => ({ tags: key.split('\t'), count })),
-    topContributors: contributors
-      .filter(([name]) => name !== ANONYMOUS)
-      .slice(0, TOP_CONTRIBUTORS)
-      .map(([name, count]) => ({ name, count })),
+    githubContributors: ranked(githubCredits)
+      .slice(0, TOP_GITHUB)
+      .map(([name, count]) => ({ name, id: githubIds.get(name), count })),
   };
 }

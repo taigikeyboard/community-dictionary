@@ -56,10 +56,8 @@ function sections(stats) {
   const [topTag] = stats.perTag;
   const longest = Math.max(...stats.lengths.map((b) => b.count));
   const [topPair] = stats.pairs;
-  // BBC style: a single series is one blue (the tags, the lengths); a ranking marks its leader in blue
-  // against light grey context
+  // BBC style: a single series is one blue (the tags, the lengths)
   const neutral = 'var(--hue-blue)';
-  const context = 'var(--chart-context)';
   return [
     // the totals, as big numbers
     section(
@@ -150,24 +148,28 @@ function sections(stats) {
           ),
         )
       : null,
-    section(
-      '貢獻者',
-      h(
-        'ol',
-        { class: 'story-bars' },
-        stats.topContributors.map((person, index) =>
-          bar({
-            label: person.name,
-            href: contributorRoute(person.name),
-            share: person.count / stats.topContributors[0].count,
-            count: person.count,
-            color: index === 0 ? neutral : context,
-            index,
-            tip: { color: index === 0 ? neutral : context, title: person.name, value: `${number(person.count)} 个詞`, lines: [`占全部 ê ${percent(person.count, stats.words)}`, `排名第 ${index + 1}`] },
-          }),
-        ),
-      ),
-    ),
+    // the community's own contributors (GitHub accounts), most words first, by their GitHub picture
+    stats.githubContributors.length > 0
+      ? section(
+          '社群貢獻者',
+          h(
+            'ol',
+            { class: 'story-faces' },
+            stats.githubContributors.map((person, index) =>
+              h(
+                'li',
+                { style: `--i: ${index}` },
+                h(
+                  'a',
+                  { class: 'story-face', href: contributorRoute(person.name), title: `${person.name} · ${number(person.count)} 个詞` },
+                  h('img', { src: `https://avatars.githubusercontent.com/u/${person.id}?s=128`, alt: '', width: 64, height: 64, loading: 'lazy', decoding: 'async' }),
+                  h('span', { class: 'story-face-name' }, person.name),
+                ),
+              ),
+            ),
+          ),
+        )
+      : null,
   ].filter(Boolean);
 }
 
