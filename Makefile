@@ -1,4 +1,4 @@
-.PHONY: help setup test validate compile build preview ci worker-setup worker-dev check-hanji preview-mock
+.PHONY: help setup test validate compile build preview ci worker-setup worker-dev check-hanji preview-mock import-batch
 
 ARGS ?=
 
@@ -31,6 +31,9 @@ worker-setup: ## Install wrangler for the submission Worker
 
 worker-dev: ## Run the Worker locally at http://127.0.0.1:8787 (needs worker/.dev.vars)
 	npm run dev --prefix worker
+
+import-batch: ## Write entries from a 大批提交 issue CSV (ISSUE=12, or CSV=file LOGIN=octocat)
+	node scripts/import-batch.js $(if $(ISSUE),--issue $(ISSUE),--csv $(CSV) --login $(LOGIN))
 
 check-hanji: ## Check the Taiwanese UI text's Hanji against 教典 (ODS=kautian.ods from https://sutian.moe.edu.tw/media/senn/ods/kautian.ods)
 	node scripts/check-hanji.js $(ODS)

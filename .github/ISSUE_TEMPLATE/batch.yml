@@ -1,0 +1,30 @@
+# Opened from the 提交新詞 page's 大批提交 link (site/submit-page.js). The maintainer imports the CSV
+# with `node scripts/import-batch.js --issue <number>`, credited to the issue's author; the field
+# label must keep starting with "CSV" (import-batch.js CSV_HEADING).
+name: 大批提交 Batch submission
+description: 用 CSV 檔案一擺提交真濟詞 — submit many words at once from a CSV file
+title: "batch: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        CSV 範本 Template: https://taigikeyboard.tw/community-dictionary/batch-template.csv
+
+        - 一逝一个詞 One word per row: `hanji,tl,accents,tags,place,meaning,example_hanji,example_tl,note`
+        - 干焦 `tl` 一定愛寫 Only `tl` is required; 台羅請使用教育部台語羅馬字
+        - `accents`、`tags` 濟个用 `;` 分開 Separate several with `;`
+        - 收錄 ê 詞會掛你的 GitHub 名 Words are credited to your GitHub account
+  - type: textarea
+    id: csv
+    attributes:
+      label: CSV
+      description: 共 .csv 檔案拖入來，抑是直接貼內容 — drag the .csv file here, or paste its contents
+    validations:
+      required: true
+  - type: checkboxes
+    id: licence
+    attributes:
+      label: 授權 Licence
+      options:
+        - label: 我同意這寡詞用 CC0 公開 I release these words under CC0
+          required: true

@@ -1,5 +1,6 @@
 import { MAX_EXAMPLES, MAX_WORDS } from '../lib/entry.js';
 import { currentUser, signIn, submitErrorText, submitWords, WorkerError } from './account.js';
+import { REPO_URL } from './config.js';
 import { loadRows } from './data.js';
 import { h } from './dom.js';
 import {
@@ -30,10 +31,14 @@ import { listJoin, sentenceJoin, t, tParts } from './strings.js';
 // a word row of the form lists only the closest few words already collected
 const WORD_ROW_LIMIT = 5;
 
-// The tips above the form, numbered: one list item per tip, the first with a sign-up link.
+// The tips above the form, numbered: one list item per tip, the first with a sign-up link, the last
+// with the 大批提交 issue form (.github/ISSUE_TEMPLATE/batch.yml, imported with
+// scripts/import-batch.js) and the CSV template.
 const submitTips = () => {
   const signUp = h('a', { href: 'https://github.com/signup', target: '_blank', rel: 'noopener' }, t('submit.signUp'));
-  const tips = [tParts('submit.tipSignIn', { link: signUp }), t('submit.tipTl'), t('submit.tipHanji')];
+  const issue = h('a', { href: `${REPO_URL}/issues/new?template=batch.yml`, target: '_blank', rel: 'noopener' }, t('submit.batchIssue'));
+  const template = h('a', { href: 'batch-template.csv', download: '' }, t('submit.batchTemplate'));
+  const tips = [tParts('submit.tipSignIn', { link: signUp }), t('submit.tipTl'), t('submit.tipHanji'), tParts('submit.tipBatch', { issue, template })];
   return h('section', { class: 'submit-tips', 'aria-label': t('submit.tips') }, h('ol', {}, tips.map((tip) => h('li', {}, tip))));
 };
 

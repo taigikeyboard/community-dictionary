@@ -29,7 +29,7 @@ function moduleTags() {
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(join(dist, 'site'), { recursive: true });
-for (const file of ['styles.css', 'favicon.svg']) cpSync(join(root, 'site', file), join(dist, file));
+for (const file of ['styles.css', 'favicon.svg', 'batch-template.csv']) cpSync(join(root, 'site', file), join(dist, file));
 const page = readFileSync(join(root, 'site', 'index.html'), 'utf8');
 if (!page.includes('<!-- build-site:modules -->')) throw new Error('build-site: site/index.html lost its <!-- build-site:modules --> marker');
 writeFileSync(join(dist, 'index.html'), page.replace('  <!-- build-site:modules -->', moduleTags()));

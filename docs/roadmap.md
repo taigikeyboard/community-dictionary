@@ -265,3 +265,16 @@ Deliberately not adopted: withdraw (maintainer 2026-11-27); a Worker-filed issue
 `issues: write` on the App and its own abuse limits, and the maintainer wants a GitHub sign-in for
 every action anyway); reading branch files through raw.githubusercontent.com (cached for minutes,
 so a fresh edit would show stale).
+
+## Batch submission — CSV through a GitHub issue (2026-11-27)
+
+Maintainer decisions 2026-11-27: GitHub issue only (no email: an entry needs a GitHub login + id,
+and a public mailbox would sit on the site); one word per CSV row, `accents` / `tags` split by `;`,
+one example per row; the entry point is the last tip above the 提交新詞 form.
+
+| Piece | Scope (grounded in code) |
+|---|---|
+| `site/batch-template.csv` | Header `hanji,tl,accents,tags,place,meaning,example_hanji,example_tl,note` + one sample row; copied to `dist/` by `scripts/build-site.js`. |
+| `.github/ISSUE_TEMPLATE/batch.yml` | Issue form: CSV textarea (paste or attach a `.csv`), CC0 checkbox. The issue author is the contributor. |
+| `site/submit-page.js` `submitTips` | 「若有準備 CSV 檔案，請來遮 ap-lóo，用這个範本阮較好處理。」 as the last tip above the new-word form (not on 修改). |
+| `scripts/import-batch.js` | `make import-batch ISSUE=12` (or `CSV=… LOGIN=…`): reads the issue via `gh`, looks up the author's id, runs every row through `prepareEntry`, writes `entries/<login>/<key>.json` only when no row fails (else lists each problem by line). The maintainer commits on a branch and opens a PR with `Closes #12` — member mode in `scripts/validate.js`, so ownership checks do not apply; `MAX_WORDS` (form cap) does not apply either. |

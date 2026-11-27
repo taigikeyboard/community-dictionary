@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { NOREPLY_RE, serializeEntry } from '../lib/entry.js';
 import { checkTree } from '../scripts/check-tree.js';
 import { groupEntries, toCsv } from '../scripts/compile.js';
+import { csvSource, parseCsv, rowsToEntries } from '../scripts/import-batch.js';
 import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/import-itaigi.js';
 import { buildSearchRows, parseItaigi } from '../scripts/itaigi.js';
 import { TAG_NAMES } from '../site/tags.js';
@@ -327,4 +328,39 @@ test('stats buildStats: counts from the served rows, both sources', () => {
   assert.ok(stats.lengths.at(-1).orLonger);
   // tags by count, most first
   assert.deepEqual(stats.perTag.map((t) => t.name), ['食食', '植物']);
+});
+
+test('import-batch parses quoted CSV cells, CRLF and a BOM', () => {
+  const rows = parseCsv('﻿hanji,tl\r\n"a, ""b""",x\r\n\r\n"two\nlines",y\n');
+  assert.deepEqual(rows, [['hanji', 'tl'], ['a, "b"', 'x'], ['two\nlines', 'y']]);
+});
+
+test('import-batch turns the template CSV into entries credited to the contributor', async () => {
+  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27' };
+  const text = await readFile(new URL('../site/batch-template.csv', import.meta.url), 'utf8');
+  const { entries, errors } = await rowsToEntries(parseCsv(text), identity);
+  assert.deepEqual(errors, []);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].entry.tl, 'kóng--tsi̍t-siann');
+  assert.deepEqual(entries[0].entry.tags, ['動作']);
+  assert.equal(entries[0].entry.examples[0].tl, 'khui-tshia khah sè-lī--leh, kàu-uī ài kóng--tsi̍t-siann.');
+  assert.equal(entries[0].entry.contributor_id, 583231);
+});
+
+test('import-batch reports every bad row by line and splits lists on ;', async () => {
+  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27' };
+  const csv = 'tl,accents,tags\nsiann,臺南混合腔；高雄混合腔,a;b\n,,\nsiann,,\nkhi,火星腔,\n';
+  const { entries, errors } = await rowsToEntries(parseCsv(csv), identity);
+  assert.deepEqual(entries[0].entry.accents, ['臺南混合腔', '高雄混合腔']);
+  assert.deepEqual(entries[0].entry.tags, ['a', 'b']);
+  assert.deepEqual(errors, ['line 3: same word as line 2', 'line 4: accents: unknown choice "火星腔"']);
+  const header = await rowsToEntries(parseCsv('word,tl\nx,y\n'), identity);
+  assert.match(header.errors[0], /unknown column word/);
+});
+
+test('import-batch finds the CSV attached or pasted in the issue body', () => {
+  const attached = '### CSV\n\n[w.csv](https://github.com/user-attachments/files/123/w.csv)\n\n### 授權 Licence\n\n- [X] ok';
+  assert.deepEqual(csvSource(attached), { url: 'https://github.com/user-attachments/files/123/w.csv' });
+  assert.deepEqual(csvSource('### CSV\n\n```csv\ntl\nsiann\n```\n\n### 授權 Licence\n'), { text: 'tl\nsiann' });
+  assert.equal(csvSource('### CSV\n\n_No response_\n'), null);
 });
