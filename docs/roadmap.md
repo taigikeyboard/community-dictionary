@@ -25,7 +25,7 @@ Maintainer decisions, 2026-11-20 unless dated otherwise:
 
 | D9 | One JSON file per entry, in one directory per contributor (about 30 contributors expected). |
 | D10 | Entry identity = (Hanji, Tâi-lô); accents, meaning and the rest are fields. Different contributors may each submit the same pair — the second is an attestation, not a duplicate. The same contributor cannot submit a pair twice. |
-| D11 | A contributor can edit and withdraw their own entries, in the first version. Both go through a pull request and review like a new entry. |
+| D11 | A contributor can edit their own entries; each edit goes through a pull request and review like a new entry. Withdraw was dropped (maintainer 2026-11-27): a contributor reports a word they want gone. |
 | D12 | (Withdrawn 2026-11-20.) A multiple-choice 腔口差 kind (語音差異 / 詞彙差異 / 其他) was added and then removed the same day; categories were later removed altogether (D3). |
 
 Defaults chosen by the plan (not yet confirmed by the maintainer):
@@ -238,3 +238,30 @@ through a Node static server.
 | 4 | `build-site` generates the import map and modulepreload list | Done 2026-11-27 |
 | 5 | i18n: Taiwanese (default), Japanese, English for UI text and tag names; sidebar 語言 select; every Taiwanese Hanji checked against 教典 (sutian.moe.edu.tw) | Done 2026-11-27 |
 | 6 | Docs: README rewrite, Phase 3 section as current state, everything outside UI text and data in English | Done 2026-11-27 |
+
+## My submissions — edit, report, sign out (planned 2026-11-27)
+
+Maintainer decisions 2026-11-27: every action needs a GitHub sign-in; no withdraw (D11 narrows to
+edit); the Worker's unused `POST /withdraw` is removed; edits to an open submission are capped at
+20 commits per pull request; the whole-origin trust of `taigikeyboard.tw` (Trusted origin, Phase 2)
+is accepted ("依據你的建議", after the withdraw route goes, the exposure is edit-only and every edit
+waits for review). A contributor who wants a word gone reports it.
+
+| Step | Commit | Scope (grounded in code) |
+|---|---|---|
+| 1 | `feat(worker)` | Remove `withdraw()` (`worker/src/submit.js`) and its route (`worker/src/index.js` `ACTIONS`) with its tests; `submitEdit` refuses a 21st commit on an open submission (`GET /pulls/{n}` `commits`) with `cap_contributor`; new `GET /mine` → the signed-in contributor's open submissions only (branches `submit/<own id>/`, via `loadState`), as `[{ path, entry, pullRequest: { url, number } }]`, 401 signed out, `no-store`. Tests for each. Deploy with the site. |
+| 2 | `feat(site)` | 登出 button (`POST /logout`, already in the Worker) beside the signed-in state on the form and on 我的提交. |
+| 3 | `feat(site)` | `#/mine` 我的提交: signed out → sign-in button; signed in → accepted words (`search.json` attestations with the session's `contributor_id`) and words in review (`GET /mine`), as cards. Each own attestation (here and on every card page) gets 修改: the form for that one word, filled from the entry, posting `/submit` with `path`. |
+| 4 | `feat(site)` | 回報 on every card: a new GitHub issue from `.github/ISSUE_TEMPLATE/report.yml` (issue form; word, key, source, page URL prefilled through query parameters; reason dropdown; details). GitHub requires a sign-in to file it. |
+
+Security (review 2026-11-27): identity only from GitHub `/user`; signed `__Host-` HttpOnly cookie;
+POST checks `Origin`; ownership = the stored file's `contributor_id`, read from the base branch or
+the contributor's own submission branch only; strict `parseEntryPath`; CI re-checks ownership from
+the base revision; every edit is a pull request the maintainer merges. New surface: `GET /mine`
+answers only for the session's own id; the sign-out button closes a shared-computer session that
+could otherwise edit for 24 hours.
+
+Deliberately not adopted: withdraw (maintainer 2026-11-27); a Worker-filed issue (would need
+`issues: write` on the App and its own abuse limits, and the maintainer wants a GitHub sign-in for
+every action anyway); reading branch files through raw.githubusercontent.com (cached for minutes,
+so a fresh edit would show stale).
