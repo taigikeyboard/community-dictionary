@@ -7,4 +7,4 @@ A community dictionary of Taiwanese words: accent variation (腔口差), new wor
 ## Licence
 
 - Code (the site, the Worker, scripts, tests): Apache License 2.0, see [`LICENSE`](LICENSE).
-- Data (`entries/`, `data/`, and the dictionary files the site builds from them): CC0 1.0, see [`LICENSE-DATA`](LICENSE-DATA).
+- Data (`entries/` and the dictionary files the site builds from them): CC0 1.0, see [`LICENSE-DATA`](LICENSE-DATA).

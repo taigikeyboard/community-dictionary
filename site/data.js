@@ -1,4 +1,4 @@
-import { indexItaigi } from './logic.js';
+import { indexRows } from './logic.js';
 
 // The site's data files (built into dist/ by scripts/build-site.js), each fetched once and cached.
 
@@ -20,13 +20,13 @@ function cachedJson(path) {
   };
 }
 
-export const loadRows = cachedJson('search.json');
 export const loadTagMap = cachedJson('tag-map.json');
 export const loadStats = cachedJson('stats.json');
-const loadItaigi = cachedJson('itaigi.json');
+const loadSearch = cachedJson('search.json');
 
-// iTaigi's rows with their search index (logic.js indexItaigi), built once from the first load.
-export const loadItaigiIndex = (() => {
+// Every word (community and iTaigi alike) with its search index (logic.js indexRows), built once
+// from the first load.
+export const loadRows = (() => {
   let index = null;
-  return () => loadItaigi().then((rows) => (index ??= indexItaigi(rows)));
+  return () => loadSearch().then((rows) => (index ??= indexRows(rows)));
 })();

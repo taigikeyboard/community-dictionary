@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
-import { NOREPLY_RE, serializeEntry } from '../lib/entry.js';
+import { entryKey, NOREPLY_RE, serializeEntry } from '../lib/entry.js';
 import { checkTree } from '../scripts/check-tree.js';
 import { groupEntries, toCsv } from '../scripts/compile.js';
 import { csvSource, parseCsv, rowsToEntries } from '../scripts/import-batch.js';
-import { foldTl, isPlaceCategory, parseAnswer } from '../scripts/import-itaigi.js';
-import { buildSearchRows, parseItaigi } from '../scripts/itaigi.js';
-import { TAG_NAMES } from '../site/tags.js';
 import { romanize } from '../scripts/romanize.js';
 import { buildStats, LONGEST } from '../scripts/stats.js';
 import { buildTagMap, sampleWords } from '../scripts/tag-map.js';
@@ -19,7 +16,7 @@ import { pullRequestMode, validatePullRequest } from '../scripts/validate.js';
 import { accentEntry, KEY } from './fixtures.js';
 
 // Tests for the build-time scripts: the CI validator and compile (on throwaway git repositories),
-// the iTaigi import, romanization, the tag map and the statistics.
+// the batch import, romanization, the tag map and the statistics.
 
 const OCTOCAT = { name: 'octocat', email: '583231+octocat@users.noreply.github.com' };
 const MALLORY = { name: 'mallory', email: '999+mallory@users.noreply.github.com' };
@@ -278,30 +275,12 @@ test('CSV neutralizes formula-like cells', () => {
   assert.match(toCsv(rows), /,"'=HYPERLINK\(""x""\)",octocat\r\n$/);
 });
 
-test('parseItaigi: crowdsourced rows only, Tâi-lô cleaned, repeats and non-Tâi-lô dropped', () => {
-  const json = JSON.stringify({
-    資料: [
-      { 華語: '討厭', 來源: '阿明', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
-      // an identical row is dropped; one from another contributor is kept (its credit)
-      { 華語: '討厭', 來源: '阿明', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
-      { 華語: '討厭', 來源: '匿名', 漢字: '𤺪呢', 羅馬字: 'siān-neh' },
-      // imported dictionaries are not iTaigi's own content
-      { 華語: '討厭', 來源: '臺灣閩南語常用詞辭典', 漢字: '討厭', 羅馬字: 'thó-ià' },
-      { 華語: '一場空', 來源: '台文華文線頂辭典', 漢字: '空', 羅馬字: 'khang' },
-      // a full-width space between syllables becomes a plain one
-      { 華語: '一人', 來源: '匿名', 漢字: '一人', 羅馬字: 'tsit8　lang5' },
-      // Hanji typed in the Tâi-lô field, or nothing there, is not a reading
-      { 華語: '洪荒之力', 來源: '匿名', 漢字: '洪荒之力', 羅馬字: '洪荒之力' },
-      { 華語: '空', 來源: '匿名', 漢字: '空', 羅馬字: '' },
-    ],
-  });
-  // trace: rows are distinct on all four fields, so the second 阿明 row goes and the 匿名 one stays
-  assert.deepEqual(parseItaigi(json), [
-    ['𤺪呢', 'siān-neh', '討厭', '阿明'],
-    ['𤺪呢', 'siān-neh', '討厭', '匿名'],
-    ['一人', 'tsit8 lang5', '一人', '匿名'],
-  ]);
-  assert.throws(() => parseItaigi('{"rows":[]}'), /no 資料 array/);
+test('groupEntries: community words first, then case- and tone-free Tâi-lô, punctuation last', async () => {
+  const itaigi = (hanji, tl) => ({ ...accentEntry(), hanji, tl, contributor: 'taigikeyboard', contributor_id: 241070258, itaigi_contributors: ['阿明'] });
+  const entries = [itaigi('食', 'tsia̍h'), itaigi('遮', 'Tsia'), itaigi('87分', '--hannh'), itaigi('阿', 'a'), { ...accentEntry(), hanji: '鹹', tl: 'kiâm' }];
+  const checked = await Promise.all(entries.map(async (entry) => ({ entry, key: await entryKey(entry.hanji, entry.tl) })));
+  // trace: kiâm is the only community word; then folded a, tsia (Tsia), tsiah (tsia̍h); "--hannh" folds to "-hannh", no letter first
+  assert.deepEqual(groupEntries(checked).map((row) => row.hanji), ['鹹', '阿', '遮', '食', '87分']);
 });
 
 test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
@@ -314,42 +293,17 @@ test('romanize: POJ only where it differs from tl, TPS per "/" variant', () => {
   assert.deepEqual(romanize('it lí thong,bān lí thiat'), { poj: '', tps: 'ㄧㆵ ㄌㄧˋ ㄊㆲ，ㆠㄢ˫ ㄌㄧˋ ㄊㄧㄚㆵ' });
   assert.equal(romanize('koo-chiáu').tps, '');
   assert.equal(romanize('ti-kut / tu-kut').poj, '');
+  // an iTaigi row with Hanji in its Tâi-lô field has no reading to convert
+  assert.deepEqual(romanize('雞公仔'), { poj: '', tps: '' });
 });
 
-test('buildSearchRows: readings added, tags as indices, contributors kept, bad rows fail', () => {
-  const pairs = [
-    ['𤺪呢', 'siān-neh', ['心情'], ['阿明']],
-    ['閣', 'koh', [], ['阿明', '阿珠']],
-  ];
-  // trace: romanize('koh') → poj "" (same as tl), tps "ㄍㄛㆷ"
-  assert.deepEqual(buildSearchRows(pairs), [
-    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [TAG_NAMES.indexOf('心情')], ['阿明']],
-    ['閣', 'koh', '', 'ㄍㄛㆷ', [], ['阿明', '阿珠']],
-  ]);
-  assert.throws(() => buildSearchRows([['閣', 'koh', ['華語'], ['阿明']]]), /unknown tag "華語"/);
-  assert.throws(() => buildSearchRows([['閣', 'koh', []]]), /no contributor names/);
-  assert.throws(() => buildSearchRows([['閣', 'koh', [], []]]), /no contributor names/);
-});
-
-test('import-itaigi: reading fold, place categories, reply parsing', () => {
-  // trace: tone marks drop, ⁿ and the POJ dot (U+0358) stay letters
-  assert.equal(foldTl('Tsa̍p-pueh'), 'tsappueh');
-  assert.notEqual(foldTl('to͘h'), foldTl('toh'));
-  assert.notEqual(foldTl('chheⁿ'), foldTl('chhe'));
-  assert.ok(isPlaceCategory('臺北捷運板南線') && isPlaceCategory('臺南市') && !isPlaceCategory('生活用品'));
-  assert.deepEqual(parseAnswer('note {"0":["食食","華語"],"1":[]} done', 2), [['食食'], []]);
-  assert.throws(() => parseAnswer('{"0":["食食"]}', 2), /no tag list for word 1/);
-  assert.throws(() => parseAnswer('sorry, no JSON', 1), /reply is not JSON/);
-});
-
-test('data/itaigi.json: every row is [hanji, tl, [listed tag], [contributor]]', async () => {
-  const data = JSON.parse(await readFile(new URL('../data/itaigi.json', import.meta.url), 'utf8'));
-  for (const row of data) {
-    const [hanji, tl, tags, contributors] = row;
-    assert.equal(row.length, 4, JSON.stringify(row));
-    assert.ok(typeof hanji === 'string' && /[A-Za-z]/.test(tl), JSON.stringify(row));
-    for (const tag of tags) assert.ok(TAG_NAMES.includes(tag), `${hanji} ${tl}: ${tag}`);
-    assert.ok(contributors.length > 0 && contributors.every((name) => typeof name === 'string' && name !== ''), JSON.stringify(row));
+test('entries/taigikeyboard: every iTaigi entry credits its iTaigi contributors', async () => {
+  const dir = new URL('../entries/taigikeyboard/', import.meta.url);
+  const files = await readdir(dir);
+  assert.ok(files.length > 17000, `${files.length} files`);
+  for (const file of files) {
+    const entry = JSON.parse(await readFile(new URL(file, dir), 'utf8'));
+    assert.ok(entry.contributor_id === 241070258 && entry.itaigi_contributors.length > 0, file);
   }
 });
 
@@ -368,42 +322,42 @@ test('tag-map sampleWords: 2 to 4 characters, no spaces, one per Hanji, a stable
   assert.equal(sampleWords(rows, 1).length, 1);
 });
 
+// A search.json row: community (GitHub login) or iTaigi (names), with its tags.
+const communityRow = (hanji, tl, attestations) => ({ hanji, tl, attestations: attestations.map((a) => ({ itaigi_contributors: [], editors: [], ...a })) });
+const itaigiRow = (hanji, tl, tags, names) => ({
+  hanji, tl, attestations: [{ tags, contributor: 'taigikeyboard', contributor_id: 241070258, editors: [], itaigi_contributors: names }],
+});
+
 test('tag-map buildTagMap: counts and samples are the words of the tag page', () => {
-  const index = TAG_NAMES.indexOf('食食');
-  const itaigi = [
-    ['食飯', 'tsia̍h-pn̄g', '', '', [index]],
-    ['米粉', 'bí-hún', '', '', [index, 0]],
-    ['跤頭趺', 'kha-thâu-u', '', '', [0]],
+  const rows = [
+    itaigiRow('食飯', 'tsia̍h-pn̄g', ['食食'], ['阿明']),
+    itaigiRow('米粉', 'bí-hún', ['食食', '身軀'], ['阿明']),
+    itaigiRow('跤頭趺', 'kha-thâu-u', ['身軀'], ['阿明']),
+    communityRow('鹹粿', 'kiâm-kué', [{ tags: ['食食'], contributor: 'octocat', contributor_id: 583231 }]),
   ];
-  const community = [{ hanji: '鹹粿', tl: 'kiâm-kué', attestations: [{ tags: ['食食'] }] }];
-  const food = buildTagMap(community, itaigi).find((tag) => tag.name === '食食');
+  const food = buildTagMap(rows).find((tag) => tag.name === '食食');
   assert.equal(food.count, 3);
   assert.deepEqual(food.words.map(([hanji]) => hanji).sort(), ['米粉', '食飯', '鹹粿'].sort());
 });
 
-test('stats buildStats: counts from the served rows, both sources', () => {
-  const [food, plant, body] = ['食食', '植物', '身軀'].map((name) => TAG_NAMES.indexOf(name));
-  const itaigi = [
-    ['青花', 'tshenn-hue/tshinn-hue', '', '', [food, plant], ['阿明']],
-    ['米粉', 'bí-hún', '', '', [plant, food], ['阿明', '阿珠']],
-    ['跤頭趺', 'kha-thâu-u', '', '', [body], ['阿明']],
-    ['大人𤆬囡仔去𨑨迌', 'tuā-lâng tshuā gín-á khì tshit-thô', '', '', [], ['阿華']],
-    ['一', 'it', '', '', [], ['匿名']],
-    ['二', 'jī', '', '', [], ['匿名']],
-    ['三', 'sann', '', '', [], ['匿名']],
-    ['四', 'sì', '', '', [], ['匿名']],
-  ];
-  const community = [{ hanji: '鹹粿', tl: 'kiâm-kué', attestations: [{ tags: ['食食', '夜市仔'], contributor: 'octocat', contributor_id: 583231 }, { tags: ['食食'], contributor: 'octocat', contributor_id: 583231 }] },
-    { hanji: '粿', tl: 'kué', attestations: [{ tags: [], contributor: 'hubot', contributor_id: 480938 }] },
-    { hanji: '', tl: 'kué-á', attestations: [{ tags: [], contributor: 'octocat', contributor_id: 583231 }] },
+test('stats buildStats: counts from the served rows, iTaigi names credited', () => {
+  const rows = [
+    itaigiRow('青花', 'tshenn-hue/tshinn-hue', ['食食', '植物'], ['阿明']),
+    itaigiRow('米粉', 'bí-hún', ['植物', '食食'], ['阿明', '阿珠']),
+    itaigiRow('跤頭趺', 'kha-thâu-u', ['身軀'], ['阿明']),
+    itaigiRow('大人𤆬囡仔去𨑨迌', 'tuā-lâng tshuā gín-á khì tshit-thô', [], ['阿華']),
+    ...['一', '二', '三', '四'].map((hanji, i) => itaigiRow(hanji, ['it', 'jī', 'sann', 'sì'][i], [], ['匿名'])),
+    communityRow('鹹粿', 'kiâm-kué', [{ tags: ['食食', '夜市仔'], contributor: 'octocat', contributor_id: 583231 }, { tags: ['食食'], contributor: 'octocat', contributor_id: 583231 }]),
+    communityRow('粿', 'kué', [{ tags: [], contributor: 'hubot', contributor_id: 480938 }]),
+    communityRow('', 'kué-á', [{ tags: [], contributor: 'octocat', contributor_id: 583231 }]),
   ];
   const tagMap = [{ name: '植物', tl: 'si̍t-bu̍t', count: 2 }, { name: '食食', tl: 'tsia̍h-si̍t', count: 3 }];
-  const stats = buildStats(community, itaigi, tagMap);
+  const stats = buildStats(rows, tagMap);
   // trace: 11 words (8 iTaigi + 3 community); 鹹粿 counts once for octocat (two attestations); 米粉 credits 阿明 and 阿珠;
-  // 匿名 counts as a contributor
+  // 匿名 counts as a contributor; the organisation account itself is never credited
   assert.equal(stats.words, 11);
   assert.equal(stats.contributors, 6);
-  // trace: octocat gave 鹹粿 (twice, one word) and kué-á → 2; hubot 粿 → 1; iTaigi names never appear
+  // trace: octocat gave 鹹粿 (twice, one word) and kué-á → 2; hubot 粿 → 1; iTaigi entries never appear
   assert.deepEqual(stats.githubContributors, [{ name: 'octocat', id: 583231, count: 2 }, { name: 'hubot', id: 480938, count: 1 }]);
   // trace: 青花, 米粉 (two site tags each) and 鹹粿 (食食 + its own 夜市仔) carry more than one tag
   assert.equal(stats.multiTag, 3);

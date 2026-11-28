@@ -13,7 +13,7 @@ body:
     id: source
     attributes:
       label: 來源 Source
-      description: community (entries/…) or iTaigi
+      description: entry key (entries/…/<key>.json)
   - type: input
     id: page
     attributes:

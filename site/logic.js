@@ -35,45 +35,32 @@ const syllableTails = (folded) => folded.split('-').filter(Boolean).map((_, i, s
 // breaks: "kesi", "ke si" and "si" all meet "ke-si".
 const startsSyllable = (tails, compactQuery) => compactQuery !== '' && tails.some((tail) => tail.startsWith(compactQuery));
 
-// Rows from search.json whose hanji contains the query, or whose folded tl starts a syllable with
-// it (breaks optional).
-export function searchRows(rows, query, limit = 50) {
-  const q = query.trim();
-  if (q === '') return [];
-  const compactQuery = compact(foldSearch(q));
-  return rows
-    .filter((row) => row.hanji.includes(q) || startsSyllable(syllableTails(foldSearch(row.tl)), compactQuery))
-    .slice(0, limit);
-}
-
-// "/" joins variant readings in iTaigi; folding it to a syllable break lets each variant match.
+// "/" joins variant readings (as iTaigi wrote them); folding it to a syllable break lets each variant
+// match.
 const foldReading = (text) => `-${foldSearch(text.replaceAll('/', ' '))}`;
 
-// itaigi.json rows [hanji, tl, poj, tps, [tag index], [contributor]] → search index, each word
-// credited to its iTaigi contributors as itaigi.tw names them (maintainer 2026-11-26); folding runs
-// once here, not per keystroke. `variants` holds each "/"-joined reading on its own, `folded` the
-// whole tl, both without syllable breaks (`compact`) so a query typed without breaks matches;
-// `tails` holds the whole tl's syllableTails.
-export function indexItaigi(rows) {
-  return rows.map(([hanji, tl, poj, tps, tags, contributors]) => {
-    const folded = foldReading(tl);
+// search.json rows → the same rows with their search index, built once at load, not per keystroke:
+// `variants` holds each "/"-joined reading on its own, `folded` the whole tl, both without syllable
+// breaks (`compact`) so a query typed without breaks matches; `tails` holds the whole tl's
+// syllableTails.
+export function indexRows(rows) {
+  return rows.map((row) => {
+    const folded = foldReading(row.tl);
     return {
-      hanji,
-      tl,
-      poj,
-      tps,
-      tags,
-      contributors,
-      variants: tl.split('/').map((variant) => compact(foldReading(variant))),
+      ...row,
+      // the (Hanji, Tâi-lô) pair normalized as the key is, for a word page's lookup
+      pair: pairKey(row.hanji, row.tl),
+      variants: row.tl.split('/').map((variant) => compact(foldReading(variant))),
       folded: compact(folded),
       tails: syllableTails(folded),
     };
   });
 }
 
-// iTaigi rows whose hanji contains the query, or whose tl starts a syllable with it (breaks
-// optional); exact matches first, then those starting with the query, then the rest.
-export function searchItaigi(index, query, limit = 50) {
+// Indexed rows whose hanji contains the query, or whose tl starts a syllable with it (breaks
+// optional); exact matches first, then those starting with the query, then the rest, each group
+// in search.json's order (community words first, then by Tâi-lô).
+export function searchRows(index, query, limit = 50) {
   const q = query.trim();
   if (q === '') return [];
   const compactQuery = compact(foldSearch(q.replaceAll('/', ' ')));
@@ -93,9 +80,18 @@ export function searchItaigi(index, query, limit = 50) {
   return [...exact, ...prefix, ...rest].slice(0, limit);
 }
 
+// contributors' own tags (not in the site's list), gathered once per loaded set of rows
+const ownTagsOf = new WeakMap();
+function ownTags(rows) {
+  if (!ownTagsOf.has(rows)) {
+    ownTagsOf.set(rows, new Set(rows.flatMap((row) => row.attestations.flatMap((a) => a.tags)).filter((tag) => !TAG_NAMES.includes(tag))));
+  }
+  return ownTagsOf.get(rows);
+}
+
 // Tags matching the query, for the search box: the site's tags by name, by ja / en label (case-free)
-// or by a tl syllable start (breaks optional), and contributors' own tags (from community rows)
-// by name. Exact matches first, then the site's tags in list order, then contributors' own in
+// or by a tl syllable start (breaks optional), and contributors' own tags (from any row's
+// attestations) by name. Exact matches first, then the site's tags in list order, then contributors' own in
 // first-seen order.
 export function searchTags(rows, query, limit = 50) {
   const q = query.trim();
@@ -111,8 +107,7 @@ export function searchTags(rows, query, limit = 50) {
       rest.push(tag.name);
     }
   }
-  const own = new Set(rows.flatMap((row) => row.attestations.flatMap((a) => a.tags)).filter((tag) => !TAG_NAMES.includes(tag)));
-  for (const tag of own) {
+  for (const tag of ownTags(rows)) {
     if (tag === q) exact.push(tag);
     else if (tag.includes(q)) rest.push(tag);
   }
@@ -120,31 +115,22 @@ export function searchTags(rows, query, limit = 50) {
 }
 
 // Every word carrying `tag` (a name: from the site's list or a contributor's own), for the tag's
-// card page: community rows any of whose attestations has it, and iTaigi rows, which carry the
-// site's tags only (by index), in file order.
-export function wordsWithTag(rows, itaigi, tag) {
-  const index = TAG_NAMES.indexOf(tag);
-  return {
-    community: rows.filter((row) => row.attestations.some((a) => a.tags.includes(tag))),
-    itaigi: index === -1 ? [] : itaigi.filter((row) => row.tags.includes(index)),
-  };
+// card page.
+export function wordsWithTag(rows, tag) {
+  return rows.filter((row) => row.attestations.some((a) => a.tags.includes(tag)));
 }
 
-// Every word one contributor gave or edited, for the contributor's card page: community rows any of
-// whose attestations is theirs or lists them as an editor (GitHub login), and every iTaigi row that
-// credits the name.
-export function wordsByContributor(rows, itaigi, name) {
-  const involved = (a) => a.contributor === name || a.editors.some((e) => e.login === name);
-  return {
-    community: rows.filter((row) => row.attestations.some(involved)),
-    itaigi: itaigi.filter((row) => row.contributors.includes(name)),
-  };
+// Every word one person gave or edited, for their card page: credited (a GitHub login, or an
+// iTaigi contributor's name) or listed as an editor.
+export function wordsByContributor(rows, name) {
+  return rows.filter((row) => row.attestations.some((a) => credit(a).includes(name) || a.editors.some((e) => e.login === name)));
 }
 
-// The community and iTaigi rows spelled exactly (hanji, tl), for a word's card page.
-export function wordsSpelled(rows, itaigi, hanji, tl) {
-  const same = (row) => row.hanji === hanji && row.tl === tl;
-  return { community: rows.filter(same), itaigi: itaigi.filter(same) };
+// The word spelled (hanji, tl), for its card page, among indexed rows: matched by the key's
+// normalization, so a link written with other spacing or case still finds it.
+export function wordsSpelled(rows, hanji, tl) {
+  const wanted = pairKey(hanji, tl);
+  return rows.filter((row) => row.pair === wanted);
 }
 
 // Centres for circles of the given radii, packed around (0, 0), largest first: each circle goes

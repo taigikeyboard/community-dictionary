@@ -1,4 +1,4 @@
-import { indexItaigi, wordsWithTag } from '../site/logic.js';
+import { wordsWithTag } from '../site/logic.js';
 import { TAGS } from '../site/tags.js';
 
 // The homepage's tag bubble data: for each site tag, how many words carry it (the same words its
@@ -33,13 +33,11 @@ export function sampleWords(rows, size = SAMPLE_SIZE) {
     .map(([, pair]) => pair);
 }
 
-// communityRows: dist/search.json; itaigiRows: dist/itaigi.json rows. → [{ name, tl, count, words }]
-// in the site's tag order, words as [hanji, tl] pairs.
-export function buildTagMap(communityRows, itaigiRows) {
-  const itaigi = indexItaigi(itaigiRows);
+// rows: dist/search.json. → [{ name, tl, count, words }] in the site's tag order, words as
+// [hanji, tl] pairs.
+export function buildTagMap(rows) {
   return TAGS.map(({ name, tl }) => {
-    const words = wordsWithTag(communityRows, itaigi, name);
-    const all = [...words.community, ...words.itaigi];
-    return { name, tl, count: all.length, words: sampleWords(all) };
+    const words = wordsWithTag(rows, name);
+    return { name, tl, count: words.length, words: sampleWords(words) };
   });
 }

@@ -10,9 +10,8 @@ import {
   findExisting,
   foldSearch,
   formToRaw,
-  indexItaigi,
+  indexRows,
   packCircles,
-  searchItaigi,
   parseRoute,
   searchRows,
   searchTags,
@@ -24,12 +23,11 @@ import {
   wordsWithTag,
 } from '../site/logic.js';
 import { describeIssues, setLanguage, STRINGS, tagLabel, t } from '../site/strings.js';
-import { TAG_NAMES } from '../site/tags.js';
 import { accentEntry, KEY } from './fixtures.js';
 
 // Tests for the browser-free site logic.
 
-const rows = groupEntries([{ key: KEY, entry: accentEntry() }]);
+const rows = indexRows(groupEntries([{ key: KEY, entry: accentEntry() }]));
 
 test('foldSearch drops tone marks, digits, case and spacing', () => {
   assert.equal(foldSearch('Tsa̍p-pueh'), 'tsap-pueh');
@@ -112,15 +110,18 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
   assert.deepEqual(blank.errors, [{ field: 'tl', row: 0, text: '請填寫資料' }]);
 });
 
-test('iTaigi rows: search order (exact, prefix, rest) and the card-page lookups', () => {
-  const [food, plant, feeling] = ['食食', '植物', '心情'].map((name) => TAG_NAMES.indexOf(name));
-  const index = indexItaigi([
-    ['青花', 'tshenn-hue/tshinn-hue', 'chheⁿ-hoe/chhiⁿ-hoe', 'ㄘㆥ ㄏㄨㆤ / ㄑㆪ ㄏㄨㆤ', [food, plant], ['阿明']],
-    ['花蕊', 'hue-luí', 'hoe-luí', 'ㄏㄨㆤ ㄌㄨㄧˋ', [plant], ['阿明', '阿珠']],
-    ['花', 'hue', 'hoe', 'ㄏㄨㆤ', [plant], ['阿珠']],
-    ['𤺪呢', 'siān-neh', '', 'ㄒㄧㄢ˫ ㄋㆤㆷ', [feeling], ['阿明']],
+test('one word list: search order (exact, prefix, rest) and the card-page lookups', () => {
+  const itaigi = (key, hanji, tl, tags, names) => ({
+    key, hanji, tl, attestations: [{ ...accentEntry(), hanji: undefined, tl: undefined, tags, contributor: 'taigikeyboard', contributor_id: 241070258, itaigi_contributors: names }],
+  });
+  const index = indexRows([
+    ...groupEntries([{ key: KEY, entry: accentEntry() }]),
+    itaigi('k1', '青花', 'tshenn-hue/tshinn-hue', ['食食', '植物'], ['阿明']),
+    itaigi('k2', '花蕊', 'hue-luí', ['植物'], ['阿明', '阿珠']),
+    itaigi('k3', '花', 'hue', ['植物'], ['阿珠']),
+    itaigi('k4', '𤺪呢', 'siān-neh', ['心情'], ['阿明']),
   ]);
-  const hanji = (query) => searchItaigi(index, query).map((r) => r.hanji);
+  const hanji = (query) => searchRows(index, query).map((r) => r.hanji);
   assert.deepEqual(hanji('花'), ['花', '花蕊', '青花']);
   assert.deepEqual(hanji('hue'), ['花', '花蕊', '青花']);
   // a later variant typed in full, and the whole slash-joined reading, are exact matches
@@ -130,26 +131,22 @@ test('iTaigi rows: search order (exact, prefix, rest) and the card-page lookups'
   assert.deepEqual(hanji('tshinnhue'), ['青花']);
   assert.deepEqual(hanji('hueluí'), ['花蕊']);
   assert.deepEqual(hanji('sianne'), ['𤺪呢']);
+  assert.deepEqual(hanji('八'), ['八']);
   assert.deepEqual(hanji(' '), []);
-  // the Mandarin gloss is no longer published, so it matches nothing
-  assert.deepEqual(hanji('討厭'), []);
 
-  // a tag's page: community rows by tag name (the fixture carries 食食), iTaigi rows by tag index
-  const tagged = wordsWithTag(rows, index, '植物');
-  assert.deepEqual([tagged.community.length, tagged.itaigi.map((r) => r.hanji)], [0, ['青花', '花蕊', '花']]);
-  assert.deepEqual(wordsWithTag(rows, index, '食食').community.map((r) => r.key), [KEY]);
-  assert.deepEqual(wordsWithTag(rows, index, '食食').itaigi.map((r) => r.hanji), ['青花']);
-  // a contributor's own tag matches no iTaigi row
-  assert.deepEqual(wordsWithTag(rows, index, '夜市仔').itaigi, []);
-  // a word's page: exact spelling only
-  assert.deepEqual(wordsSpelled(rows, index, '花', 'hue').itaigi.map((r) => r.tl), ['hue']);
-  assert.deepEqual(wordsSpelled(rows, index, '八', 'pueh').community.map((r) => r.key), [KEY]);
-  assert.deepEqual(wordsSpelled(rows, index, '花', 'hoe').itaigi, []);
-  // a contributor's page: community rows by login, iTaigi rows by the names itaigi.tw gives them
-  assert.deepEqual(wordsByContributor(rows, index, 'octocat').community.map((r) => r.key), [KEY]);
-  assert.deepEqual(wordsByContributor(rows, index, '阿明').itaigi.map((r) => r.hanji), ['青花', '花蕊', '𤺪呢']);
-  assert.deepEqual(wordsByContributor(rows, index, '阿珠').itaigi.map((r) => r.hanji), ['花蕊', '花']);
-  assert.deepEqual(wordsByContributor(rows, index, 'nobody'), { community: [], itaigi: [] });
+  // a tag's page: every row whose attestations carry the tag
+  assert.deepEqual(wordsWithTag(index, '植物').map((r) => r.hanji), ['青花', '花蕊', '花']);
+  assert.deepEqual(wordsWithTag(index, '食食').map((r) => r.hanji), ['八', '青花']);
+  assert.deepEqual(wordsWithTag(index, '夜市仔'), []);
+  // a word's page: matched by the key's normalization, so other case or spacing still finds it
+  assert.deepEqual(wordsSpelled(index, '花', 'hue').map((r) => r.key), ['k3']);
+  assert.deepEqual(wordsSpelled(index, '八', 'Pueh').map((r) => r.key), [KEY]);
+  assert.deepEqual(wordsSpelled(index, '花', 'hoe'), []);
+  // a contributor's page: GitHub logins and iTaigi names alike, never the organisation account
+  assert.deepEqual(wordsByContributor(index, 'octocat').map((r) => r.key), [KEY]);
+  assert.deepEqual(wordsByContributor(index, '阿明').map((r) => r.hanji), ['青花', '花蕊', '𤺪呢']);
+  assert.deepEqual(wordsByContributor(index, '阿珠').map((r) => r.hanji), ['花蕊', '花']);
+  assert.deepEqual(wordsByContributor(index, 'taigikeyboard'), []);
 });
 
 test('routes: tag and word pages round-trip, anything else is the homepage', () => {

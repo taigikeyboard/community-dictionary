@@ -1,8 +1,9 @@
+import { credit, fromItaigi } from '../lib/entry.js';
 import { TAG_NAMES } from '../site/tags.js';
 
 // The homepage's statistics (dist/stats.json), counted at build time from the same rows the site
 // serves, so every number agrees with the search, the tag pages and the bubble map. Each word is one
-// row: a community entry (dist/search.json) or an iTaigi pair (dist/itaigi.json).
+// row of dist/search.json.
 
 // word lengths in Hanji, bucketed 1 … LONGEST, the last bucket holding everything longer
 export const LONGEST = 8;
@@ -11,25 +12,21 @@ const TOP_PAIRS = 8;
 // how many community contributors the homepage shows by their GitHub picture
 const TOP_GITHUB = 50;
 
-// One word's tag names and contributors, whichever source it comes from.
-function wordFacts(row, fromItaigi) {
-  if (fromItaigi) {
-    const [hanji, , , , tags, contributors] = row;
-    return { hanji, tags: tags.map((index) => TAG_NAMES[index]), contributors };
-  }
+// One word's tag names and the people it credits (GitHub logins, iTaigi names).
+function wordFacts(row) {
   return {
     hanji: row.hanji,
     tags: [...new Set(row.attestations.flatMap((a) => a.tags))],
-    contributors: [...new Set(row.attestations.map((a) => a.contributor))],
+    contributors: [...new Set(row.attestations.flatMap(credit))],
   };
 }
 
 const ranked = (counts) => [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1));
 
-// communityRows: dist/search.json; itaigiRows: dist/itaigi.json; tagMap: dist/tag-map.json (its
-// per-tag counts, already those of the tag pages).
-export function buildStats(communityRows, itaigiRows, tagMap) {
-  const words = [...communityRows.map((row) => wordFacts(row, false)), ...itaigiRows.map((row) => wordFacts(row, true))];
+// rows: dist/search.json; tagMap: dist/tag-map.json (its per-tag counts, already those of the tag
+// pages).
+export function buildStats(rows, tagMap) {
+  const words = rows.map(wordFacts);
   const lengths = new Array(LONGEST).fill(0);
   const pairs = new Map();
   const credits = new Map();
@@ -51,8 +48,8 @@ export function buildStats(communityRows, itaigiRows, tagMap) {
   // ID names the picture, which survives a renamed login
   const githubCredits = new Map();
   const githubIds = new Map();
-  for (const row of communityRows) {
-    const people = new Map(row.attestations.map((a) => [a.contributor, a.contributor_id]));
+  for (const row of rows) {
+    const people = new Map(row.attestations.filter((a) => !fromItaigi(a)).map((a) => [a.contributor, a.contributor_id]));
     for (const [name, id] of people) {
       githubCredits.set(name, (githubCredits.get(name) ?? 0) + 1);
       githubIds.set(name, id);

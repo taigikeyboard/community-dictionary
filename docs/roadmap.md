@@ -75,7 +75,9 @@ One JSON file per entry: `entries/<login>/<key>.json`. `<login>` is the contribu
   "note": "…the contributor's explanation…",
   "contributor": "octocat",
   "contributor_id": 583231,
-  "submitted": "2026-11-20"
+  "submitted": "2026-11-20",
+  "editors": [],
+  "itaigi_contributors": []
 }
 ```
 
@@ -86,10 +88,12 @@ Ownership is `contributor_id`, never the directory name: a contributor who renam
 | `tl` | yes | Tâi-lô |
 | `hanji` | no | Hanji or kana; empty when the word has no Hanji |
 | `accents`, `place` | no; `place` when `accents` has 其他 | the ten accents used by the Ministry of Education dictionary, or 其他 with free text (form: a ＋ after the accents, like the tags', opens a floating input; the text becomes one more ticked pill, stored as 其他 + `place`; maintainer 2026-11-26, replaces the 其他：… pill, which replaced the 所在 field) |
-| `tags` | no | up to 5 semantic tags (maintainer 2026-11-21): the site's list (`site/tags.js`) or the contributor's own, each ≤ 10 characters in the Hanji field's script; whether an own tag is good Taiwanese is checked at review, as with Tâi-lô (D8) |
+| `tags` | no | up to 5 semantic tags (maintainer 2026-11-21): the site's list (`site/tags.js`) or the contributor's own, each ≤ 10 characters of Han ideographs, kana, Tâi-lô letters and hyphens; whether an own tag is good Taiwanese is checked at review, as with Tâi-lô (D8) |
 | `meaning` | no | Mandarin or English equivalent (no separate source field since 2026-11-20: where the word was seen goes in `note`) |
 | `examples` | no | Example sentences (maintainer 2026-11-20): up to 5, each `{ hanji, tl }` — the sentence in Hanji (or kana) and in Tâi-lô, either may be empty but not both (maintainer 2026-11-26: two columns, several rows like the words). Sentences, so no script rule: punctuation is allowed |
 | `note` | no | the contributor's explanation |
+| `editors` | yes (may be empty) | everyone else who changed the entry, `{ login, id }` in order of first edit (D11, 2026-11-28) |
+| `itaigi_contributors` | yes (may be empty) | the names itaigi.tw credits an entry brought over from iTaigi (2026-11-28); cards credit them instead of `contributor` |
 
 Why one file per entry, one directory per contributor:
 
@@ -132,8 +136,8 @@ One pull request per phase.
 
 ### Phase 1 — schema and checks
 
-- Limits: Hanji ≤ 20 characters, Tâi-lô ≤ 80, place ≤ 20, meaning ≤ 100, each example line ≤ 300, note ≤ 1,000; one line per field except `note`.
-- Character whitelists: Hanji field (labelled 漢字、日語) = CJK ideographs, kana for Japanese loanwords (added 2026-11-20), Tâi-lô letters and hyphen (Hàn-lô mixed writing is allowed); Tâi-lô field = Latin letters, combining tone marks, hyphen, space, tone digits.
+- Limits: Hanji ≤ 50 characters, Tâi-lô ≤ 200 (2026-11-28; were 20 and 80), place ≤ 20, meaning ≤ 100, each example line ≤ 300, note ≤ 1,000; one line per field except `note`.
+- Character whitelists: none for Hanji and Tâi-lô since 2026-11-28 (§ iTaigi merge; were CJK ideographs, kana, Tâi-lô letters and hyphen / Latin letters, tone marks, hyphen, space, tone digits); tags keep theirs.
 - CI fails when a file name does not match its content's key, when a field breaks a limit, or when a pull request from the App touches anything outside `entries/`.
 - Ownership in CI: for every file a submission commit adds, modifies or deletes, the commit author's id (from the noreply address) must equal the file's `contributor_id` — a second gate behind the Worker's own check.
 - No check of whether the Tâi-lô is correct (D8).
@@ -143,7 +147,7 @@ Built (2026-11-20). Implementation choices the roadmap did not fix (defaults, op
 | Choice | Value |
 |---|---|
 | Required fields | `tl` only (2026-11-20); `place` when `accents` contains 其他. `hanji` may be empty (many Taiwanese words have no Hanji). |
-| Stored text | NFC, LF line endings, trimmed; no control, format or line-separator characters except ZWJ. Hanji allows Han ideographs (not radicals), letters with tone marks, hyphens. The site and the Worker take form input through `prepareEntry` (clean, then validate); CI runs the strict `validateEntry`, which rejects unclean files. |
+| Stored text | NFC, LF line endings, trimmed; no control, format or line-separator characters except ZWJ, and (2026-11-28) no U+FFFD, lone surrogates or private-use characters, in every text field. The site and the Worker take form input through `prepareEntry` (clean, then validate); CI runs the strict `validateEntry`, which rejects unclean files. |
 | Stored `tl` | Keeps the contributor's case and spaces; only the key normalizes it. |
 | File format | `serializeEntry`: fixed field order, two-space indent, final newline. CI rejects any other formatting. |
 | Pull request modes | **submission** = opened by the App's bot login (repository variable `SUBMIT_APP_LOGIN`, set in Phase 4) from a branch of this repository: only `entries/`, no merge commits, ownership per commit (2026-11-28, D11): a file the author does not own may only be modified or moved with its identity kept and `editors` = old list + author; new files are the author's own (id and login); every non-add change answers to its previous version. **member** (owner, member, collaborator) = whole-tree check only. **outside** = anyone else: may not change `entries/`. |
@@ -184,14 +188,14 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 
 Current state (2026-11-27). Superseded wording and dated decisions live in git history.
 
-- **Build**: static, no bundler; native ES modules, `dist/` mirrors the repo so `site/*.js` imports `../lib/entry.js` directly. `scripts/build-site.js` copies every `site/*.js`, writes the import map and modulepreload list, builds `search.json` (community entries), `itaigi.json` (iTaigi snapshot), `tag-map.json` and `stats.json`, and adds Pe̍h-ōe-jī and 方音符號 at build time through the `vendor/taigi-converter` submodule. D3 (`d3-*` npm packages, exact pins) ships from `dist/vendor/`, no CDN. Fonts come from kautian-mirror on the same origin. Local preview: `make preview` (`scripts/serve.js`).
+- **Build**: static, no bundler; native ES modules, `dist/` mirrors the repo so `site/*.js` imports `../lib/entry.js` directly. `scripts/build-site.js` copies every `site/*.js`, writes the import map and modulepreload list, builds `search.json` (every entry, community and iTaigi alike, since 2026-11-28), `tag-map.json` and `stats.json`, and adds Pe̍h-ōe-jī and 方音符號 at build time through the `vendor/taigi-converter` submodule. D3 (`d3-*` npm packages, exact pins) ships from `dist/vendor/`, no CDN. Fonts come from kautian-mirror on the same origin. Local preview: `make preview` (`scripts/serve.js`).
 - **Modules**: `app.js` router and page shells; `page.js` frame (title, back button); `data.js` cached loaders; `search-box.js`; `form.js` widgets; `submit-page.js`; `cards.js` (cards, word tip); `word-parts.js`; `tag-map.js` bubble map; `story.js` statistics; `strings.js` UI text; `logic.js` DOM-free logic shared with the build scripts.
 - **Pages**: `#/` home — site title, D3 force bubble map of the 27 tags: each tag's 150-word pool packed inside it, first words largest; free zoom (trackpad pinch, Ctrl + wheel, two-finger pinch, ＋ / − buttons) or a click on a tag, and words fade in as they grow readable on screen (level of detail, 2026-11-27); click a word for its cards, then statistics revealed on scroll (totals, words per tag, word length, tag pairs, community contributors' GitHub pictures). `#/search` — 揣詞 page with its own search box (community entries first, then iTaigi; `/` focuses it). `#/submit` — the form. `#/tag/<name>`, `#/contributor/<name>`, `#/word/<hanji>/<tl>` — card pages, 60 cards then more on scroll. Subpages have a back button above the title.
 - **Top bar**: a dark announcement strip with what the site is, a 提交新詞 button and a 揣詞 button; each hides (keeping its place) on its own page.
 - **Sidebar**: 語言, 外觀, 字型, 台羅 / 白話字 / 方音符號 switches. Docked and collapsible on wide screens, a drawer on phones. Choices are `<html data-*>` attributes restored before first paint. 外觀 and the reading switches share kautian-mirror's `settings` key; 字型 and 語言 are this site's own (`community-settings`), since kautian-mirror saves its 芫荽 default into the shared key (2026-11-27).
 - **Languages** (2026-11-27): Taiwanese (default), Japanese, English for all interface text and the 27 tag names (`site/strings.js`, `site/tags.js` labels); entry data is never translated. Every Hanji of the Taiwanese text occurs in a 教典 headword (`make check-hanji ODS=kautian.ods`); 台語 is kept although 教典 writes 臺語 (maintainer 2026-11-27).
-- **Tags**: 27 semantic tags named with 教典 headwords; the tag is the stored key and the route, translations are display labels. iTaigi pairs were tagged once by `scripts/import-itaigi.js` (教典 categories, then Claude); the tags are part of `data/itaigi.json`.
-- **iTaigi**: CC0 snapshot from itaigi.tw's official export, committed as `data/itaigi.json` and never downloaded at deploy. Words credit their iTaigi contributors, with a link to iTaigi.
+- **Tags**: 27 semantic tags named with 教典 headwords; the tag is the stored key and the route, translations are display labels. iTaigi pairs were tagged once (教典 categories, then Claude) before they became entries; the tags are part of their entry files.
+- **iTaigi**: CC0 words from itaigi.tw's official export; since 2026-11-28 ordinary entries under `entries/taigikeyboard/` (§ iTaigi merge), editable like any other. Cards credit their iTaigi contributors (`itaigi_contributors`), with a link to iTaigi.
 - **Submit**: signed out, the button reads 「登入 GitHub 提交」 and keeps the form in sessionStorage across sign-in; signed in, it posts `/submit` and shows 「提交成功」 with the pull request link. The form validates with `lib/entry.js` first; validation and Worker errors are issue codes worded in the reader's language. One's own earlier pair is a row error; another contributor's asks for one confirmation.
 - **Not built yet**: "My submissions" (edit), planned below.
 
@@ -338,7 +342,7 @@ in GraphQL (no previous path for renames); caching file lists per head sha in KV
 sync, and Free-plan KV writes are capped at 1,000 a day); folding `Blobs` into `Submissions`
 (one call fewer, but one query text per request shape).
 
-## iTaigi merge — every iTaigi word becomes an ordinary entry (planned 2026-11-28)
+## iTaigi merge — every iTaigi word becomes an ordinary entry (2026-11-28)
 
 Maintainer decisions 2026-11-28: every iTaigi word becomes an entry under the organisation account
 `taigikeyboard` (id 241070258), so anyone can edit it like any other entry (D11); the iTaigi
@@ -370,11 +374,14 @@ Steps 2 and 3 land in one push (step 2 alone would show every iTaigi word twice)
 `submit/` pull requests (old-format entries would fail `compile` after the schema change); push,
 then `npm --prefix worker run deploy`.
 
-Sizes: `search.json` ≈ 6.5 MB raw / 940 KB gzip (today `itaigi.json` 1.86 MB / 566 KB + `search.json`
+Sizes (built 2026-11-28): `search.json` 6.55 MB raw / 874 KB gzip for 17,945 words (before: `itaigi.json` 1.86 MB / 566 KB + `search.json`
 5 KB); parse ≈ 17 ms and index ≈ 32 ms on desktop. It is now also loaded where only the small
 `search.json` was: the form's word rows and duplicate check, 我貢獻 ê 詞, the 修改 page. CI's
 `checkTree` reads ~17,900 files in under half a second. The Worker only reads named paths
 (§ Worker budget).
+
+Also left out by the maintainer's rule (empty 羅馬字): 11 export rows, two of which hold a reading in
+the Hanji field (`la̋ng-jióng`, `ta̋ng-jióng`); re-add by hand if wanted.
 
 Known and left as is: `submitted` is the migration date for every iTaigi entry (the export has no
 dates); near-identical keys (`--` versus a space) can now coexist, as 43 groups already do; one

@@ -10,7 +10,7 @@ import { t } from './strings.js';
 
 // The 我貢獻 ê 詞 page (the signed-in contributor's words, in review and collected, each with 修改) and
 // the 修改 page's loading step (it finds the entry, then draws the form). Both need a GitHub
-// sign-in; anyone may edit any community entry (D11), each edit is a pull request.
+// sign-in; anyone may edit any entry (D11), each edit is a pull request.
 
 // Signed out: what the page needs and a button that signs in and comes back to this page.
 function signInPrompt() {
@@ -19,7 +19,7 @@ function signInPrompt() {
   return h('div', { class: 'mine-signin' }, h('p', {}, t('mine.signInHint')), button);
 }
 
-// The community attestations that carry this contributor's id, as { key, login, hanji, tl, entry }.
+// The attestations that carry this contributor's id, as { key, login, hanji, tl, entry }.
 function collectedBy(rows, user) {
   return rows.flatMap((row) =>
     row.attestations

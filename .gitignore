@@ -12,6 +12,7 @@ node_modules/
 dist/
 .wrangler/
 .DS_Store
+# tag classification cache of the retired iTaigi import (local only)
 .classify-cache/
 # 教典 export for scripts/check-hanji.js (CC BY-ND, not redistributed)
 *.ods

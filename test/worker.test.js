@@ -347,6 +347,18 @@ describe('edit', () => {
     assert.equal(res.status, 409);
   });
 
+  it('keeps an iTaigi entry’s names and directory through an edit that changes its pair', async () => {
+    const itaigi = { ...accentEntry(), hanji: '公雞', tl: '雞公仔', contributor: 'taigikeyboard', contributor_id: 241070258, itaigi_contributors: ['Chenwujack Chen'] };
+    const oldPath = `entries/taigikeyboard/${await entryKey(itaigi.hanji, itaigi.tl)}.json`;
+    gh.branches.get('main').set(oldPath, serializeEntry(itaigi));
+    const res = await post('/submit', { path: oldPath, hanji: '雞公仔', tl: 'ke-kang-á', ...form });
+    assert.equal(res.status, 200);
+    const newPath = `entries/taigikeyboard/${await entryKey('雞公仔', 'ke-kang-á')}.json`;
+    assert.deepEqual(gh.commits.map((c) => c.changes), [[['write', newPath], ['delete', oldPath]]]);
+    const stored = JSON.parse(gh.branches.get(gh.pulls[0].head.ref).get(newPath));
+    assert.deepEqual([stored.contributor, stored.contributor_id, stored.itaigi_contributors, stored.editors], ['taigikeyboard', 241070258, ['Chenwujack Chen'], [{ login: 'octocat', id: 583231 }]]);
+  });
+
   it('refuses an edit while another contributor’s open submission touches the entry', async () => {
     await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'theirs' }, { user: OTHER });
     const mine = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'mine' });

@@ -1,6 +1,6 @@
 import { currentUser, signOut } from './account.js';
 import { cardList, closeWordTip, openWordTip } from './cards.js';
-import { loadItaigiIndex, loadRows, loadStats, loadTagMap } from './data.js';
+import { loadRows, loadStats, loadTagMap } from './data.js';
 import { h } from './dom.js';
 import { parseRoute, wordsByContributor, wordsSpelled, wordsWithTag, wordTitle } from './logic.js';
 import { backButton, hero, noteNavigation, pageTitle, view } from './page.js';
@@ -25,8 +25,8 @@ function renderHome() {
     hero(t('site.title')),
     tagMap(loadTagMap, () => h('div', { class: 'tags' }, TAGS.map((tag) => tagLink(tag.name, tag.tl))), {
       onWord: openWordTip,
-      // a zoomed-in tag shows words whose cards need iTaigi: start loading it (1.5 MB) now
-      onZoomIn: () => loadItaigiIndex().catch(() => {}),
+      // a zoomed-in tag shows words whose cards need search.json: start loading it now
+      onZoomIn: () => loadRows().catch(() => {}),
     }),
     // scrolling down: the statistics, section by section
     storySections(loadStats),
@@ -39,29 +39,29 @@ function renderSearch() {
   view.replaceChildren(backButton(), hero(t('search.title')), searchBox());
 }
 
-// A cards page: `title` over a lead line (a tag's Tâi-lô), then the words `pick(rows, itaigi)`
-// chooses from both sources as cards; a failed load says so in place of the cards. Without
+// A cards page: `title` over a lead line (a tag's Tâi-lô), then the words `pick(rows)` chooses,
+// as cards; a failed load says so in place of the cards. Without
 // `headword` (the word page, whose title already names the word) the list is the word page's own.
 function renderCards(title, lead, pick, { headword = true } = {}) {
   document.title = pageTitle(title);
   const list = h('div', { class: headword ? 'cards' : 'cards cards-word' });
   view.replaceChildren(backButton(), hero(title, lead, { isReading: true }), list);
   // the session decides which attestation a card's 修改 edits (one's own, else the earliest)
-  Promise.all([loadRows(), loadItaigiIndex(), currentUser()])
-    .then(([rows, itaigi, user]) => cardList(list, pick(rows, itaigi), { headword, user }))
+  Promise.all([loadRows(), currentUser()])
+    .then(([rows, user]) => cardList(list, pick(rows), { headword, user }))
     .catch(() => list.replaceWith(h('p', { class: 'empty' }, t('data.loadError'))));
 }
 
 // A tag's page: every word carrying it.
 const renderTag = (tag) =>
-  renderCards(tagLabel(tag), TAGS.find((listed) => listed.name === tag)?.tl, (rows, itaigi) => wordsWithTag(rows, itaigi, tag));
+  renderCards(tagLabel(tag), TAGS.find((listed) => listed.name === tag)?.tl, (rows) => wordsWithTag(rows, tag));
 
 // A contributor's page: every word they gave or edited.
-const renderContributor = (name) => renderCards(name, null, (rows, itaigi) => wordsByContributor(rows, itaigi, name));
+const renderContributor = (name) => renderCards(name, null, (rows) => wordsByContributor(rows, name));
 
-// A word's page: its cards from each source, under the word itself.
+// A word's page: its card, under the word itself.
 const renderWord = (hanji, tl) =>
-  renderCards(wordTitle({ hanji, tl }), null, (rows, itaigi) => wordsSpelled(rows, itaigi, hanji, tl), { headword: false });
+  renderCards(wordTitle({ hanji, tl }), null, (rows) => wordsSpelled(rows, hanji, tl), { headword: false });
 
 // Hash routes (logic.js parseRoute): the homepage at #/ and any unknown hash, the 揣詞 page at
 // #/search, the form at #/submit, 我貢獻 ê 詞 at #/mine, 修改 at #/edit/<login>/<key>, cards at #/tag/<name>, #/contributor/<name> and

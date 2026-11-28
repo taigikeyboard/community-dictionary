@@ -1,13 +1,12 @@
-import { ACCENT_OTHER } from '../lib/entry.js';
+import { ACCENT_OTHER, credit, fromItaigi } from '../lib/entry.js';
 import { currentUser } from './account.js';
 import { REPO_URL } from './config.js';
-import { loadItaigiIndex, loadRows } from './data.js';
+import { loadRows } from './data.js';
 import { h } from './dom.js';
 import { icon } from './icons.js';
 import { editRoute, wordLabel, wordRoute, wordsSpelled, wordTitle } from './logic.js';
 import { pageTitle } from './page.js';
 import { listJoin, t } from './strings.js';
-import { TAG_NAMES } from './tags.js';
 import { contributorLinks, readings, tagLink, tlSpan } from './word-parts.js';
 
 // Word cards: one card with its copy / share buttons, a paged list of them, and the card a word
@@ -57,7 +56,7 @@ const copyText = (text, doneLabel) =>
 
 // A card's 複製詞目 / 分享連結 buttons (after kautian-mirror): copy "Hanji Tâi-lô"; share the
 // word page's link (`route`) through the system share sheet, or copy the link where there is none.
-// `target`, the attestation a community word's 修改 edits (anyone may edit any entry, D11), adds
+// `target`, the attestation a word's 修改 edits (anyone may edit any entry, D11), adds
 // 修改 before them; 回報 opens the repository's issue form with the word filled in (GitHub asks for a
 // sign-in, as the edit page does).
 function cardActions(row, route, target) {
@@ -67,7 +66,7 @@ function cardActions(row, route, target) {
     template: 'report.yml',
     title: `report: ${wordLabel(row)}`,
     word: wordLabel(row),
-    source: row.key ? `community ${row.key}` : 'iTaigi',
+    source: `entry ${row.key}`,
     page: `${location.origin}${location.pathname}${route}`,
   });
   return h(
@@ -86,16 +85,16 @@ function cardActions(row, route, target) {
   );
 }
 
-// One word card. Community rows merge their attestations (accents, meaning, examples, note,
-// contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
+// One word card: a row merges its attestations (accents, meaning, examples, note, who is credited;
+// a word brought over from iTaigi credits its iTaigi contributors and links iTaigi). With `headword`
 // the card leads with the word, linked to its own page (tag pages); a word page already names it
 // in the heading. `user` is the signed-in contributor, or null: 修改 edits their own attestation,
 // else the earliest (compile.js orders attestations by date).
 function wordCard(row, { headword, user = null }) {
-  const attestations = row.attestations ?? [];
+  const { attestations } = row;
   const target = (user && attestations.find((a) => a.contributor_id === user.id)) ?? attestations[0] ?? null;
   const pick = (field) => unique(attestations.map((a) => a[field]));
-  const tags = attestations.length > 0 ? unique(attestations.flatMap((a) => a.tags)) : (row.tags ?? []).map((index) => TAG_NAMES[index]);
+  const tags = unique(attestations.flatMap((a) => a.tags));
   const accents = unique(attestations.flatMap((a) => a.accents.map((accent) => (accent === ACCENT_OTHER && a.place ? a.place : accent))));
   const details = [
     [t('field.accents'), listJoin(accents)],
@@ -104,21 +103,22 @@ function wordCard(row, { headword, user = null }) {
     [t('field.examples'), unique(attestations.flatMap((a) => a.examples.map((e) => [e.hanji, e.tl].filter(Boolean).join('\n')))).join('\n')],
     [t('field.note'), pick('note').join('\n')],
   ].filter(([, value]) => value !== '');
-  const contributors = attestations.length > 0 ? pick('contributor') : (row.contributors ?? []);
+  const contributors = unique(attestations.flatMap(credit));
+  const itaigiWord = attestations.some(fromItaigi);
   // everyone else who changed a community entry, after the contributors as 修改：…
   const editors = unique(attestations.flatMap((a) => a.editors.map((e) => e.login))).filter((login) => !contributors.includes(login));
   // the card's foot: tags on the left, the contributors on the right as a byline (linking to their
   // pages); its 貢獻者 label is read aloud and shown on hover, the corner placement says it to the eye
-  const credit =
+  const byline =
     contributors.length > 0
       ? h(
           'p',
           { class: 'card-credit', title: t('card.contributors') },
           h('span', { class: 'unseen' }, t('card.byline')),
           contributorLinks(contributors),
-          editors.length > 0 ? [' · ', t('card.editors'), contributorLinks(editors)] : null,
+          editors.length > 0 ? [' · ', t('card.editors'), ...contributorLinks(editors)] : null,
           // an iTaigi word names its source after its contributors, as a link to iTaigi
-          attestations.length === 0 ? [' · ', h('a', { class: 'card-source', href: 'https://itaigi.tw/', rel: 'noopener' }, 'iTaigi')] : null,
+          itaigiWord ? [' · ', h('a', { class: 'card-source', href: 'https://itaigi.tw/', rel: 'noopener' }, 'iTaigi')] : null,
         )
       : null;
   const tagList = tags.length > 0 ? h('nav', { class: 'card-tags', 'aria-label': t('field.tags') }, tags.map((name) => tagLink(name))) : null;
@@ -133,28 +133,27 @@ function wordCard(row, { headword, user = null }) {
     h('div', { class: 'card-head' }, first, cardActions(row, route, target)),
     second,
     details.length > 0 ? h('dl', { class: 'card-details' }, details.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])) : null,
-    tagList || credit ? h('footer', { class: 'card-foot' }, tagList, credit) : null,
+    tagList || byline ? h('footer', { class: 'card-foot' }, tagList, byline) : null,
   );
 }
 
 const CARD_PAGE_SIZE = 60;
 
-// Fills `list` with cards for `words` (community rows first, then iTaigi), CARD_PAGE_SIZE at a
-// time, since one tag can hold a few thousand words: the next batch loads as the reader scrolls
-// near the end of the list.
+// Fills `list` with cards for `words` (in search.json's order: community words first),
+// CARD_PAGE_SIZE at a time, since one tag can hold a few thousand words: the next batch loads as
+// the reader scrolls near the end of the list.
 export function cardList(list, words, options) {
-  const all = [...words.community, ...words.itaigi];
-  if (all.length === 0) {
+  if (words.length === 0) {
     list.replaceWith(h('p', { class: 'empty' }, t('data.empty')));
     return;
   }
   let shown = 0;
   const showMore = () => {
-    list.append(...all.slice(shown, shown + CARD_PAGE_SIZE).map((row) => wordCard(row, options)));
-    shown = Math.min(shown + CARD_PAGE_SIZE, all.length);
+    list.append(...words.slice(shown, shown + CARD_PAGE_SIZE).map((row) => wordCard(row, options)));
+    shown = Math.min(shown + CARD_PAGE_SIZE, words.length);
   };
   showMore();
-  if (shown === all.length) return;
+  if (shown === words.length) return;
   // a marker after the list; once it nears the viewport the next batch is added, and the observer
   // stops when every card is in (or the page was replaced, taking the marker with it)
   const end = h('div', { class: 'cards-end', 'aria-hidden': 'true' });
@@ -164,7 +163,7 @@ export function cardList(list, words, options) {
       if (!end.isConnected) return observer.disconnect();
       if (!seen.some((e) => e.isIntersecting)) return;
       showMore();
-      if (shown === all.length) {
+      if (shown === words.length) {
         observer.disconnect();
         end.remove();
       }
@@ -219,11 +218,10 @@ export function openWordTip({ hanji, tl }, link) {
   document.addEventListener('keydown', onKey, true);
   section.append(tip);
   place();
-  Promise.all([loadRows(), loadItaigiIndex(), currentUser()])
-    .then(([rows, itaigi, user]) => {
+  Promise.all([loadRows(), currentUser()])
+    .then(([rows, user]) => {
       if (!tip.isConnected) return;
-      const words = wordsSpelled(rows, itaigi, hanji, tl);
-      tip.replaceChildren(...[...words.community, ...words.itaigi].map((row) => wordCard(row, { headword: true, user })));
+      tip.replaceChildren(...wordsSpelled(rows, hanji, tl).map((row) => wordCard(row, { headword: true, user })));
       place();
       tip.focus({ preventScroll: true });
     })

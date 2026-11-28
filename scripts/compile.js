@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { credit, fromItaigi } from '../lib/entry.js';
+import { foldSearch } from '../site/logic.js';
 import { checkTree } from './check-tree.js';
 
 // Compiles entries/ into dist/dictionary.csv and dist/search.json, one row per (Hanji, Tâi-lô)
@@ -26,7 +28,16 @@ export function groupEntries(checked) {
     const attestations = entries.map(({ hanji, tl, ...attestation }) => attestation);
     rows.push({ key, hanji: entries[0].hanji, tl: entries[0].tl, attestations });
   }
-  rows.sort((a, b) => compare(a.tl, b.tl) || compare(a.hanji, b.hanji) || compare(a.key, b.key));
+  // community words first (maintainer 2026-11-28: 「社群詞優先，再照台羅字母」), then by case- and
+  // tone-free Tâi-lô, words starting with a letter before those starting with punctuation or Hanji
+  const order = new Map(rows.map((row) => {
+    const folded = foldSearch(row.tl);
+    return [row, [row.attestations.every(fromItaigi) ? 1 : 0, /^[a-z]/.test(folded) ? 0 : 1, folded]];
+  }));
+  rows.sort((a, b) => {
+    const [x, y] = [order.get(a), order.get(b)];
+    return x[0] - y[0] || x[1] - y[1] || compare(x[2], y[2]) || compare(a.hanji, b.hanji) || compare(a.key, b.key);
+  });
   return rows;
 }
 
@@ -54,7 +65,7 @@ export function toCsv(rows) {
       // one line per example: Hanji / Tâi-lô
       unique(pick('examples').flat().map((e) => [e.hanji, e.tl].filter(Boolean).join(' / '))).join('\n'),
       unique(pick('note')).join('\n'),
-      unique(pick('contributor')).join('; '),
+      unique(attestations.flatMap(credit)).join('; '),
     ];
     lines.push(cells.map(csvCell).join(','));
   }
