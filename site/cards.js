@@ -1,4 +1,5 @@
 import { ACCENT_OTHER } from '../lib/entry.js';
+import { currentUser } from './account.js';
 import { REPO_URL } from './config.js';
 import { loadItaigiIndex, loadRows } from './data.js';
 import { h } from './dom.js';
@@ -218,11 +219,11 @@ export function openWordTip({ hanji, tl }, link) {
   document.addEventListener('keydown', onKey, true);
   section.append(tip);
   place();
-  Promise.all([loadRows(), loadItaigiIndex()])
-    .then(([rows, itaigi]) => {
+  Promise.all([loadRows(), loadItaigiIndex(), currentUser()])
+    .then(([rows, itaigi, user]) => {
       if (!tip.isConnected) return;
       const words = wordsSpelled(rows, itaigi, hanji, tl);
-      tip.replaceChildren(...[...words.community, ...words.itaigi].map((row) => wordCard(row, { headword: true })));
+      tip.replaceChildren(...[...words.community, ...words.itaigi].map((row) => wordCard(row, { headword: true, user })));
       place();
       tip.focus({ preventScroll: true });
     })

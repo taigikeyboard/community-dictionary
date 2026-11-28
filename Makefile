@@ -1,4 +1,4 @@
-.PHONY: help setup test validate compile build preview ci worker-setup worker-dev check-hanji preview-mock import-batch
+.PHONY: help setup test validate compile build preview ci worker-setup worker-dev check-hanji preview-mock import-batch graphql-check
 
 ARGS ?=
 
@@ -14,6 +14,9 @@ test: ## Run unit tests
 
 validate: ## Check every entry (ARGS="--base X --head Y")
 	node scripts/validate.js $(ARGS)
+
+graphql-check: ## Send the Worker's GraphQL queries to the live repository (needs gh)
+	node scripts/graphql-check.js
 
 compile: ## Compile entries
 	node scripts/compile.js

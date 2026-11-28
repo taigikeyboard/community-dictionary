@@ -1,7 +1,7 @@
 import { base64url } from './session.js';
 
-// GitHub REST calls: the OAuth code exchange, the user lookup, and the App's installation token
-// that every write goes through (the contributor's own token never writes).
+// GitHub calls: REST and GraphQL with the App's installation token (every read and write of the
+// repository; the contributor's own token never writes), the OAuth code exchange and the user lookup.
 
 const API = 'https://api.github.com';
 const OAUTH = 'https://github.com/login/oauth';
@@ -28,14 +28,11 @@ export async function api(token, method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
-// Like `api`, but a 404 is an answer (null), not an error.
-export async function apiOrNull(token, method, path) {
-  try {
-    return await api(token, method, path);
-  } catch (err) {
-    if (err instanceof GitHubError && err.status === 404) return null;
-    throw err;
-  }
+// One GraphQL operation; GitHub answers 200 even when the query fails, so `errors` throws too.
+export async function graphql(token, operationName, query, variables) {
+  const data = await api(token, 'POST', '/graphql', { operationName, query, variables });
+  if (data.errors?.length) throw new GitHubError('POST', `/graphql ${operationName}`, 200, JSON.stringify(data.errors));
+  return data.data;
 }
 
 export async function exchangeCode(env, { code, verifier, redirectUri }) {

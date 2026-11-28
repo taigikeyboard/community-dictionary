@@ -58,7 +58,7 @@ export async function submitWords(body) {
 // What the form says for a failed submission; `labelOf(key)` names a word by its key.
 export function submitErrorText(err, labelOf) {
   const code = err instanceof WorkerError ? err.data.error : null;
-  if (code === 'already_submitted') return t('worker.already_submitted', { words: listJoin((err.data.keys ?? []).map(labelOf)) });
+  if (code === 'already_submitted' || code === 'in_review') return t(`worker.${code}`, { words: listJoin((err.data.keys ?? []).map(labelOf)) });
   if (code === 'invalid') return t('worker.invalid', { details: listJoin(describeIssues(err.data.issues ?? []).map((found) => found.text)) });
   if (['cap_contributor', 'cap_total', 'too_large', 'unchanged'].includes(code)) return t(`worker.${code}`);
   if (code === 'not_found') return t('edit.notFound');

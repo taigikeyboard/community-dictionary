@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
-import { ENTRIES_DIR, nextEditors, NOREPLY_RE, parseEntryPath } from '../lib/entry.js';
+import { ENTRIES_DIR, isAccountId, nextEditors, NOREPLY_RE, parseEntryPath } from '../lib/entry.js';
 import { checkTree } from './check-tree.js';
 
 // CI gate: validates every entry file and, for a pull request, who may change entries/.
@@ -54,13 +54,20 @@ function entryAt(root, rev, path) {
 function commitOwnershipErrors(root, sha, author, changes) {
   const errors = [];
   const at = (rev, path) => entryAt(root, rev, path);
+  // enough of an entry to judge a change against (the full schema is checkTree's job)
+  const readable = (entry) => isAccountId(entry?.contributor_id) && Array.isArray(entry.editors);
   const owner = (entry) => entry?.contributor_id ?? 'unknown';
   const deleted = changes.filter((c) => c.status === 'D').map((c) => ({ path: c.path, entry: at(`${sha}^`, c.path) }));
   for (const { status, path } of changes.filter((c) => c.status !== 'D')) {
     const entry = at(sha, path);
-    let old = status === 'M' ? at(`${sha}^`, path) : undefined;
+    // every status but an add (modify, type change, …) has a previous version to answer to
+    let old = status === 'A' ? undefined : at(`${sha}^`, path);
+    if (status !== 'A' && !readable(old)) {
+      errors.push(`${sha}: ${path} replaces a file that is not a readable entry`);
+      continue;
+    }
     if (status === 'A') {
-      const moved = deleted.findIndex((d) => d.entry && d.entry.contributor_id === entry?.contributor_id);
+      const moved = deleted.findIndex((d) => readable(d.entry) && d.entry.contributor_id === entry?.contributor_id);
       if (moved !== -1) old = deleted.splice(moved, 1)[0].entry;
       if (parseEntryPath(path)?.login !== entry?.contributor) {
         errors.push(`${sha}: ${path} is not under the contributor's own directory ${ENTRIES_PREFIX}${entry?.contributor}/`);
@@ -68,11 +75,14 @@ function commitOwnershipErrors(root, sha, author, changes) {
     }
     if (!old) {
       if (owner(entry) !== author.id) errors.push(`${sha}: ${path} belongs to contributor ${owner(entry)}, not commit author ${author.id}`);
+      else if (entry.contributor !== author.login) errors.push(`${sha}: ${path} names contributor ${entry.contributor}, not commit author ${author.login}`);
       else if (entry.editors?.length !== 0) errors.push(`${sha}: ${path} is a new entry, so it lists no editors`);
       continue;
     }
+    // the owner moving their entry files it under their current login
     const refiled = status === 'A' && old.contributor_id === author.id;
-    if (entry?.contributor_id !== old.contributor_id || entry.submitted !== old.submitted || (!refiled && entry.contributor !== old.contributor)) {
+    const contributor = refiled ? author.login : old.contributor;
+    if (!entry || entry.contributor_id !== old.contributor_id || entry.submitted !== old.submitted || entry.contributor !== contributor) {
       errors.push(`${sha}: ${path} changes who contributed contributor ${owner(old)}'s entry or when`);
       continue;
     }

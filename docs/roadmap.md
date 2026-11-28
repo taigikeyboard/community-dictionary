@@ -45,7 +45,7 @@ browser (GitHub Pages, static)            Cloudflare Worker                 GitH
                                             GET /user → id, login
                        ◀── session ─────    signed session (id, login)
 form → POST /submit    ───────────────▶    validate (shared module)
-                                            duplicate + ownership check
+                                            duplicate + in-review check
                                             mint installation token
                                             create branch, commit, PR  ───▶  pull request
                        ◀── PR URL ──────
@@ -146,7 +146,7 @@ Built (2026-11-20). Implementation choices the roadmap did not fix (defaults, op
 | Stored text | NFC, LF line endings, trimmed; no control, format or line-separator characters except ZWJ. Hanji allows Han ideographs (not radicals), letters with tone marks, hyphens. The site and the Worker take form input through `prepareEntry` (clean, then validate); CI runs the strict `validateEntry`, which rejects unclean files. |
 | Stored `tl` | Keeps the contributor's case and spaces; only the key normalizes it. |
 | File format | `serializeEntry`: fixed field order, two-space indent, final newline. CI rejects any other formatting. |
-| Pull request modes | **submission** = opened by the App's bot login (repository variable `SUBMIT_APP_LOGIN`, set in Phase 4) from a branch of this repository: only `entries/`, no merge commits, ownership checked on both the old and new version of each touched file. **member** (owner, member, collaborator) = whole-tree check only. **outside** = anyone else: may not change `entries/`. |
+| Pull request modes | **submission** = opened by the App's bot login (repository variable `SUBMIT_APP_LOGIN`, set in Phase 4) from a branch of this repository: only `entries/`, no merge commits, ownership per commit (2026-11-28, D11): a file the author does not own may only be modified or moved with its identity kept and `editors` = old list + author; new files are the author's own (id and login); every non-add change answers to its previous version. **member** (owner, member, collaborator) = whole-tree check only. **outside** = anyone else: may not change `entries/`. |
 | Validator trust | CI runs `scripts/validate.js` from the base revision against the head checkout, so a pull request cannot change its own gate; a change to the validator takes effect after it merges. |
 | Directory | Must be a valid GitHub login. A submission that adds a file must put it under `entries/<contributor>/`; existing files stay put after an account rename. One `contributor_id` may hold a key only once across all directories. |
 | Compiled CSV | One row per key; list columns joined with `; `, free-text columns join distinct values with a newline; cells starting with `= + - @` get a leading `'`. `search.json` keeps every attestation in full, including `contributor_id`. |
@@ -169,12 +169,12 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 |---|---|
 | Host | `dict-api.taigikeyboard.tw` as a Workers Custom Domain in `worker/wrangler.jsonc` (the zone is on Cloudflare); `workers_dev` off |
 | Routes | `GET /login?return=#/…` → GitHub; `GET /callback` → back to `SITE_URL` + that hash route (anything else → `#/`); `GET /session` → `{ id, login }` or 401; `POST /logout`; `POST /submit` (new: `{ words: [{ hanji, tl }], accents, tags, place, meaning, examples: [{ hanji, tl }], note }`; edit: the same fields for one word plus `path`); `GET /mine` → `{ submissions: [{ path, entry, pullRequest }] }` (own open submissions) or 401 |
-| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_found`, `unchanged`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
+| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `in_review`, `not_found`, `unchanged`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
 | Session | 24 hours, cookie `__Host-session`; the OAuth `state` + PKCE verifier sit in a signed 10-minute `__Host-oauth` cookie (`__Host-`: no sibling subdomain can plant either); each signed value carries its use, so one is never accepted as the other; the GitHub user token is used for `/user` only and never stored |
 | Installation token | App JWT (`iss` = client ID) → `GET /repos/{repo}/installation` → token limited to this repository and `contents` + `pull_requests: write`; cached per isolate until five minutes before expiry |
-| Duplicate check | the base branch's recursive tree (a truncated tree fails closed) plus the files of the contributor's open submission pull requests |
+| Duplicate check | the target path on the base branch plus the contributor's own open submissions' file lists (roadmap § Worker budget); a file any other open submission touches is refused with `in_review` (2026-11-28) |
 | Branch name | `submit/<id>/<key>`; `-2`, `-3`… when an open pull request already uses it; a leftover branch of a closed pull request is reset to the base tip |
-| Edit | an entry in the contributor's open submission is read from and edited on that branch (no new pull request, no cap check); otherwise from the base branch in a new pull request. An unchanged pair keeps its file, directory and `contributor`; a changed pair moves to `entries/<current login>/` |
+| Edit | an entry in the contributor's open submission is read from and edited on that branch (no new pull request, no cap check); otherwise from the base branch in a new pull request. An unchanged pair keeps its file, directory and `contributor`; a changed pair moves to `entries/<current login>/` when the owner edits, and stays under the stored contributor's directory when anyone else does (2026-11-28) |
 | Pull request body | `Submitted by @<login>` (so GitHub notifies them of the review), the Hanji / Tâi-lô list, and the CC0 1.0 line (D4) |
 | Local run | `make worker-dev` (wrangler dev on 127.0.0.1:8787, `--local-upstream` so the callback URL stays local); secrets in `worker/.dev.vars` from `worker/.dev.vars.example` |
 | Abuse limits | Only the caps for now. A per-user rate limit (Workers rate-limit binding), a blocked-ids list and `concurrency` in `validate.yml` were raised by the 2026-11-26 security review (a few accounts can exhaust GitHub's secondary write limit; 20 accounts fill `CAP_TOTAL`; an org block does not reach App-opened pull requests); maintainer 2026-11-26: launch first and observe |
@@ -249,14 +249,14 @@ waits for review). A contributor who wants a word gone reports it.
 
 | Step | Commit | Scope (grounded in code) |
 |---|---|---|
-| 1 | `feat(worker)` (done) | Remove `withdraw()` (`worker/src/submit.js`) and its route (`worker/src/index.js` `ACTIONS`) with its tests; `submitEdit` refuses a 21st commit on an open submission (`GET /pulls/{n}` `commits`) with `cap_contributor`; new `GET /mine` → the signed-in contributor's open submissions only (branches `submit/<own id>/`, via `loadState`), as `[{ path, entry, pullRequest: { url, number } }]`, 401 signed out, `no-store`. Tests for each. Deploy with the site. |
+| 1 | `feat(worker)` (done) | Remove `withdraw()` (`worker/src/submit.js`) and its route (`worker/src/index.js` `ACTIONS`) with its tests; `submitEdit` refuses a 21st commit on an open submission (`GET /pulls/{n}` `commits`) with `cap_contributor`; new `GET /mine` → the signed-in contributor's open submissions only (branches `submit/<own id>/`, via `loadState`), as `[{ path, entry, pullRequest: { url, number } }]`, 401 signed out, `no-store`. Tests for each. Deploy with the site. (Calls superseded 2026-11-28 by § Worker budget.) |
 | 2 | `feat(site)` (done) | 登出 button (`POST /logout`, already in the Worker) beside the signed-in state on the form and on 我的提交. |
 | 3 | `feat(site)` (done) | `#/mine` 我的提交: signed out → sign-in button; signed in → accepted words (`search.json` attestations with the session's `contributor_id`) and words in review (`GET /mine`), as cards. Each own attestation (here and on every card page) gets 修改: the form for that one word, filled from the entry, posting `/submit` with `path`. |
 | 4 | `feat(site)` (done) | 回報 on every card: a new GitHub issue from `.github/ISSUE_TEMPLATE/report.yml` (issue form; word, key, source, page URL prefilled through query parameters; reason dropdown; details). GitHub requires a sign-in to file it. |
 
 Security (review 2026-11-27): identity only from GitHub `/user`; signed `__Host-` HttpOnly cookie;
-POST checks `Origin`; ownership = the stored file's `contributor_id`, read from the base branch or
-the contributor's own submission branch only; strict `parseEntryPath`; CI re-checks ownership from
+POST checks `Origin`; edits read the stored file from the base branch or the editor's own
+submission branch only (since 2026-11-28 anyone may edit, D11); strict `parseEntryPath`; CI re-checks ownership from
 the base revision; every edit is a pull request the maintainer merges. New surface: `GET /mine`
 answers only for the session's own id; the sign-out button closes a shared-computer session that
 could otherwise edit for 24 hours.
@@ -297,3 +297,43 @@ pencil edits the signed-in person's own attestation, else the earliest one.
 
 Deliberately not adopted: editors derived from git history at build time (maintainer commits such as
 batch imports would show up as edits, and the Pages build would need full history).
+
+## Worker budget — constant GitHub calls per request (2026-11-28)
+
+Maintainer 2026-11-28: the Worker runs on the Cloudflare Workers Free plan (50 subrequests and
+10 ms CPU per request); its use must not grow with the number of words (iTaigi's ~18k entries are
+next) nor with the queue of open submissions. Before: a submission listed every open pull request's
+files (one call each), read the base branch's whole recursive tree plus a blob per matching key,
+and `GET /mine` read each own file separately. Pre-implementation review 2026-11-28: go with
+revisions (all adopted below).
+
+GraphQL fields verified against the live repository (`make graphql-check` sends the Worker's own
+two operations through `gh api graphql`; a missing `object(expression:)` is plain null).
+
+| Request | GitHub calls (installation token: +2 once per isolate-hour) |
+|---|---|
+| New submission (≤ 20 words) | `Submissions` + `Blobs` (oid of the ≤ 20 target paths on main) → `POST /git/trees`, `POST /git/commits`, `POST /git/refs` (+ `PATCH` to reset a closed pull request's leftover branch), `POST /pulls` = 6–7 |
+| Edit | `Submissions` + `Blobs` (the target, from the editor's own submission head or main) (+ `Blobs` for a changed pair's new path) → tree, commit, then a new branch + `POST /pulls`, or (`PATCH /pulls/{n}` when the file list grows) + fast-forward `PATCH` of the editor's branch = 5–8 |
+| `GET /mine` | `Submissions` (+ one `Blobs` read of every own file, `<head oid>:<path>`) = 1–2 |
+
+Open pull requests are read newest first, 100 to a GraphQL page (each page past the first is one
+more `Submissions` call); past 3 pages (fork spam) requests fail closed (`try_later`, logged). `CAP_TOTAL` stays 100. `test/worker.test.js` counts the calls of a
+20-word submission, an edit and `/mine` with 50 open submissions and with none: the same 6 / 6 / 2.
+
+| Piece | Code |
+|---|---|
+| `worker/src/github.js` | `graphql(token, operationName, query, variables)`; a response with `errors` throws. `apiOrNull` removed. |
+| File list in the pull request body | `<!-- community-dictionary-files ["entries/…", …] -->`: every entry path the submission's commits wrote or deleted. Written on create; on an extending edit that adds a path, the body is updated before the branch moves (a request that dies in between leaves the list too long). Two different pair changes sent at once on one submission can still leave it one path short (the later body wins, the earlier branch move wins); CI stays the gate, and there is no compare-and-swap on a body without another call. Whether a listed path still exists is read from the branch (gone after the editor's own pair change → `not_found`, skipped by `/mine`). The last marker counts; every path must pass `parseEntryPath`; a body without one touches nothing silently (an old Worker's pull request: see Deploy), a broken one touches nothing and is logged. Only the App and the maintainer can edit a bot pull request's body; CI stays the real gate. |
+| `worker/src/submit.js` | `snapshot()` (`Submissions`: base commit + tree; open pull requests from this repository's `submit/` branches with body, commit count, head commit + tree) and `blobs()` (`Blobs`) replace `openSubmissions`, `filesOf`, `commitCount`, `tip`, `readEntry`, `ownedOnBase`. Duplicate check (D10) = the target path `entries/<login>/<key>.json` exists on main (whoever's file it is) or is in the contributor's own open submissions' lists (their edits of other people's entries do not count). Commits start from the snapshot's commit and tree. |
+| Behaviour change | A key held under an older login directory after an account rename passes the Worker; CI (`checkTree` → `duplicatePairErrors` on the pull request head) refuses it, and the site's form warns first (`duplicateStatus` matches by `contributor_id`). A submission's earlier path stays "touched" after a later pair change, so the owner moving back onto it is refused (a non-owner's move back is allowed). |
+| `test/fake-github.js` | `POST /graphql` answers `Submissions` and `Blobs` by operation name from the in-memory git state; dead REST routes removed; `PATCH /pulls/{n}` added. |
+
+Deploy: no open `submit/` pull requests may exist when the new Worker goes live (bodies from the
+old Worker carry no file list) — checked with `gh pr list` right before `npm --prefix worker run deploy`.
+Dogfood: after deploy, the Workers dashboard's CPU time and wall time for one 20-word submission and one `/mine`, also once several submissions are open (GraphQL wall time grows with the queue even though the call count does not).
+
+Deliberately not adopted: GraphQL `createCommitOnBranch` (one call, but the commit author is the
+App, which breaks D7 and the CI ownership check by noreply address); the pull request files listing
+in GraphQL (no previous path for renames); caching file lists per head sha in KV (state to keep in
+sync, and Free-plan KV writes are capped at 1,000 a day); folding `Blobs` into `Submissions`
+(one call fewer, but one query text per request shape).

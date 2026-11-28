@@ -1,15 +1,57 @@
 import { entryKey, entryPath, issue, MAX_WORDS, nextEditors, parseEntryPath, prepareEntry, serializeEntry } from '../../lib/entry.js';
-import { api, apiOrNull, GitHubError, installationToken } from './github.js';
+import { api, GitHubError, graphql, installationToken } from './github.js';
 
-// New and edit submissions (any entry may be edited, D11), and the contributor's own open ones: checks duplicates and caps against GitHub
-// state (no database), then writes one commit on a `submit/<id>/<key>` branch and opens the pull
-// request.
+// New and edit submissions (any entry may be edited, D11), and the contributor's own open ones:
+// checks duplicates and caps against GitHub state (no database), then writes one commit on a
+// `submit/<id>/<key>` branch and opens the pull request. Every request makes a fixed handful of
+// GitHub calls, whatever the number of entries or open submissions (Workers Free plan,
+// roadmap § Worker budget).
 
 const BRANCH_PREFIX = 'submit/';
 // edits to one open submission land as commits on its branch; past this many it refuses more, so a
-// signed-in account cannot keep writing to GitHub without limit (maintainer 2026-11-27)
+// signed-in account cannot keep writing to GitHub without limit (maintainer 2026-11-28)
 const MAX_SUBMISSION_COMMITS = 20;
+// open pull requests are read 100 to a GraphQL page; past this many pages (fork spam) the Worker
+// refuses to work rather than miss a submission
+const MAX_PULL_REQUEST_PAGES = 3;
 const ENTRY_FIELDS = ['accents', 'tags', 'place', 'meaning', 'examples', 'note'];
+
+// Every entry path a submission's commits have written or deleted, kept in its pull request body
+// (GitHub's file listing would cost a call per pull request, and reports a changed pair as a rename
+// without the old path).
+const MARKER_NAME = 'community-dictionary-files';
+const MARKER_RE = new RegExp(`<!-- ${MARKER_NAME} (.*?) -->`, 'g');
+const marker = (paths) => `<!-- ${MARKER_NAME} ${JSON.stringify(paths)} -->`;
+
+// The open pull requests, newest first, 100 to a page, with the base branch's tip.
+export const SUBMISSIONS_QUERY = `query Submissions($owner: String!, $name: String!, $base: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    base: ref(qualifiedName: $base) { target { ... on Commit { oid tree { oid } } } }
+    pullRequests(states: OPEN, first: 100, after: $after, orderBy: { field: CREATED_AT, direction: DESC }) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        number
+        url
+        body
+        headRefName
+        isCrossRepository
+        commits { totalCount }
+        headRef { target { ... on Commit { oid tree { oid } } } }
+      }
+    }
+  }
+}`;
+
+// Files by `<commit>:<path>` expression (variables e0…), as their text or only their oid; a missing
+// file is null.
+export function blobsQuery(count, field) {
+  const names = Array.from({ length: count }, (_, i) => `e${i}`);
+  return `query Blobs($owner: String!, $name: String!, ${names.map((n) => `$${n}: String!`).join(', ')}) {
+  repository(owner: $owner, name: $name) {
+${names.map((n, i) => `    f${i}: object(expression: $${n}) { ... on Blob { ${field} } }`).join('\n')}
+  }
+}`;
+}
 
 // A refusal the contributor sees; `code` is mapped to Taiwanese text by the site.
 export class SubmitError extends Error {
@@ -19,10 +61,6 @@ export class SubmitError extends Error {
     this.code = code;
     this.details = details;
   }
-}
-
-function decodeBase64Utf8(b64) {
-  return new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
 }
 
 // The submission date in Taiwan, where the contributors are.
@@ -45,105 +83,111 @@ function draftEntry(body, word, identity) {
   return prepareEntry({ ...draft, ...identity });
 }
 
+// The paths in a pull request body's last marker; a body without one (or a broken one) touches
+// nothing, so a hand edit cannot block the site.
+function markerPaths(body, number) {
+  const found = [...(body ?? '').matchAll(MARKER_RE)].at(-1);
+  if (!found) return [];
+  try {
+    const paths = JSON.parse(found[1]);
+    if (Array.isArray(paths)) return paths.filter((path) => typeof path === 'string' && parseEntryPath(path));
+  } catch {
+    // reported below
+  }
+  console.error(`worker: pull request #${number} has an unreadable ${MARKER_NAME} marker; treated as touching nothing`);
+  return [];
+}
+
+const commitOf = (ref) => ref?.target && { oid: ref.target.oid, tree: ref.target.tree.oid };
+
 class Repo {
   constructor(env, token) {
     this.token = token;
-    this.name = env.GITHUB_REPO;
+    this.owner = env.GITHUB_REPO.split('/')[0];
+    this.name = env.GITHUB_REPO.split('/')[1];
     this.base = env.BASE_BRANCH || 'main';
   }
 
   call(method, path, body) {
-    return api(this.token, method, `/repos/${this.name}${path}`, body);
+    return api(this.token, method, `/repos/${this.owner}/${this.name}${path}`, body);
   }
 
-  // Open pull requests from this repository's submit/ branches.
-  async openSubmissions() {
-    const found = [];
+  query(operationName, query, variables = {}) {
+    return graphql(this.token, operationName, query, { owner: this.owner, name: this.name, ...variables });
+  }
+
+  // The base branch's tip and the open submissions (pull requests from this repository's submit/
+  // branches): [{ number, url, body, branch, commits, head: { oid, tree }, paths }].
+  async snapshot() {
+    const submissions = [];
+    let base = null;
+    let after = null;
     for (let page = 1; ; page++) {
-      const batch = await this.call('GET', `/pulls?state=open&per_page=100&page=${page}`);
-      found.push(...batch.filter((pr) => pr.head.repo?.full_name.toLowerCase() === this.name.toLowerCase() && pr.head.ref.startsWith(BRANCH_PREFIX)));
-      if (batch.length < 100) return found;
-    }
-  }
-
-  // filename → { pr, status } for every file in the contributor's open submissions.
-  async filesOf(prs) {
-    const files = new Map();
-    for (const pr of prs) {
-      for (const file of await this.call('GET', `/pulls/${pr.number}/files?per_page=100`)) {
-        files.set(file.filename, { pr, status: file.status });
-        // GitHub may pair a changed-pair edit's add + delete into one rename.
-        if (file.status === 'renamed') files.set(file.previous_filename, { pr, status: 'removed' });
+      const { repository } = await this.query('Submissions', SUBMISSIONS_QUERY, { base: `refs/heads/${this.base}`, after });
+      base ??= commitOf(repository.base);
+      const { nodes, pageInfo } = repository.pullRequests;
+      for (const pr of nodes) {
+        const head = commitOf(pr.headRef);
+        if (pr.isCrossRepository || !pr.headRefName.startsWith(BRANCH_PREFIX) || !head) continue;
+        submissions.push({ number: pr.number, url: pr.url, body: pr.body, branch: pr.headRefName, commits: pr.commits.totalCount, head, paths: markerPaths(pr.body, pr.number) });
       }
+      if (!pageInfo.hasNextPage) break;
+      if (page === MAX_PULL_REQUEST_PAGES) throw new Error(`more than ${MAX_PULL_REQUEST_PAGES * 100} open pull requests; close some before submissions can resume`);
+      after = pageInfo.endCursor;
     }
-    return files;
+    if (!base) throw new Error(`base branch ${this.base} not found`);
+    return { base, submissions };
   }
 
-  // Keys among `keys` that contributor `userId` already holds on the base branch, in any directory
-  // (an account rename leaves older files under the old login).
-  async ownedOnBase(userId, keys) {
-    const tree = await this.call('GET', `/git/trees/${this.base}?recursive=1`);
-    if (tree.truncated) throw new Error(`tree of ${this.base} is truncated; duplicate check impossible`);
-    const owned = new Set();
-    for (const item of tree.tree) {
-      const location = item.type === 'blob' ? parseEntryPath(item.path) : null;
-      if (!location || !keys.has(location.key)) continue;
-      const blob = await this.call('GET', `/git/blobs/${item.sha}`);
-      if (JSON.parse(decodeBase64Utf8(blob.content)).contributor_id === userId) owned.add(location.key);
-    }
-    return owned;
+  // `expressions` (`<commit>:<path>`) → each file's `field` ("text" or "oid"), or null when missing;
+  // one GraphQL call for all of them.
+  async blobs(expressions, field) {
+    if (expressions.length === 0) return [];
+    const variables = Object.fromEntries(expressions.map((expression, i) => [`e${i}`, expression]));
+    const { repository } = await this.query('Blobs', blobsQuery(expressions.length, field), variables);
+    return expressions.map((_, i) => repository[`f${i}`]?.[field] ?? null);
   }
 
-  async commitCount(pr) {
-    return (await this.call('GET', `/pulls/${pr.number}`)).commits;
-  }
-
-  async readEntry(path, ref) {
-    const file = await apiOrNull(this.token, 'GET', `/repos/${this.name}/contents/${path}?ref=${encodeURIComponent(ref)}`);
-    return file && JSON.parse(decodeBase64Utf8(file.content));
-  }
-
-  async tip(branch) {
-    const { object } = await this.call('GET', `/git/ref/heads/${branch}`);
-    return object.sha;
-  }
-
-  // Writes every change of one submission as a single commit (Git Data API: tree, commit, ref), so
-  // a branch is never left half-written. `changes` maps a path to an entry, or to null to delete
-  // it. The commit goes on top of an open pull request's `branch`, or else on `newBranch` (or
-  // `newBranch-2`, … when an open pull request already uses that name) off the base tip; a
-  // leftover branch of a closed pull request is reset.
-  async writeCommit({ branch, newBranch, openPrs, changes, message, user }) {
-    const parent = await this.tip(branch ?? this.base);
-    const { tree } = await this.call('GET', `/git/commits/${parent}`);
+  // One commit carrying every change of a submission (Git Data API: tree, commit), on top of
+  // `parent` ({ oid, tree }); `changes` maps a path to an entry, or to null to delete it.
+  async createCommit(parent, changes, message, user) {
     const items = [...changes].map(([path, entry]) =>
       entry === null
         ? { path, mode: '100644', type: 'blob', sha: null }
         : { path, mode: '100644', type: 'blob', content: serializeEntry(entry) },
     );
-    const newTree = await this.call('POST', '/git/trees', { base_tree: tree.sha, tree: items });
-    const commit = await this.call('POST', '/git/commits', { message, tree: newTree.sha, parents: [parent], author: author(user) });
+    const tree = await this.call('POST', '/git/trees', { base_tree: parent.tree, tree: items });
+    const commit = await this.call('POST', '/git/commits', { message, tree: tree.sha, parents: [parent.oid], author: author(user) });
+    return commit.sha;
+  }
 
-    if (branch) {
-      // Fast-forward only: a concurrent write to the same branch fails instead of being lost.
-      await this.call('PATCH', `/git/refs/heads/${branch}`, { sha: commit.sha, force: false });
-      return branch;
-    }
-    const used = new Set(openPrs.map((pr) => pr.head.ref));
-    let name = newBranch;
-    for (let n = 2; used.has(name); n++) name = `${newBranch}-${n}`;
+  // Fast-forward only: a concurrent write to the same branch fails instead of being lost.
+  moveBranch(branch, sha) {
+    return this.call('PATCH', `/git/refs/heads/${branch}`, { sha, force: false });
+  }
+
+  // A new branch `name` (or `name-2`, … when an open submission already uses it) at `sha`; a
+  // leftover branch of a closed pull request is reset.
+  async createBranch(name, sha, submissions) {
+    const used = new Set(submissions.map((s) => s.branch));
+    let branch = name;
+    for (let n = 2; used.has(branch); n++) branch = `${name}-${n}`;
     try {
-      await this.call('POST', '/git/refs', { ref: `refs/heads/${name}`, sha: commit.sha });
+      await this.call('POST', '/git/refs', { ref: `refs/heads/${branch}`, sha });
     } catch (err) {
       if (!(err instanceof GitHubError && err.status === 422)) throw err;
-      await this.call('PATCH', `/git/refs/heads/${name}`, { sha: commit.sha, force: true });
+      await this.call('PATCH', `/git/refs/heads/${branch}`, { sha, force: true });
     }
-    return name;
+    return branch;
   }
 
   async openPullRequest(branch, title, body) {
     const pr = await this.call('POST', '/pulls', { title, head: branch, base: this.base, body });
     return { url: pr.html_url, number: pr.number };
+  }
+
+  setBody(number, body) {
+    return this.call('PATCH', `/pulls/${number}`, { body });
   }
 }
 
@@ -154,41 +198,44 @@ function capValue(env, name) {
   return value;
 }
 
-function checkCaps(env, user, openPrs) {
-  const own = openPrs.filter((pr) => pr.head.ref.startsWith(`${BRANCH_PREFIX}${user.id}/`));
-  if (own.length >= capValue(env, 'CAP_PER_CONTRIBUTOR')) throw new SubmitError(429, 'cap_contributor');
-  if (openPrs.length >= capValue(env, 'CAP_TOTAL')) throw new SubmitError(429, 'cap_total');
+// a contributor's submission branches are submit/<id>/<key of the first word or the edited entry>
+const ownBranch = (user, key = '') => `${BRANCH_PREFIX}${user.id}/${key}`;
+const isOwn = (user) => (submission) => submission.branch.startsWith(ownBranch(user));
+
+function checkCaps(env, user, submissions) {
+  if (submissions.filter(isOwn(user)).length >= capValue(env, 'CAP_PER_CONTRIBUTOR')) throw new SubmitError(429, 'cap_contributor');
+  if (submissions.length >= capValue(env, 'CAP_TOTAL')) throw new SubmitError(429, 'cap_total');
 }
 
-function prBody(user, lines) {
+function prBody(user, lines, paths) {
   return [
     `Submitted by @${user.login} through the community dictionary form.`,
     '',
     ...lines,
     '',
     'Contributed under CC0 1.0 Universal (https://creativecommons.org/publicdomain/zero/1.0/).',
+    '',
+    marker(paths),
   ].join('\n');
 }
 
-// Everything the contributor's open submissions and the base branch say about their own keys.
-async function loadState(repo, user) {
-  const openPrs = await repo.openSubmissions();
-  const ownPrs = openPrs.filter((pr) => pr.head.ref.startsWith(`${BRANCH_PREFIX}${user.id}/`));
-  return { openPrs, ownFiles: await repo.filesOf(ownPrs) };
+// One open pull request per entry file: an edit or a new word whose file another open submission
+// (anyone's but `except`, the editor's own one being extended) already touches waits for that
+// review, so two pull requests never fight over one file (maintainer 2026-11-28). Paths, not keys:
+// the same contributor's key under an older login directory is not caught (needs an account
+// rename; CI's duplicate-pair check on the pull request head reports it).
+function refuseInReview(submissions, paths, except = null) {
+  const busy = paths.filter((path) => submissions.some((s) => s !== except && s.paths.includes(path)));
+  if (busy.length > 0) throw new SubmitError(409, 'in_review', { keys: [...new Set(busy.map((path) => parseEntryPath(path).key))] });
 }
 
-function heldInOpenSubmission(ownFiles, key) {
-  for (const [filename, { status }] of ownFiles) {
-    if (status !== 'removed' && parseEntryPath(filename)?.key === key) return true;
-  }
-  return false;
-}
-
-// `contributorId` is whose entries the keys would be: the signed-in contributor's own on a new
-// submission, the stored entry's contributor on an edit.
-async function refuseHeldKeys(repo, contributorId, ownFiles, keys) {
-  const owned = await repo.ownedOnBase(contributorId, keys);
-  const held = [...keys].filter((key) => owned.has(key) || heldInOpenSubmission(ownFiles, key));
+// D10: the file `entries/<login>/<key>.json` exists on the base branch, or one of `own` (the
+// contributor's open submissions) touched that path. Existence only, whoever's file it is; a key
+// under an older login directory after an account rename is left to CI's duplicate-pair check.
+async function refuseHeldKeys(repo, base, login, own, keys) {
+  const paths = keys.map((key) => entryPath(login, key));
+  const found = await repo.blobs(paths.map((path) => `${base.oid}:${path}`), 'oid');
+  const held = keys.filter((key, i) => found[i] !== null || own.some((s) => s.paths.includes(paths[i])));
   if (held.length > 0) throw new SubmitError(409, 'already_submitted', { keys: held });
 }
 
@@ -207,40 +254,38 @@ export async function submitNew(env, user, body, now = Date.now()) {
   if (new Set(keys).size !== keys.length) throw new SubmitError(400, 'invalid', { issues: [issue('words', 'repeated_word')] });
 
   const repo = new Repo(env, await installationToken(env));
-  const { openPrs, ownFiles } = await loadState(repo, user);
-  checkCaps(env, user, openPrs);
-  await refuseHeldKeys(repo, user.id, ownFiles, new Set(keys));
+  const { base, submissions } = await repo.snapshot();
+  checkCaps(env, user, submissions);
+  const paths = keys.map((key) => entryPath(user.login, key));
+  // one's own earlier word is "already submitted" before anyone's open submission is "in review"
+  await refuseHeldKeys(repo, base, user.login, submissions.filter(isOwn(user)), keys);
+  refuseInReview(submissions, paths);
 
   const title = entries.length === 1 ? `add ${wordLabel(entries[0])}` : `add ${entries.length} words`;
-  const branch = await repo.writeCommit({
-    newBranch: `${BRANCH_PREFIX}${user.id}/${keys[0]}`,
-    openPrs,
-    changes: new Map(entries.map((entry, i) => [entryPath(user.login, keys[i]), entry])),
-    message: entries.length === 1 ? title : `${title}\n\n${entries.map(wordLabel).join('\n')}`,
-    user,
-  });
+  const message = entries.length === 1 ? title : `${title}\n\n${entries.map(wordLabel).join('\n')}`;
+  const sha = await repo.createCommit(base, new Map(entries.map((entry, i) => [paths[i], entry])), message, user);
+  const branch = await repo.createBranch(ownBranch(user, keys[0]), sha, submissions);
   const lines = ['| Hanji | Tâi-lô |', '|---|---|', ...entries.map((e) => `| ${e.hanji} | ${e.tl} |`)];
-  return repo.openPullRequest(branch, title, prBody(user, lines));
+  return repo.openPullRequest(branch, title, prBody(user, lines, paths));
 }
 
 // The entry at `path`, whoever contributed it (D11): read from the editor's own open submission
-// that touches it (so a second edit lands as one more commit there) or else from the base branch.
-async function editTarget(repo, ownFiles, path) {
-  const location = typeof path === 'string' ? parseEntryPath(path) : null;
+// that touched it (so a second edit lands as one more commit there; gone from it after the
+// editor's own pair change) or else from the base branch.
+async function editTarget(repo, base, own, path) {
+  const location = parseEntryPath(path);
   if (!location) throw new SubmitError(400, 'invalid', { issues: [issue('path', 'not_entry_path')] });
-  const open = ownFiles.get(path);
-  // an earlier edit that changed the pair moved the entry away from this path
-  if (open?.status === 'removed') throw new SubmitError(404, 'not_found');
-  const ref = open ? open.pr.head.ref : repo.base;
-  const entry = await repo.readEntry(path, ref);
-  if (!entry) throw new SubmitError(404, 'not_found');
-  return { entry, location, pr: open?.pr };
+  const submission = own.find((s) => s.paths.includes(path)) ?? null;
+  const [text] = await repo.blobs([`${(submission?.head ?? base).oid}:${path}`], 'text');
+  if (text === null) throw new SubmitError(404, 'not_found');
+  return { entry: JSON.parse(text), location, submission };
 }
 
 export async function submitEdit(env, user, body) {
   const repo = new Repo(env, await installationToken(env));
-  const { openPrs, ownFiles } = await loadState(repo, user);
-  const target = await editTarget(repo, ownFiles, body.path);
+  const { base, submissions } = await repo.snapshot();
+  const own = submissions.filter(isOwn(user));
+  const target = await editTarget(repo, base, own, body.path);
   const old = target.entry;
   const isOwner = old.contributor_id === user.id;
 
@@ -252,43 +297,47 @@ export async function submitEdit(env, user, body) {
   const newKey = await entryKey(entry.hanji, entry.tl);
   const pairChanged = newKey !== target.location.key;
   if (!pairChanged && serializeEntry(entry) === serializeEntry(old)) throw new SubmitError(400, 'unchanged');
-  entry = { ...entry, editors: nextEditors(old, user) };
   // A changed pair is a new file in the contributor's directory: the owner's current login when
-  // the owner edits, the stored one otherwise. The contributor's other entries are on the base
-  // branch, or (owner only) in their own open submissions.
-  if (pairChanged) {
-    if (isOwner) entry = { ...entry, contributor: user.login };
-    await refuseHeldKeys(repo, old.contributor_id, isOwner ? ownFiles : new Map(), new Set([newKey]));
-  }
+  // the owner edits, the stored one otherwise.
+  entry = { ...entry, editors: nextEditors(old, user), contributor: isOwner && pairChanged ? user.login : old.contributor };
+  const newPath = pairChanged ? entryPath(entry.contributor, newKey) : body.path;
 
-  if (!target.pr) checkCaps(env, user, openPrs);
-  else if ((await repo.commitCount(target.pr)) >= MAX_SUBMISSION_COMMITS) throw new SubmitError(429, 'cap_contributor');
+  // the contributor's other open submissions count only when they are the editor
+  if (pairChanged) await refuseHeldKeys(repo, base, entry.contributor, isOwner ? own : [], [newKey]);
+  refuseInReview(submissions, [body.path, newPath], target.submission);
+  if (!target.submission) checkCaps(env, user, submissions);
+  else if (target.submission.commits >= MAX_SUBMISSION_COMMITS) throw new SubmitError(429, 'cap_contributor');
+
   const message = `edit ${wordLabel(old)}`;
   // A changed pair adds the new file and deletes the old one in the same commit.
-  const changes = pairChanged ? new Map([[entryPath(entry.contributor, newKey), entry], [body.path, null]]) : new Map([[body.path, entry]]);
-  const branch = await repo.writeCommit({
-    branch: target.pr?.head.ref,
-    newBranch: `${BRANCH_PREFIX}${user.id}/${target.location.key}`,
-    openPrs,
-    changes,
-    message,
-    user,
-  });
-  if (target.pr) return { url: target.pr.html_url, number: target.pr.number };
+  const changes = pairChanged ? new Map([[newPath, entry], [body.path, null]]) : new Map([[body.path, entry]]);
+  const sha = await repo.createCommit(target.submission?.head ?? base, changes, message, user);
+  const paths = [...changes.keys()];
+
+  if (target.submission) {
+    const { submission } = target;
+    // the body's file list grows before the branch moves, so a request that dies in between leaves
+    // the list too long (harmless) rather than too short; the submission was found through its
+    // list, so the body holds one
+    const all = [...new Set([...submission.paths, ...paths])];
+    if (all.length !== submission.paths.length) await repo.setBody(submission.number, submission.body.replace(MARKER_RE, () => marker(all)));
+    await repo.moveBranch(submission.branch, sha);
+    return { url: submission.url, number: submission.number };
+  }
+  const branch = await repo.createBranch(ownBranch(user, target.location.key), sha, submissions);
   const lines = pairChanged ? [`${wordLabel(old)} → ${wordLabel(entry)}`] : [`\`${body.path}\``];
-  return repo.openPullRequest(branch, message, prBody(user, lines));
+  return repo.openPullRequest(branch, message, prBody(user, lines, paths));
 }
 
 // The signed-in contributor's open submissions, entry by entry: what `search.json` cannot show yet.
-// Only their own branches (submit/<id>/) are read: their new words and their edits of anyone's.
+// Only their own branches (submit/<id>/) are read: their new words and their edits of anyone's;
+// a path their own later edit moved away is gone from the branch and skipped.
 export async function listOwn(env, user) {
   const repo = new Repo(env, await installationToken(env));
-  const { ownFiles } = await loadState(repo, user);
-  const found = [];
-  for (const [path, { pr, status }] of ownFiles) {
-    if (status === 'removed' || !parseEntryPath(path)) continue;
-    const entry = await repo.readEntry(path, pr.head.ref);
-    if (entry) found.push({ path, entry, pullRequest: { url: pr.html_url, number: pr.number } });
-  }
-  return found;
+  const { submissions } = await repo.snapshot();
+  const files = submissions.filter(isOwn(user)).flatMap((s) => s.paths.map((path) => ({ path, submission: s })));
+  const texts = await repo.blobs(files.map(({ path, submission }) => `${submission.head.oid}:${path}`), 'text');
+  return files.flatMap(({ path, submission }, i) =>
+    texts[i] === null ? [] : [{ path, entry: JSON.parse(texts[i]), pullRequest: { url: submission.url, number: submission.number } }],
+  );
 }

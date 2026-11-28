@@ -215,7 +215,7 @@ export function tagCircles(counts, width, height, { fill = 0.55, gap = 6, minRad
 export const tagRoute = (tag) => `#/tag/${encodeURIComponent(tag)}`;
 export const contributorRoute = (name) => `#/contributor/${encodeURIComponent(name)}`;
 export const wordRoute = (hanji, tl) => `#/word/${encodeURIComponent(hanji)}/${encodeURIComponent(tl)}`;
-// one of the contributor's own entries, by its file (entries/<login>/<key>.json)
+// the 修改 page of any community entry, by its file (entries/<login>/<key>.json)
 export const editRoute = (login, key) => `#/edit/${login}/${key}`;
 
 // A word as one line, "Hanji Tâi-lô" (either may be empty), as 複製詞目 copies it and the form names it.

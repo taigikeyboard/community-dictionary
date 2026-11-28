@@ -141,7 +141,7 @@ export function renderSubmit({ edit = null } = {}) {
       for (const { entry, row } of entries) {
         const dup = await duplicateStatus(rows, entry.hanji, entry.tl, ownerId);
         // an edit that keeps its pair finds itself, which is no conflict
-        if (dup.status === 'mine' && dup.key !== edit?.key) mine.push({ field: 'tl', row, text: t('form.mine') });
+        if (dup.status === 'mine' && dup.key !== edit?.key) mine.push({ field: 'tl', row, text: t(ownerId === signedIn?.id ? 'form.mine' : 'form.contributorHas') });
         if (dup.status === 'attested') already.push(t('form.attested', { word: wordLabel(entry), people: listJoin(dup.contributors) }));
       }
     } catch {

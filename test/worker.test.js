@@ -214,10 +214,26 @@ describe('new submission', () => {
     assert.equal(again.status, 409);
     assert.deepEqual(again.data, { error: 'already_submitted', keys: [KEY] });
 
-    gh.branches.get('main').set(`entries/old-login/${KEY}.json`, serializeEntry(accentEntry()));
     gh.pulls[0].state = 'closed';
+    gh.branches.get('main').set(`entries/octocat/${KEY}.json`, serializeEntry(accentEntry()));
     const onMain = await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }], ...form });
     assert.equal(onMain.status, 409);
+  });
+
+  it('accepts one’s own word whose key one has only edited in someone else’s entry', async () => {
+    const theirs = `entries/someone/${KEY}.json`;
+    gh.branches.get('main').set(theirs, serializeEntry({ ...accentEntry(), contributor: 'someone', contributor_id: OTHER.id }));
+    assert.equal((await post('/submit', { path: theirs, hanji: '八', tl: 'pueh', ...form, note: 'x' })).status, 200);
+    const own = await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }], ...form });
+    assert.equal(own.status, 200);
+  });
+
+  it('leaves a pair under an older login directory to CI', async () => {
+    // existence of the current login's path only (roadmap § Worker budget); CI's duplicate-pair
+    // check on the pull request head refuses the second file
+    gh.branches.get('main').set(`entries/old-login/${KEY}.json`, serializeEntry(accentEntry()));
+    const res = await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }], ...form });
+    assert.equal(res.status, 200);
   });
 
   it('accepts the same pair from a second contributor', async () => {
@@ -316,6 +332,27 @@ describe('edit', () => {
     assert.equal(res.status, 409);
   });
 
+  it('refuses an edit while another contributor’s open submission touches the entry', async () => {
+    await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'theirs' }, { user: OTHER });
+    const mine = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'mine' });
+    assert.deepEqual([mine.status, mine.data.error], [409, 'in_review']);
+    assert.equal(gh.pulls.length, 1);
+  });
+
+  it('refuses a second move onto a pair already taken in an open submission', async () => {
+    const second = `entries/octocat/${await entryKey('九', 'káu')}.json`;
+    gh.branches.get('main').set(second, serializeEntry({ ...accentEntry(), hanji: '九', tl: 'káu' }));
+    assert.equal((await post('/submit', { path, hanji: '捌', tl: 'pueh', ...form }, { user: OTHER })).status, 200);
+    const again = await post('/submit', { path: second, hanji: '捌', tl: 'pueh', ...form }, { user: OTHER });
+    assert.deepEqual([again.status, again.data.error], [409, 'in_review']);
+  });
+
+  it('refuses the owner’s new word whose file an open edit already writes', async () => {
+    await post('/submit', { path, hanji: '捌', tl: 'pueh', ...form }, { user: OTHER });
+    const res = await post('/submit', { words: [{ hanji: '捌', tl: 'pueh' }], ...form });
+    assert.deepEqual([res.status, res.data.error], [409, 'in_review']);
+  });
+
   it('answers not_found for a missing file and invalid for a bad path', async () => {
     const missing = await post('/submit', { path: 'entries/octocat/ffffffffffffffff.json', hanji: '八', tl: 'pueh', ...form });
     const bad = await post('/submit', { path: '../etc/passwd', hanji: '八', tl: 'pueh', ...form });
@@ -335,6 +372,101 @@ describe('edit', () => {
     const over = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'note 21' });
     assert.deepEqual([over.status, over.data.error], [429, 'cap_contributor']);
     assert.equal(gh.commits.length, 20);
+  });
+});
+
+// Opens `count` pull requests from other contributors' submit/ branches straight in the fake GitHub.
+async function fillQueue(count) {
+  for (let i = 0; i < count; i++) {
+    const res = await post('/submit', { words: [{ hanji: '', tl: `tsit${i}` }], ...form }, { user: { id: 10_000 + i, login: `someone${i}` } });
+    assert.equal(res.status, 200);
+  }
+}
+
+describe('GitHub call budget (Workers Free plan)', () => {
+  const path = `entries/octocat/${KEY}.json`;
+  const twenty = Array.from({ length: 20 }, (_, i) => ({ hanji: '', tl: `ji${i}` }));
+  // GitHub calls one request made, after the installation token is cached
+  async function callsFor(request) {
+    gh.calls.length = 0;
+    const res = await request();
+    assert.equal(res.status, 200, JSON.stringify(res.data));
+    return gh.calls.filter((call) => !call.includes('/access_tokens') && !call.endsWith('/installation'));
+  }
+
+  it('makes the same few calls with 50 open submissions as with none', async () => {
+    gh.branches.get('main').set(path, serializeEntry(accentEntry()));
+    const quiet = {
+      add: await callsFor(() => post('/submit', { words: twenty, ...form })),
+      edit: await callsFor(() => post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'x' }, { user: OTHER })),
+      mine: await callsFor(() => get('/mine')),
+    };
+    gh.pulls.forEach((pr) => (pr.state = 'closed'));
+    await fillQueue(50);
+    const busy = {
+      add: await callsFor(() => post('/submit', { words: twenty.map((w) => ({ ...w, tl: `${w.tl}b` })), ...form })),
+      // another editor, so no leftover branch of the closed edit is reset
+      edit: await callsFor(() => post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'y' }, { user: { id: 2, login: 'second' } })),
+      mine: await callsFor(() => get('/mine')),
+    };
+    assert.deepEqual(busy, quiet);
+    // 2 GraphQL reads + tree, commit, ref, pull request; edit the same; /mine 2 reads
+    assert.deepEqual([quiet.add.length, quiet.edit.length, quiet.mine.length], [6, 6, 2]);
+  });
+
+  it('reads past 100 open pull requests and fails closed past 300', async () => {
+    // two of the maintainer's own pull requests first, so the 100th submission sits on page two
+    for (const ref of ['fix-a', 'fix-b']) gh.pulls.push({ number: gh.pulls.length + 1, state: 'open', body: '', html_url: '', head: { ref, repo: { full_name: REPO } } });
+    await fillQueue(100);
+    const many = await post('/submit', { words: [{ hanji: '', tl: 'tsit-tsit' }], ...form }, { user: OTHER });
+    assert.deepEqual([many.status, many.data.error], [429, 'cap_total']);
+    for (let i = 0; i < 200; i++) gh.pulls.push({ ...gh.pulls[0], number: gh.pulls.length + 1 });
+    const res = await post('/submit', { words: [{ hanji: '', tl: 'tsit-tsit' }], ...form }, { user: OTHER });
+    assert.deepEqual([res.status, res.data.error], [502, 'try_later']);
+  });
+
+  it('ignores a fork’s submit/ branch and a body without a readable file list', async () => {
+    gh.branches.get('main').set(path, serializeEntry(accentEntry()));
+    await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'theirs' }, { user: OTHER });
+    gh.pulls[0].head = { ...gh.pulls[0].head, repo: { full_name: 'mallory/community-dictionary' } };
+    assert.equal((await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'a' })).status, 200);
+    gh.pulls[1].body = 'hand-edited, no file list';
+    assert.equal((await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'b' }, { user: { id: 77, login: 'third' } })).status, 200);
+    gh.pulls[2].body = '<!-- community-dictionary-files [not json -->';
+    assert.equal((await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'c' }, { user: { id: 78, login: 'fourth' } })).status, 200);
+  });
+
+  it('grows the file list before moving the branch on an extending pair change', async () => {
+    gh.branches.get('main').set(path, serializeEntry(accentEntry()));
+    await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'one' });
+    gh.calls.length = 0;
+    await post('/submit', { path, hanji: '捌', tl: 'pueh', ...form });
+    const newPath = `entries/octocat/${await entryKey('捌', 'pueh')}.json`;
+    assert.match(gh.pulls[0].body, new RegExp(`<!-- community-dictionary-files ${JSON.stringify(JSON.stringify([path, newPath])).slice(1, -1).replace(/[[\]]/g, '\\$&')} -->$`));
+    const order = gh.calls.filter((call) => call.startsWith('PATCH'));
+    assert.deepEqual(order, ['PATCH /repos/taigikeyboard/community-dictionary/pulls/1', 'PATCH /repos/taigikeyboard/community-dictionary/git/refs/heads/' + gh.pulls[0].head.ref]);
+    // the moved-away path is gone from the branch, so editing it again is not_found
+    const again = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'two' });
+    assert.equal(again.status, 404);
+  });
+
+  it('loses no edit to a concurrent write on the same branch', async () => {
+    gh.branches.get('main').set(path, serializeEntry(accentEntry()));
+    await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'one' });
+    const branch = gh.pulls[0].head.ref;
+    // another request moves the branch between this one's read and its ref update
+    const realFetch = gh.fetch;
+    globalThis.fetch = async (input, init = {}) => {
+      if (init.method === 'PATCH' && String(input).endsWith(`/git/refs/heads/${branch}`)) {
+        globalThis.fetch = realFetch;
+        await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'racer' });
+        globalThis.fetch = gh.fetch;
+      }
+      return realFetch(input, init);
+    };
+    const res = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'late' });
+    assert.deepEqual([res.status, res.data.error], [502, 'try_later']);
+    assert.equal(JSON.parse(gh.branches.get(branch).get(path)).note, 'racer');
   });
 });
 

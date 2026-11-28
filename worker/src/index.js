@@ -1,6 +1,6 @@
 import { authorizeUrl, exchangeCode, api } from './github.js';
 import { cookie, randomToken, readCookie, sign, verify, base64url } from './session.js';
-import { issue, LOGIN_RE } from '../../lib/entry.js';
+import { issue, isAccountId, LOGIN_RE } from '../../lib/entry.js';
 import { listOwn, submitEdit, submitNew, SubmitError } from './submit.js';
 
 // Submission Worker: GitHub sign-in for the static site, and the endpoints that turn a filled-in
@@ -92,7 +92,7 @@ async function callback(env, request) {
 async function currentUser(env, request) {
   const session = await verify(env.SESSION_KEY, SESSION_COOKIE, readCookie(request, SESSION_COOKIE));
   // Defence in depth behind the signature: the identity must look like a GitHub account.
-  if (!session || !Number.isSafeInteger(session.id) || session.id <= 0 || !LOGIN_RE.test(session.login)) return null;
+  if (!session || !isAccountId(session.id) || !LOGIN_RE.test(session.login)) return null;
   return { id: session.id, login: session.login };
 }
 

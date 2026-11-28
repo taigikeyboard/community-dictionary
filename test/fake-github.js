@@ -18,7 +18,7 @@ export async function pkcs8Pem() {
 
 // Git objects in memory: refs → commits → trees (file maps). `gh.branches.get(name)` is the file
 // map at a branch tip (mutate main's to seed it); `gh.commits` lists the commits the Worker made,
-// each with the tree changes it carried. Enough of the REST API for the Worker.
+// each with the tree changes it carried. Enough of the REST and GraphQL APIs for the Worker.
 // `user` is who GitHub's /user names for the OAuth token "user-token".
 export function fakeGitHub(user = { id: 583231, login: 'octocat' }) {
   const trees = new Map([['t0', new Map()]]);
@@ -31,10 +31,53 @@ export function fakeGitHub(user = { id: 583231, login: 'octocat' }) {
     pulls: [],
     calls: [],
   };
-  const blobs = new Map();
-  const b64 = (text) => Buffer.from(text).toString('base64');
   const reply = (status, data) => new Response(data === undefined ? null : JSON.stringify(data), { status });
   const shaOf = (text) => `sha-${Buffer.from(text).toString('hex').slice(0, 40)}`;
+
+  const commitNode = (sha) => ({ target: { oid: sha, tree: { oid: objects.get(sha).tree } } });
+  // commits on a branch on top of main, as GitHub's commits.totalCount counts them for a pull request
+  const commitCount = (branch) => {
+    let count = 0;
+    for (let sha = refs.get(branch); sha && sha !== refs.get('main'); sha = objects.get(sha).parents[0]) count += 1;
+    return count;
+  };
+  // Answers the two operations the Worker sends (worker/src/submit.js), by operation name, from the
+  // in-memory git state; `gh.pulls` entries may set `head.repo.full_name` to act as a fork.
+  function graphql({ operationName, query, variables }) {
+    assert.match(query, new RegExp(`^query ${operationName}\\b`), 'operationName must name the query');
+    assert.deepEqual([variables.owner, variables.name], REPO.split('/'));
+    if (operationName === 'Submissions') {
+      assert.equal(variables.base, 'refs/heads/main');
+      assert.match(query, /orderBy: \{ field: CREATED_AT, direction: DESC \}/);
+      const open = gh.pulls.filter((pr) => pr.state === 'open').reverse();
+      const start = Number(variables.after ?? 0);
+      const nodes = open.slice(start, start + 100).map((pr) => ({
+        number: pr.number,
+        url: pr.html_url,
+        body: pr.body,
+        headRefName: pr.head.ref,
+        isCrossRepository: pr.head.repo.full_name !== REPO,
+        commits: { totalCount: commitCount(pr.head.ref) },
+        headRef: refs.has(pr.head.ref) ? commitNode(refs.get(pr.head.ref)) : null,
+      }));
+      const hasNextPage = start + 100 < open.length;
+      return { data: { repository: { base: commitNode(refs.get('main')), pullRequests: { pageInfo: { hasNextPage, endCursor: String(start + 100) }, nodes } } } };
+    }
+    if (operationName === 'Blobs') {
+      const repository = {};
+      for (const [name, expression] of Object.entries(variables)) {
+        const m = /^e(\d+)$/.exec(name);
+        if (!m) continue;
+        // the alias, the variable and the field must all be in the query text
+        assert.match(query, new RegExp(`f${m[1]}: object\\(expression: \\$e${m[1]}\\) \\{ \\.\\.\\. on Blob \\{ (text|oid) \\} \\}`));
+        const [commit, ...rest] = expression.split(':');
+        const text = trees.get(objects.get(commit)?.tree)?.get(rest.join(':'));
+        repository[`f${m[1]}`] = text === undefined ? null : { text, oid: shaOf(text) };
+      }
+      return { data: { repository } };
+    }
+    return { errors: [{ message: `fake GitHub: unknown operation ${operationName}` }] };
+  }
 
   gh.fetch = async (input, init = {}) => {
     const url = new URL(input);
@@ -54,10 +97,7 @@ export function fakeGitHub(user = { id: 583231, login: 'octocat' }) {
     assert.equal(init.headers.Authorization, 'Bearer inst-token', `${method} ${path} must use the installation token`);
     const rest = path.slice(`/repos/${REPO}`.length);
 
-    if (rest === '/pulls' && method === 'GET') {
-      const page = Number(url.searchParams.get('page'));
-      return reply(200, gh.pulls.filter((p) => p.state === 'open').slice((page - 1) * 100, page * 100));
-    }
+    if (path === '/graphql' && method === 'POST') return reply(200, graphql(body));
     if (rest === '/pulls' && method === 'POST') {
       assert.ok(refs.has(body.head), `pull request head ${body.head} must exist`);
       const pr = { number: gh.pulls.length + 1, state: 'open', title: body.title, body: body.body, html_url: `https://github.com/${REPO}/pull/${gh.pulls.length + 1}`, head: { ref: body.head, repo: { full_name: REPO } } };
@@ -65,24 +105,9 @@ export function fakeGitHub(user = { id: 583231, login: 'octocat' }) {
       return reply(201, pr);
     }
     let m;
-    // one pull request, with how many commits its branch has on top of main
-    if ((m = /^\/pulls\/(\d+)$/.exec(rest)) && method === 'GET') {
-      const pr = gh.pulls[Number(m[1]) - 1];
-      let commits = 0;
-      for (let sha = refs.get(pr.head.ref); sha && sha !== refs.get('main'); sha = objects.get(sha).parents[0]) commits += 1;
-      return reply(200, { ...pr, commits });
-    }
-    if ((m = /^\/pulls\/(\d+)\/files$/.exec(rest))) {
-      const pr = gh.pulls[Number(m[1]) - 1];
-      const head = gh.branches.get(pr.head.ref);
-      const base = gh.branches.get('main');
-      const files = [];
-      for (const p of new Set([...head.keys(), ...base.keys()])) {
-        if (!base.has(p)) files.push({ filename: p, status: 'added' });
-        else if (!head.has(p)) files.push({ filename: p, status: 'removed' });
-        else if (base.get(p) !== head.get(p)) files.push({ filename: p, status: 'modified' });
-      }
-      return reply(200, files);
+    if ((m = /^\/pulls\/(\d+)$/.exec(rest)) && method === 'PATCH') {
+      gh.pulls[Number(m[1]) - 1].body = body.body;
+      return reply(200, {});
     }
     if (rest === '/git/trees' && method === 'POST') {
       const files = new Map(trees.get(body.base_tree));
@@ -95,26 +120,14 @@ export function fakeGitHub(user = { id: 583231, login: 'octocat' }) {
       treeChanges.set(sha, body.tree.map((item) => [item.sha === null ? 'delete' : 'write', item.path]));
       return reply(201, { sha });
     }
-    if ((m = /^\/git\/trees\/(.+)$/.exec(rest))) {
-      return reply(200, {
-        truncated: false,
-        tree: [...gh.branches.get(m[1])].map(([p, text]) => {
-          blobs.set(shaOf(text), text);
-          return { path: p, type: 'blob', sha: shaOf(text) };
-        }),
-      });
-    }
-    if ((m = /^\/git\/blobs\/(.+)$/.exec(rest))) return reply(200, { content: b64(blobs.get(m[1])) });
     if (rest === '/git/commits' && method === 'POST') {
       const sha = `c${objects.size}`;
       objects.set(sha, { tree: body.tree, parents: body.parents });
       gh.commits.push({ sha, message: body.message, author: body.author, parents: body.parents, changes: treeChanges.get(body.tree) });
       return reply(201, { sha });
     }
-    if ((m = /^\/git\/commits\/(.+)$/.exec(rest))) return reply(200, { sha: m[1], tree: { sha: objects.get(m[1]).tree } });
-    if ((m = /^\/git\/refs?\/heads\/(.+)$/.exec(rest))) {
+    if ((m = /^\/git\/refs\/heads\/(.+)$/.exec(rest)) && method === 'PATCH') {
       if (!refs.has(m[1])) return reply(404, { message: 'Not Found' });
-      if (method === 'GET') return reply(200, { object: { sha: refs.get(m[1]) } });
       if (!body.force && objects.get(body.sha).parents[0] !== refs.get(m[1])) return reply(422, { message: 'Update is not a fast forward' });
       refs.set(m[1], body.sha);
       return reply(200, {});
@@ -124,10 +137,6 @@ export function fakeGitHub(user = { id: 583231, login: 'octocat' }) {
       if (refs.has(name)) return reply(422, { message: 'Reference already exists' });
       refs.set(name, body.sha);
       return reply(201, {});
-    }
-    if ((m = /^\/contents\/(.+)$/.exec(rest)) && method === 'GET') {
-      const text = gh.branches.get(url.searchParams.get('ref'))?.get(m[1]);
-      return text === undefined ? reply(404, { message: 'Not Found' }) : reply(200, { sha: shaOf(text), content: b64(text) });
     }
     return reply(404, { message: `fake GitHub: no route ${method} ${path}` });
   };

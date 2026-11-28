@@ -56,7 +56,7 @@ function renderCards(title, lead, pick, { headword = true } = {}) {
 const renderTag = (tag) =>
   renderCards(tagLabel(tag), TAGS.find((listed) => listed.name === tag)?.tl, (rows, itaigi) => wordsWithTag(rows, itaigi, tag));
 
-// A contributor's page: every word they gave.
+// A contributor's page: every word they gave or edited.
 const renderContributor = (name) => renderCards(name, null, (rows, itaigi) => wordsByContributor(rows, itaigi, name));
 
 // A word's page: its cards from each source, under the word itself.

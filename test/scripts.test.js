@@ -124,6 +124,52 @@ test('validatePullRequest (submission): another contributor takes over, skips th
   assert.deepEqual(errorsOf(remove), [`${remove}: entries/octocat/${KEY}.json belongs to contributor 583231; only they may delete it`]);
 });
 
+test('validatePullRequest (submission): a symlink round trip cannot take over a file', async (t) => {
+  const { root, write, commit, git, base } = makeRepo(t);
+  git(['checkout', '-q', '-b', 'submit/999/x']);
+  const path = `entries/octocat/${KEY}.json`;
+  rmSync(join(root, path));
+  symlinkSync('{"contributor_id":999,"editors":[]}', join(root, path));
+  const link = commit(MALLORY, 'to symlink');
+  rmSync(join(root, path));
+  write(path, serializeEntry({ ...accentEntry(), contributor: 'mallory', contributor_id: 999 }));
+  const back = commit(MALLORY, 'back to file');
+  assert.deepEqual(validatePullRequest(root, base, back, 'submission').errors, [
+    `${link}: ${path} changes who contributed contributor 583231's entry or when`,
+    `${back}: ${path} changes who contributed contributor 999's entry or when`,
+  ]);
+});
+
+test('validatePullRequest (submission): no change answers to an unreadable previous version', async (t) => {
+  const { root, write, commit, git, base } = makeRepo(t);
+  git(['checkout', '-q', '-b', 'submit/999/x']);
+  const path = `entries/octocat/${KEY}.json`;
+  write(path, '{"editors":[]}');
+  const broken = commit(MALLORY, 'break');
+  write(path, 'not json');
+  const after = commit(MALLORY, 'after');
+  rmSync(join(root, path));
+  write('entries/mallory/e5a555f359c2404d.json', '{"editors":[]}');
+  const moved = commit(MALLORY, 'move without id');
+  assert.deepEqual(validatePullRequest(root, base, moved, 'submission').errors, [
+    `${broken}: ${path} changes who contributed contributor 583231's entry or when`,
+    `${after}: ${path} replaces a file that is not a readable entry`,
+    `${moved}: entries/mallory/e5a555f359c2404d.json is not under the contributor's own directory entries/undefined/`,
+    `${moved}: entries/mallory/e5a555f359c2404d.json belongs to contributor unknown, not commit author 999`,
+    `${moved}: ${path} belongs to contributor unknown; only they may delete it`,
+  ]);
+});
+
+test('validatePullRequest (submission): a new entry names its author as contributor', async (t) => {
+  const { write, commit, git, base, root } = makeRepo(t);
+  git(['checkout', '-q', '-b', 'submit/999/x']);
+  write('entries/octocat/e5a555f359c2404d.json', serializeEntry({
+    ...accentEntry(), hanji: '做khang-khuè', tl: 'tsò-khang-khuè', contributor_id: 999,
+  }));
+  const head = commit(MALLORY, 'pose as octocat');
+  assert.deepEqual(validatePullRequest(root, base, head, 'submission').errors, [`${head}: entries/octocat/e5a555f359c2404d.json names contributor octocat, not commit author mallory`]);
+});
+
 test('validatePullRequest (submission): a new entry lists no editors', async (t) => {
   const { write, commit, git, base, root } = makeRepo(t);
   git(['checkout', '-q', '-b', 'submit/583231/x']);
