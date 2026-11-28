@@ -170,6 +170,22 @@ test('validatePullRequest (submission): a new entry names its author as contribu
   assert.deepEqual(validatePullRequest(root, base, head, 'submission').errors, [`${head}: entries/octocat/e5a555f359c2404d.json names contributor octocat, not commit author mallory`]);
 });
 
+test('validatePullRequest (submission): iTaigi names stay with the entry', async (t) => {
+  const { root, write, commit, git, base } = makeRepo(t);
+  git(['checkout', '-q', '-b', 'submit/999/x']);
+  const path = `entries/octocat/${KEY}.json`;
+  write(path, serializeEntry({ ...accentEntry(), itaigi_contributors: ['Liz Lin'], editors: [{ login: 'mallory', id: 999 }] }));
+  const rename = commit(MALLORY, 'add a name');
+  git(['reset', '-q', '--hard', base]);
+  write('entries/mallory/e5a555f359c2404d.json', serializeEntry({
+    ...accentEntry(), hanji: '做khang-khuè', tl: 'tsò-khang-khuè', contributor: 'mallory', contributor_id: 999, itaigi_contributors: ['Liz Lin'],
+  }));
+  const added = commit(MALLORY, 'new with names');
+  const errorsOf = (head) => validatePullRequest(root, base, head, 'submission').errors;
+  assert.deepEqual(errorsOf(rename), [`${rename}: ${path} changes who contributed contributor 583231's entry or when`]);
+  assert.deepEqual(errorsOf(added), [`${added}: entries/mallory/e5a555f359c2404d.json is a new entry, so it has no iTaigi contributors`]);
+});
+
 test('validatePullRequest (submission): a new entry lists no editors', async (t) => {
   const { write, commit, git, base, root } = makeRepo(t);
   git(['checkout', '-q', '-b', 'submit/583231/x']);
@@ -408,7 +424,7 @@ test('import-batch parses quoted CSV cells, CRLF and a BOM', () => {
 });
 
 test('import-batch turns the template CSV into entries credited to the contributor', async () => {
-  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27', editors: [] };
+  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27', editors: [], itaigi_contributors: [] };
   const text = await readFile(new URL('../site/batch-template.csv', import.meta.url), 'utf8');
   const { entries, errors } = await rowsToEntries(parseCsv(text), identity);
   assert.deepEqual(errors, []);
@@ -420,7 +436,7 @@ test('import-batch turns the template CSV into entries credited to the contribut
 });
 
 test('import-batch reports every bad row by line and splits lists on ;', async () => {
-  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27', editors: [] };
+  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27', editors: [], itaigi_contributors: [] };
   const csv = 'tl,accents,tags\nsiann,臺南混合腔；高雄混合腔,a;b\n,,\nsiann,,\nkhi,火星腔,\n';
   const { entries, errors } = await rowsToEntries(parseCsv(csv), identity);
   assert.deepEqual(entries[0].entry.accents, ['臺南混合腔', '高雄混合腔']);

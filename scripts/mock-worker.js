@@ -62,6 +62,7 @@ for (const word of FAKE_WORDS) {
     contributor_id: USER.id,
     submitted: '2026-11-27',
     editors: word.editors ?? [],
+    itaigi_contributors: [],
   };
   const key = await entryKey(entry.hanji, entry.tl);
   gh.branches.get('main').set(`entries/${USER.login}/${key}.json`, serializeEntry(entry));

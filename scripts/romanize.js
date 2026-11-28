@@ -27,6 +27,8 @@ function toTps(tl) {
 // converter does not split on "/". poj is "" when it equals tl; tps is "" when any variant
 // does not convert cleanly.
 export function romanize(tl) {
+  // a Tâi-lô field holding no Latin letter (an iTaigi row with Hanji in it) has no reading to convert
+  if (!/\p{Script=Latin}/u.test(tl)) return { poj: '', tps: '' };
   const variants = tl.split('/').map((v) => v.trim());
   const poj = variants.map((v) => convertReading(v, 'poj'));
   const tps = variants.map(toTps);

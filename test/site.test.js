@@ -51,9 +51,9 @@ test('formToRaw keeps place only with the 其他 accent', () => {
 });
 
 test('checkForm + describeIssues give Taiwanese messages per field', () => {
-  const { issues } = checkForm({ hanji: '', tl: 'pueh!', accents: ['其他'], note: '' });
+  const { issues } = checkForm({ hanji: '', tl: 'pueh\uFFFD', accents: ['其他'], note: '' });
   assert.deepEqual(describeIssues(issues), [
-    { field: 'tl', text: '台羅：干焦會當用台羅字母、調符、數字、空格佮「-」' },
+    { field: 'tl', text: '台羅：有袂當用 ê 特殊字元' },
     { field: 'place', text: '請填寫資料' },
   ]);
   const ok = checkForm({ hanji: ' 八', tl: 'pueh ', accents: ['鹿港偏泉腔'], note: '' });
@@ -91,12 +91,12 @@ test('checkBatch: per-row errors, shared errors once, blank rows skipped, repeat
     { hanji: '網紅', tl: 'bāng-âng' },
     { hanji: '', tl: '' },
     { hanji: '網紅', tl: 'Bāng âng' },
-    { hanji: '!', tl: 'x' },
+    { hanji: '\uE35C', tl: 'x' },
   ]);
   assert.deepEqual(entries, []);
   assert.deepEqual(errors, [
     { field: 'place', text: '請填寫資料' },
-    { field: 'hanji', row: 3, text: '漢字、日語：干焦會當用漢字、假名、台羅字母佮「-」' },
+    { field: 'hanji', row: 3, text: '漢字、日語：有袂當用 ê 特殊字元' },
   ]);
 
   const ok = await checkBatch({ ...shared, place: '澎湖' }, [

@@ -16,4 +16,5 @@ export const accentEntry = () => ({
   contributor_id: 583231,
   submitted: '2026-11-20',
   editors: [],
+  itaigi_contributors: [],
 });

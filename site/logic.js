@@ -1,5 +1,6 @@
 import {
   ACCENT_OTHER,
+  credit,
   entryKey,
   LOGIN_RE,
   MAX_WORDS,
@@ -283,6 +284,7 @@ export function formToRaw(values, identity) {
     contributor_id: identity.id,
     submitted: identity.today,
     editors: [],
+    itaigi_contributors: [],
   };
 }
 
@@ -331,6 +333,6 @@ export async function duplicateStatus(rows, hanji, tl, contributorId) {
   if (contributorId && row.attestations.some((a) => a.contributor_id === contributorId)) {
     return { status: 'mine', key, row };
   }
-  return { status: 'attested', key, row, contributors: row.attestations.map((a) => a.contributor) };
+  return { status: 'attested', key, row, contributors: [...new Set(row.attestations.flatMap(credit))] };
 }
 

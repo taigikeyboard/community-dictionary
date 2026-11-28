@@ -337,3 +337,53 @@ App, which breaks D7 and the CI ownership check by noreply address); the pull re
 in GraphQL (no previous path for renames); caching file lists per head sha in KV (state to keep in
 sync, and Free-plan KV writes are capped at 1,000 a day); folding `Blobs` into `Submissions`
 (one call fewer, but one query text per request shape).
+
+## iTaigi merge — every iTaigi word becomes an ordinary entry (planned 2026-11-28)
+
+Maintainer decisions 2026-11-28: every iTaigi word becomes an entry under the organisation account
+`taigikeyboard` (id 241070258), so anyone can edit it like any other entry (D11); the iTaigi
+contributor names stay on the entry; the Hanji / Tâi-lô character rules are dropped for everyone
+("不需要檢查格式，全部收" — slashes, spaces, punctuation all accepted; still one line, NFC, trimmed,
+no control characters, no U+FFFD or private-use characters; lengths raised to Hanji 50 / Tâi-lô
+200); slash variants stay as written; garbled characters are auto-fixed and rows still invalid are
+left out and listed (8 rows: 2 with U+FFFD in the Tâi-lô, 6 with private-use Hanji — "先不收，列出清單");
+of the 57 export rows the snapshot dropped, all but the 12 with an empty 羅馬字 come back
+(「除了羅馬字欄是空的以外…都可以救回來」, plus 生番仔𡳞脬, whose Tâi-lô sits in the Hanji field after a
+full-width space); one list orders community words first, then the rest by case- and tone-free
+Tâi-lô (「社群詞優先，再照台羅字母」).
+
+Measured 2026-11-28 (`data/itaigi.json` + itaigi.tw's official export; pre-implementation review
+simulated the migration): 18,103 snapshot rows; the dropped 57 = 9 Tâi-lô with only accented
+letters (`ê-á`, `î`: `scripts/itaigi.js` tested `[A-Za-z]`), 12 with Hanji and Tâi-lô swapped (5
+land on existing keys once swapped), 24 Mandarin → Taiwanese Hanji with no reading (kept as
+written: Hanji = the Mandarin, Tâi-lô = the Taiwanese Hanji, for editors to fix), 12 empty. Expected
+result: 17,934 files, 8 rows left out; no key shared with a community entry; at most 4 tags and 3
+names per key; longest Hanji 44, Tâi-lô 146.
+
+| Step | Commit | Scope (grounded in code) |
+|---|---|---|
+| 1 | `feat(schema)` | `lib/entry.js`: new last field `itaigi_contributors` (names as itaigi.tw shows them: distinct one-line strings ≤ 50 characters, no control characters; `[]` on every community entry); `checkText` loses its `script` parameter and Hanji / Tâi-lô get a garbled rule (U+FFFD, private use) instead; `SCRIPT_RULES` keeps only the Hanji rule for tags (`checkTags`); `hanji_needs`, `tl_script`, `tl_needs` issue codes go; `LIMITS` hanji 50, tl 200; `credit(attestation)` → the names a card, the stats, the CSV, a contributor page and the form show (`itaigi_contributors` when non-empty, else `contributor`). The 11 community files get `"itaigi_contributors": []`. Worker: identity (new words `[]`, edits keep the stored list); words reach GitHub text safely — the pull request body lists them in a fenced code block, title and commit subject are cut to 60 characters with `@` and `#` replaced by full-width forms (now that the character rules no longer keep them out: no mention, no issue link). CI: `itaigi_contributors` joins the identity fields a next version keeps; a new entry carries `[]`. Callers: `scripts/import-batch.js`, `scripts/mock-worker.js`, `site/logic.js` `formToRaw` and `duplicateStatus`, `test/fixtures.js`, `test/entry.test.js`. `scripts/romanize.js` gives no Pe̍h-ōe-jī / 方音符號 for a Tâi-lô without a Latin letter. |
+| 2 | `feat(data)` | `scripts/migrate-itaigi.js` (rerunnable; clears `entries/taigikeyboard/` first; deleted in step 3): `data/itaigi.json` rows plus the recovered export rows (downloaded as `scripts/import-itaigi.js` does; tags `[]`): accented-only Tâi-lô kept, swapped pairs swapped back, 生番仔𡳞脬 split at its full-width space, Mandarin rows as written → auto-fix (`ı`→`i`, U+2011→`-`, `ⁿ`→`nn`, drop U+200B) → merge by key (first spelling, tags and names in first-seen order) → `prepareEntry` → `entries/taigikeyboard/<key>.json` (`submitted` 2026-11-28, `editors` []). Asserts the expected counts (17,934 written, 8 left out) and prints every row left out with its issues; the commit body lists them. |
+| 3 | `refactor(site)` | One data source: `compile` turns every entry into `search.json` rows, ordered community first, then by case- and tone-free Tâi-lô (`foldSearch`), then Hanji; `build-site` stops writing `itaigi.json`. `site/data.js` drops `loadItaigiIndex`; `loadRows` returns rows indexed once (`indexRows`: folded Tâi-lô, `/` variants, syllable tails, as `indexItaigi` does today); `searchRows` ranks every row exact → prefix → rest (today's `searchItaigi`), and `findExisting` uses it; `searchTags`' own-tag set is computed once; `wordsWithTag` / `wordsByContributor` / `wordsSpelled` return one list (contributor match by `credit`; spelling match by `pairKey`, so links to merged spellings still find their word); `cardList` takes it. Cards: the byline uses `credit`, an iTaigi word adds the · iTaigi link, 修改 like any entry. `scripts/tag-map.js`, `scripts/stats.js`: rows only, credits by `credit` (the GitHub faces leave out entries with iTaigi names; 匿名 unchanged); `compile` CSV contributors column by `credit`. Delete `data/itaigi.json`, `scripts/itaigi.js`, `scripts/import-itaigi.js`, `scripts/migrate-itaigi.js`, the `.classify-cache` ignore line if unused. Docs and comments that describe two sources. Tests follow. |
+
+Steps 2 and 3 land in one push (step 2 alone would show every iTaigi word twice). Deploy: no open
+`submit/` pull requests (old-format entries would fail `compile` after the schema change); push,
+then `npm --prefix worker run deploy`.
+
+Sizes: `search.json` ≈ 6.5 MB raw / 940 KB gzip (today `itaigi.json` 1.86 MB / 566 KB + `search.json`
+5 KB); parse ≈ 17 ms and index ≈ 32 ms on desktop. It is now also loaded where only the small
+`search.json` was: the form's word rows and duplicate check, 我貢獻 ê 詞, the 修改 page. CI's
+`checkTree` reads ~17,900 files in under half a second. The Worker only reads named paths
+(§ Worker budget).
+
+Known and left as is: `submitted` is the migration date for every iTaigi entry (the export has no
+dates); near-identical keys (`--` versus a space) can now coexist, as 43 groups already do; one
+open pull request per edit against the cap of 5 per contributor; the export's 華語 gloss stays out
+(no Mandarin on the site).
+
+Deliberately not adopted: keeping iTaigi as a separate read-only source with a "補充" button
+(maintainer chose direct editing); one entry per iTaigi contributor (the organisation account holds
+one file per key, D10, and the names ride along); re-classifying the recovered rows' tags with
+`claude -p` (editors can add tags); an `ITAIGI_ACCOUNT` constant in shared code (a non-empty
+`itaigi_contributors` is the one marker; the account appears only in the migration script);
+dropping empty fields from `search.json` (2% of gzip).

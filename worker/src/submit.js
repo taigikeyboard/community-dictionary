@@ -76,6 +76,23 @@ function wordLabel(entry) {
   return [entry.hanji, entry.tl].filter(Boolean).join(' ');
 }
 
+// Words go into GitHub text, where "@login" notifies someone and "fixes #12" closes an issue; since
+// Hanji and Tâi-lô take any text (2026-11-28), titles and commit messages get full-width ＠ and ＃
+// and a cut at TITLE_WORD_LIMIT characters, and the pull request body shows words in a code block.
+const TITLE_WORD_LIMIT = 60;
+function safeLabel(entry) {
+  const label = Array.from(wordLabel(entry).replace(/@/g, '＠').replace(/#/g, '＃'));
+  return label.length > TITLE_WORD_LIMIT ? `${label.slice(0, TITLE_WORD_LIMIT - 1).join('')}…` : label.join('');
+}
+
+// Lines as a fenced code block whose fence is longer than any backtick run inside, so no line can
+// close it early; GitHub links neither mentions nor issue numbers inside.
+function codeBlock(lines) {
+  const longest = Math.max(0, ...lines.flatMap((line) => (line.match(/`+/g) ?? []).map((run) => run.length)));
+  const fence = '`'.repeat(Math.max(3, longest + 1));
+  return [fence, ...lines, fence];
+}
+
 // Shared fields from the form, plus one word; identity always comes from the session.
 function draftEntry(body, word, identity) {
   const draft = { hanji: word?.hanji ?? '', tl: word?.tl ?? '' };
@@ -244,7 +261,7 @@ export async function submitNew(env, user, body, now = Date.now()) {
   if (!Array.isArray(words) || words.length === 0 || words.length > MAX_WORDS) {
     throw new SubmitError(400, 'invalid', { issues: [issue('words', 'word_count', { max: MAX_WORDS })] });
   }
-  const identity = { contributor: user.login, contributor_id: user.id, submitted: taiwanDate(now), editors: [] };
+  const identity = { contributor: user.login, contributor_id: user.id, submitted: taiwanDate(now), editors: [], itaigi_contributors: [] };
   const prepared = words.map((word) => draftEntry(body, word, identity));
   const issues = prepared.flatMap(({ issues: list }, i) => list.map((found) => ({ ...found, field: `words[${i}].${found.field}` })));
   if (issues.length > 0) throw new SubmitError(400, 'invalid', { issues });
@@ -261,11 +278,11 @@ export async function submitNew(env, user, body, now = Date.now()) {
   await refuseHeldKeys(repo, base, user.login, submissions.filter(isOwn(user)), keys);
   refuseInReview(submissions, paths);
 
-  const title = entries.length === 1 ? `add ${wordLabel(entries[0])}` : `add ${entries.length} words`;
-  const message = entries.length === 1 ? title : `${title}\n\n${entries.map(wordLabel).join('\n')}`;
+  const title = entries.length === 1 ? `add ${safeLabel(entries[0])}` : `add ${entries.length} words`;
+  const message = entries.length === 1 ? title : `${title}\n\n${entries.map(safeLabel).join('\n')}`;
   const sha = await repo.createCommit(base, new Map(entries.map((entry, i) => [paths[i], entry])), message, user);
   const branch = await repo.createBranch(ownBranch(user, keys[0]), sha, submissions);
-  const lines = ['| Hanji | Tâi-lô |', '|---|---|', ...entries.map((e) => `| ${e.hanji} | ${e.tl} |`)];
+  const lines = codeBlock(entries.map(wordLabel));
   return repo.openPullRequest(branch, title, prBody(user, lines, paths));
 }
 
@@ -290,7 +307,7 @@ export async function submitEdit(env, user, body) {
   const isOwner = old.contributor_id === user.id;
 
   // the stored entry keeps its contributor and date; anyone else who edits joins its editors
-  const identity = { contributor: old.contributor, contributor_id: old.contributor_id, submitted: old.submitted };
+  const identity = { contributor: old.contributor, contributor_id: old.contributor_id, submitted: old.submitted, itaigi_contributors: old.itaigi_contributors };
   const draft = draftEntry(body, body, { ...identity, editors: old.editors });
   if (draft.issues.length > 0) throw new SubmitError(400, 'invalid', { issues: draft.issues });
   let entry = draft.entry;
@@ -308,7 +325,7 @@ export async function submitEdit(env, user, body) {
   if (!target.submission) checkCaps(env, user, submissions);
   else if (target.submission.commits >= MAX_SUBMISSION_COMMITS) throw new SubmitError(429, 'cap_contributor');
 
-  const message = `edit ${wordLabel(old)}`;
+  const message = `edit ${safeLabel(old)}`;
   // A changed pair adds the new file and deletes the old one in the same commit.
   const changes = pairChanged ? new Map([[newPath, entry], [body.path, null]]) : new Map([[body.path, entry]]);
   const sha = await repo.createCommit(target.submission?.head ?? base, changes, message, user);
@@ -325,7 +342,7 @@ export async function submitEdit(env, user, body) {
     return { url: submission.url, number: submission.number };
   }
   const branch = await repo.createBranch(ownBranch(user, target.location.key), sha, submissions);
-  const lines = pairChanged ? [`${wordLabel(old)} → ${wordLabel(entry)}`] : [`\`${body.path}\``];
+  const lines = codeBlock(pairChanged ? [`${wordLabel(old)} → ${wordLabel(entry)}`] : [body.path]);
   return repo.openPullRequest(branch, message, prBody(user, lines, paths));
 }
 

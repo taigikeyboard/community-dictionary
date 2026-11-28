@@ -77,12 +77,14 @@ function commitOwnershipErrors(root, sha, author, changes) {
       if (owner(entry) !== author.id) errors.push(`${sha}: ${path} belongs to contributor ${owner(entry)}, not commit author ${author.id}`);
       else if (entry.contributor !== author.login) errors.push(`${sha}: ${path} names contributor ${entry.contributor}, not commit author ${author.login}`);
       else if (entry.editors?.length !== 0) errors.push(`${sha}: ${path} is a new entry, so it lists no editors`);
+      else if (entry.itaigi_contributors?.length !== 0) errors.push(`${sha}: ${path} is a new entry, so it has no iTaigi contributors`);
       continue;
     }
     // the owner moving their entry files it under their current login
     const refiled = status === 'A' && old.contributor_id === author.id;
     const contributor = refiled ? author.login : old.contributor;
-    if (!entry || entry.contributor_id !== old.contributor_id || entry.submitted !== old.submitted || entry.contributor !== contributor) {
+    const sameNames = JSON.stringify(entry?.itaigi_contributors) === JSON.stringify(old.itaigi_contributors);
+    if (!entry || entry.contributor_id !== old.contributor_id || entry.submitted !== old.submitted || entry.contributor !== contributor || !sameNames) {
       errors.push(`${sha}: ${path} changes who contributed contributor ${owner(old)}'s entry or when`);
       continue;
     }

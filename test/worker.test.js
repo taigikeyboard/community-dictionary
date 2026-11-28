@@ -202,6 +202,21 @@ describe('new submission', () => {
     assert.equal(gh.branches.get('main').size, 0);
   });
 
+  it('keeps words from mentioning people or closing issues in GitHub text', async () => {
+    const res = await post('/submit', { words: [{ hanji: '```@octocat', tl: 'fixes #1 ' + 'a'.repeat(80) }], ...form });
+    assert.equal(res.status, 200);
+    const pr = gh.pulls[0];
+    assert.doesNotMatch(pr.title, /[@#]/);
+    assert.ok(Array.from(pr.title).length <= 'add '.length + 60, pr.title);
+    assert.doesNotMatch(gh.commits[0].message, /[@#]/);
+    // the body's code block opens with a fence longer than the word's own backticks and closes after it
+    const lines = pr.body.split('\n');
+    const open = lines.findIndex((line) => /^`{4,}$/.test(line));
+    assert.ok(open > 0, pr.body);
+    assert.match(lines[open + 1], /^```@octocat fixes #1 a+$/);
+    assert.equal(lines[open + 2], lines[open]);
+  });
+
   it('takes identity from the session, not the form', async () => {
     await post('/submit', { words: [{ hanji: '八', tl: 'pueh' }], ...form, contributor: 'mallory', contributor_id: 7 });
     const stored = JSON.parse(gh.branches.get(gh.pulls[0].head.ref).get(`entries/octocat/${KEY}.json`));

@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   checkEntryFile,
   entryPath,
+  credit,
   entryKey,
   nextEditors,
   normalizeTl,
@@ -76,38 +77,55 @@ test('tag rules: any tag in the Hanji script, at most 5, each at most 10 charact
   assert.deepEqual(prepareEntry(withFields({ tags: [' 食食', '', '食食'] })).entry.tags, ['食食']);
 });
 
-test('character whitelists', () => {
-  assert.deepEqual(errorsFor({ hanji: '八 八' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '八1' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ tl: 'peh8' }), []);
-  assert.deepEqual(errorsFor({ tl: 'pueh!' }), ['tl: only Latin letters, tone marks, tone digits, hyphens and spaces are allowed']);
-  assert.deepEqual(errorsFor({ tl: 'pʉeh' }), ['tl: only Latin letters, tone marks, tone digits, hyphens and spaces are allowed']);
-  assert.deepEqual(errorsFor({ tl: '8-8' }), ['tl: must contain a letter']);
+test('Hanji and Tâi-lô take any one-line text (maintainer 2026-11-28)', () => {
+  // iTaigi's proverbs, variants, mixed Hàn-lô and punctuation come in as written
+  for (const fields of [
+    { hanji: '台頂三分鐘，台跤十年功', tl: 'Tâi tíng sann hun-tsing, tâi kha tsa̍p nî kong' },
+    { hanji: '潘 kèm-muh', tl: 'phuann kèm-muh' },
+    { hanji: '青花', tl: 'tshenn-hue/tshinn-hue' },
+    { hanji: '公雞', tl: '雞公仔' },
+    { hanji: '八1', tl: '8-8' },
+    { hanji: 'オートバイ', tl: 'oo-tó-bái' },
+    { hanji: '' },
+  ]) assert.deepEqual(errorsFor(fields), [], JSON.stringify(fields));
+  assert.deepEqual(errorsFor({ tl: '' }), ['tl: required']);
+});
+
+test('garbled characters count as control characters', () => {
+  assert.deepEqual(errorsFor({ tl: 'tshé-\uFFFDkiáu' }), ['tl: contains a control character U+FFFD']);
+  assert.deepEqual(errorsFor({ hanji: '癩\u{FF5E7}' }), ['hanji: contains a control character U+FF5E7']);
+  assert.deepEqual(errorsFor({ hanji: '\uE35C' }), ['hanji: contains a control character U+E35C']);
+});
+
+test('tags keep their character rule', () => {
+  assert.deepEqual(errorsFor({ tags: ['食 食'] }), ['tags: "食 食" only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
   // ⼋ U+2F0B is the Kangxi radical that looks like 八
-  assert.deepEqual(errorsFor({ hanji: '\u2F0B' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '八\u0301' }), ['hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '-' }), ['hanji: must contain a Han character, kana or a letter']);
-  assert.deepEqual(errorsFor({ tl: '\u0301a' }), ['tl: only Latin letters, tone marks, tone digits, hyphens and spaces are allowed']);
-  assert.deepEqual(errorsFor({ hanji: '〇' }), []);
-  // kana for Japanese loanwords; ガ NFD-splits into カ + U+3099
-  assert.deepEqual(errorsFor({ hanji: 'オートバイ', tl: 'oo-tó-bái' }), []);
-  assert.deepEqual(errorsFor({ hanji: 'ガス', tl: 'gá-suh' }), []);
-  // many Taiwanese words have no Hanji
-  assert.deepEqual(errorsFor({ hanji: '' }), []);
+  assert.deepEqual(errorsFor({ tags: ['\u2F0B'] }), ['tags: "\u2F0B" only Han characters, kana, Tâi-lô letters and hyphens are allowed']);
+});
+
+test('itaigi_contributors: distinct one-line names', () => {
+  assert.deepEqual(errorsFor({ itaigi_contributors: ['Liz Lin', '匿名'] }), []);
+  assert.deepEqual(errorsFor({ itaigi_contributors: 'Liz Lin' }), ['itaigi_contributors: must be an array of strings']);
+  assert.deepEqual(errorsFor({ itaigi_contributors: ['a', 'a'] }), ['itaigi_contributors: duplicate value']);
+  assert.deepEqual(errorsFor({ itaigi_contributors: [''] }), ['itaigi_contributors[0]: required']);
+  assert.deepEqual(errorsFor({ itaigi_contributors: ['a\nb'] }), ['itaigi_contributors[0]: must be one line']);
+});
+
+test('credit names the iTaigi contributors, else the GitHub login', () => {
+  assert.deepEqual(credit(accentEntry()), ['octocat']);
+  assert.deepEqual(credit({ ...accentEntry(), contributor: 'taigikeyboard', itaigi_contributors: ['Liz Lin'] }), ['Liz Lin']);
 });
 
 test('limits count code points, not UTF-16 units', () => {
   // U+20000 is one code point, two UTF-16 units
-  assert.deepEqual(errorsFor({ hanji: '\u{20000}'.repeat(20) }), []);
-  assert.deepEqual(errorsFor({ hanji: '八'.repeat(21) }), ['hanji: longer than 20 characters']);
+  assert.deepEqual(errorsFor({ hanji: '\u{20000}'.repeat(50) }), []);
+  assert.deepEqual(errorsFor({ hanji: '八'.repeat(51) }), ['hanji: longer than 50 characters']);
+  assert.deepEqual(errorsFor({ tl: 'a'.repeat(201) }), ['tl: longer than 200 characters']);
   assert.deepEqual(errorsFor({ note: 'a'.repeat(1001) }), ['note: longer than 1000 characters']);
 });
 
 test('text must be clean, single-line and free of control characters', () => {
-  assert.deepEqual(errorsFor({ hanji: ' 八' }), [
-    'hanji: not normalized (NFC, LF, trimmed, not empty)',
-    'hanji: only Han characters, kana, Tâi-lô letters and hyphens are allowed',
-  ]);
+  assert.deepEqual(errorsFor({ hanji: ' 八' }), ['hanji: not normalized (NFC, LF, trimmed, not empty)']);
   assert.deepEqual(errorsFor({ tl: 'pue\u0301h' }), ['tl: not normalized (NFC, LF, trimmed, not empty)']);
   assert.deepEqual(errorsFor({ accents: ['其他'], place: 'a\nb' }), ['place: must be one line']);
   assert.deepEqual(errorsFor({ note: 'a\r\nb' }), [
