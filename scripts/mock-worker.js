@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,8 @@ import { sign } from '../worker/src/session.js';
 // Local test of sign-in, 我的提交, 修改 and submitting, with fake data and no GitHub: the real
 // Worker (worker/src) runs at http://127.0.0.1:8787 against the in-memory GitHub of the tests,
 // /login signs in at once as the fake contributor `tester`, and dist/ is pointed at it, with two
-// fake collected words added to dist/search.json. Nothing leaves this machine; restarting forgets
+// fake collected words added to dist/search.json; the repository's own entries/ sit on the fake main
+// branch too, so 修改 works on anyone's word. Nothing leaves this machine; restarting forgets
 // every submission. Run after a build: `make preview-mock`.
 
 const PORT = 8787;
@@ -35,11 +36,18 @@ const env = {
 // two collected words of the fake contributor, on the fake main branch and in dist/search.json
 const FAKE_WORDS = [
   { hanji: '測試', tl: 'tshik-tshì', meaning: '假資料：試看覓', tags: ['讀冊'] },
-  { hanji: '假資料', tl: 'ké tsu-liāu', meaning: '假資料：毋是真 ê 詞', tags: [] },
+  // shows a card's 修改：… line
+  { hanji: '假資料', tl: 'ké tsu-liāu', meaning: '假資料：毋是真 ê 詞', tags: [], editors: [{ login: 'editor-demo', id: 1000002 }] },
 ];
 const gh = fakeGitHub(USER);
 globalThis.fetch = gh.fetch;
 const rows = JSON.parse(readFileSync(join(dist, 'search.json'), 'utf8'));
+const entriesDir = fileURLToPath(new URL('../entries', import.meta.url));
+for (const login of readdirSync(entriesDir)) {
+  for (const file of readdirSync(join(entriesDir, login))) {
+    gh.branches.get('main').set(`entries/${login}/${file}`, readFileSync(join(entriesDir, login, file), 'utf8'));
+  }
+}
 for (const word of FAKE_WORDS) {
   const entry = {
     hanji: word.hanji,
@@ -53,6 +61,7 @@ for (const word of FAKE_WORDS) {
     contributor: USER.login,
     contributor_id: USER.id,
     submitted: '2026-11-27',
+    editors: word.editors ?? [],
   };
   const key = await entryKey(entry.hanji, entry.tl);
   gh.branches.get('main').set(`entries/${USER.login}/${key}.json`, serializeEntry(entry));

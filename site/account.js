@@ -61,6 +61,6 @@ export function submitErrorText(err, labelOf) {
   if (code === 'already_submitted') return t('worker.already_submitted', { words: listJoin((err.data.keys ?? []).map(labelOf)) });
   if (code === 'invalid') return t('worker.invalid', { details: listJoin(describeIssues(err.data.issues ?? []).map((found) => found.text)) });
   if (['cap_contributor', 'cap_total', 'too_large', 'unchanged'].includes(code)) return t(`worker.${code}`);
-  if (code === 'not_owner' || code === 'not_found') return t('edit.notFound');
+  if (code === 'not_found') return t('edit.notFound');
   return t('worker.try_later');
 }

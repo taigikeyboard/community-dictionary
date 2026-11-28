@@ -46,7 +46,7 @@ function renderCards(title, lead, pick, { headword = true } = {}) {
   document.title = pageTitle(title);
   const list = h('div', { class: headword ? 'cards' : 'cards cards-word' });
   view.replaceChildren(backButton(), hero(title, lead, { isReading: true }), list);
-  // the session decides which cards offer 修改 (the contributor's own words)
+  // the session decides which attestation a card's 修改 edits (one's own, else the earliest)
   Promise.all([loadRows(), loadItaigiIndex(), currentUser()])
     .then(([rows, itaigi, user]) => cardList(list, pick(rows, itaigi), { headword, user }))
     .catch(() => list.replaceWith(h('p', { class: 'empty' }, t('data.loadError'))));

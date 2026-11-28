@@ -95,17 +95,43 @@ test('validatePullRequest (submission): owner edits and withdraws', async (t) =>
   assert.deepEqual(validatePullRequest(root, base, head, 'submission'), { errors: [], commits: 2 });
 });
 
-test('validatePullRequest (submission): another contributor edits, takes over or deletes a file', async (t) => {
+test('validatePullRequest (submission): another contributor edits, then moves the pair', async (t) => {
   const { root, write, commit, git, base } = makeRepo(t);
   git(['checkout', '-q', '-b', 'submit/999/x']);
-  write(`entries/octocat/${KEY}.json`, serializeEntry({ ...accentEntry(), contributor_id: 999 }));
+  const edited = { ...accentEntry(), note: 'edited', editors: [{ login: 'mallory', id: 999 }] };
+  write(`entries/octocat/${KEY}.json`, serializeEntry(edited));
+  commit(MALLORY, 'edit');
+  rmSync(join(root, `entries/octocat/${KEY}.json`));
+  write('entries/octocat/e5a555f359c2404d.json', serializeEntry({ ...edited, hanji: '做khang-khuè', tl: 'tsò-khang-khuè' }));
+  const head = commit(MALLORY, 'move');
+  assert.deepEqual(validatePullRequest(root, base, head, 'submission'), { errors: [], commits: 2 });
+});
+
+test('validatePullRequest (submission): another contributor takes over, skips the editors or deletes', async (t) => {
+  const { root, write, commit, git, base } = makeRepo(t);
+  git(['checkout', '-q', '-b', 'submit/999/x']);
+  write(`entries/octocat/${KEY}.json`, serializeEntry({ ...accentEntry(), contributor: 'mallory', contributor_id: 999 }));
   const takeover = commit(MALLORY, 'take over');
+  git(['reset', '-q', '--hard', base]);
+  write(`entries/octocat/${KEY}.json`, serializeEntry({ ...accentEntry(), note: 'x' }));
+  const unlisted = commit(MALLORY, 'edit without editors');
+  git(['reset', '-q', '--hard', base]);
   rmSync(join(root, `entries/octocat/${KEY}.json`));
   const remove = commit(MALLORY, 'delete');
-  // The delete passes on its own (the old version already says 999); the takeover is what fails.
-  assert.deepEqual(validatePullRequest(root, base, remove, 'submission').errors, [
-    `${takeover}: entries/octocat/${KEY}.json (old version) belongs to contributor 583231, not commit author 999`,
-  ]);
+  const errorsOf = (head) => validatePullRequest(root, base, head, 'submission').errors;
+  assert.deepEqual(errorsOf(takeover), [`${takeover}: entries/octocat/${KEY}.json changes who contributed contributor 583231's entry or when`]);
+  assert.deepEqual(errorsOf(unlisted), [`${unlisted}: entries/octocat/${KEY}.json editors must be [{"login":"mallory","id":999}]`]);
+  assert.deepEqual(errorsOf(remove), [`${remove}: entries/octocat/${KEY}.json belongs to contributor 583231; only they may delete it`]);
+});
+
+test('validatePullRequest (submission): a new entry lists no editors', async (t) => {
+  const { write, commit, git, base, root } = makeRepo(t);
+  git(['checkout', '-q', '-b', 'submit/583231/x']);
+  write('entries/octocat/e5a555f359c2404d.json', serializeEntry({
+    ...accentEntry(), hanji: '做khang-khuè', tl: 'tsò-khang-khuè', editors: [{ login: 'mallory', id: 999 }],
+  }));
+  const head = commit(OCTOCAT, 'add');
+  assert.deepEqual(validatePullRequest(root, base, head, 'submission').errors, [`${head}: entries/octocat/e5a555f359c2404d.json is a new entry, so it lists no editors`]);
 });
 
 test('validatePullRequest (submission): files outside entries/, foreign author, merge commit', async (t) => {
@@ -123,7 +149,7 @@ test('validatePullRequest (submission): files outside entries/, foreign author, 
   const merge = git(['rev-parse', 'HEAD']);
   assert.deepEqual(validatePullRequest(root, base, merge, 'submission').errors, [
     '.github/workflows/evil.yml: a submission may only change entries/',
-    `${outside}: .github/workflows/evil.yml (new version) belongs to contributor unknown, not commit author 583231`,
+    `${outside}: .github/workflows/evil.yml belongs to contributor unknown, not commit author 583231`,
     `${bot}: author someone@example.com is not a GitHub noreply address <id>+<login>@users.noreply.github.com`,
     `${merge}: a submission may not contain merge commits`,
   ]);
@@ -336,7 +362,7 @@ test('import-batch parses quoted CSV cells, CRLF and a BOM', () => {
 });
 
 test('import-batch turns the template CSV into entries credited to the contributor', async () => {
-  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27' };
+  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27', editors: [] };
   const text = await readFile(new URL('../site/batch-template.csv', import.meta.url), 'utf8');
   const { entries, errors } = await rowsToEntries(parseCsv(text), identity);
   assert.deepEqual(errors, []);
@@ -348,7 +374,7 @@ test('import-batch turns the template CSV into entries credited to the contribut
 });
 
 test('import-batch reports every bad row by line and splits lists on ;', async () => {
-  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27' };
+  const identity = { contributor: 'octocat', contributor_id: 583231, submitted: '2026-11-27', editors: [] };
   const csv = 'tl,accents,tags\nsiann,臺南混合腔；高雄混合腔,a;b\n,,\nsiann,,\nkhi,火星腔,\n';
   const { entries, errors } = await rowsToEntries(parseCsv(csv), identity);
   assert.deepEqual(entries[0].entry.accents, ['臺南混合腔', '高雄混合腔']);

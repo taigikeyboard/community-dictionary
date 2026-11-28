@@ -25,7 +25,7 @@ Maintainer decisions, 2026-11-20 unless dated otherwise:
 
 | D9 | One JSON file per entry, in one directory per contributor (about 30 contributors expected). |
 | D10 | Entry identity = (Hanji, Tâi-lô); accents, meaning and the rest are fields. Different contributors may each submit the same pair — the second is an attestation, not a duplicate. The same contributor cannot submit a pair twice. |
-| D11 | A contributor can edit their own entries; each edit goes through a pull request and review like a new entry. Withdraw was dropped (maintainer 2026-11-27): a contributor reports a word they want gone. |
+| D11 | Any signed-in contributor can edit any community entry (maintainer 2026-11-28; was own entries only); the original contributor keeps the credit, editors are listed in `editors`. Each edit goes through a pull request and review like a new entry. Withdraw was dropped (maintainer 2026-11-27): a contributor reports a word they want gone. |
 | D12 | (Withdrawn 2026-11-20.) A multiple-choice 腔口差 kind (語音差異 / 詞彙差異 / 其他) was added and then removed the same day; categories were later removed altogether (D3). |
 
 Defaults chosen by the plan (not yet confirmed by the maintainer):
@@ -159,7 +159,7 @@ Code: `lib/entry.js` (shared), `scripts/validate.js` (CI), `scripts/compile.js`,
 - Form text never reaches a shell or a template: the entry is `JSON.stringify` output, the commit message and pull request body are built from validated fields.
 - Branch `submit/<user id>/<key>`; pull request title `add` / `edit <hanji> <tl>`; no labels.
 - One submission may carry up to 20 words (maintainer 2026-11-20): they share accents, tags, place, meaning, examples and note; each word is its own entry file, all in one commit and one pull request (branch named after the first word's key, title and commit subject `add <n> words`, the commit body listing the words). The cap counts pull requests, not words.
-- Edit: the Worker reads the target file and refuses unless its `contributor_id` equals the session's id. A changed pair adds the new file and deletes the old one in the same commit. An edit or withdrawal of an entry still in an open submission is one more commit on that branch (fast-forward only, so a concurrent write fails rather than being lost).
+- Edit: the Worker reads the target file; since 2026-11-28 any signed-in contributor may edit any entry (D11), keeping its contributor and adding the editor to `editors`. A changed pair adds the new file and deletes the old one in the same commit. An edit or withdrawal of an entry still in an open submission is one more commit on that branch (fast-forward only, so a concurrent write fails rather than being lost).
 - Caps (initial values): 5 open submissions per contributor, 100 in total. Over the cap, the form says so and nothing is created.
 - Errors shown to the contributor are generic ("already submitted", "please try again later").
 
@@ -169,7 +169,7 @@ Built (2026-11-26; maintainer: build and test locally now, deploy together with 
 |---|---|
 | Host | `dict-api.taigikeyboard.tw` as a Workers Custom Domain in `worker/wrangler.jsonc` (the zone is on Cloudflare); `workers_dev` off |
 | Routes | `GET /login?return=#/…` → GitHub; `GET /callback` → back to `SITE_URL` + that hash route (anything else → `#/`); `GET /session` → `{ id, login }` or 401; `POST /logout`; `POST /submit` (new: `{ words: [{ hanji, tl }], accents, tags, place, meaning, examples: [{ hanji, tl }], note }`; edit: the same fields for one word plus `path`); `GET /mine` → `{ submissions: [{ path, entry, pullRequest }] }` (own open submissions) or 401 |
-| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_owner`, `not_found`, `unchanged`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
+| Responses | `{ pullRequest: { url, number } }`, or `{ error: <code> }` with codes `invalid` (+ `errors` from `lib/entry.js`), `already_submitted` (+ `keys`), `cap_contributor`, `cap_total`, `not_found`, `unchanged`, `signed_out`, `forbidden_origin`, `too_large`, `try_later` — the site maps codes to Taiwanese text |
 | Session | 24 hours, cookie `__Host-session`; the OAuth `state` + PKCE verifier sit in a signed 10-minute `__Host-oauth` cookie (`__Host-`: no sibling subdomain can plant either); each signed value carries its use, so one is never accepted as the other; the GitHub user token is used for `/user` only and never stored |
 | Installation token | App JWT (`iss` = client ID) → `GET /repos/{repo}/installation` → token limited to this repository and `contents` + `pull_requests: write`; cached per isolate until five minutes before expiry |
 | Duplicate check | the base branch's recursive tree (a truncated tree fails closed) plus the files of the contributor's open submission pull requests |
@@ -278,3 +278,22 @@ one example per row; the entry point is the last tip above the 提交新詞 form
 | `.github/ISSUE_TEMPLATE/batch.yml` | Issue form: CSV textarea (paste or attach a `.csv`), CC0 checkbox. The issue author is the contributor. |
 | `site/submit-page.js` `submitTips` | 「若有準備 CSV 檔案，請來遮 ap-lóo，用這个範本阮較好處理。」 as the last tip above the new-word form (not on 修改). |
 | `scripts/import-batch.js` | `make import-batch ISSUE=12` (or `CSV=… LOGIN=…`): reads the issue via `gh`, looks up the author's id, runs every row through `prepareEntry`, writes `entries/<login>/<key>.json` only when no row fails (else lists each problem by line). The maintainer commits on a branch and opens a PR with `Closes #12` — member mode in `scripts/validate.js`, so ownership checks do not apply; `MAX_WORDS` (form cap) does not apply either. |
+
+## Open editing — anyone edits any community entry (2026-11-28)
+
+Maintainer decisions 2026-11-28: any signed-in GitHub account may edit any community entry, through
+a pull request like every other change (D11 widens from "own entries" to "any entry"); iTaigi words
+(`data/itaigi.json`) stay out of this slice; the original contributor keeps the credit and every
+other editor is listed in a new `editors` field, shown on the card as 修改：<login>; a changed pair
+stays under the original contributor's directory; on a card that merges several attestations the
+pencil edits the signed-in person's own attestation, else the earliest one.
+
+| Piece | Scope (grounded in code) |
+|---|---|
+| `lib/entry.js` | New last field `editors`: `[{ login, id }]`, distinct ids, never the entry's own `contributor_id`. `nextEditors(entry, user)` appends the editor once (owner edits leave it unchanged). The 11 committed entry files get `"editors": []`. |
+| `worker/src/submit.js` | `ownedTarget` → `editTarget`: no `not_owner`; reads the editor's own open submission that touches the path, else the base branch. Identity fields (`contributor`, `contributor_id`, `submitted`) always come from the stored entry; `editors` from `nextEditors`. A changed pair goes to `entries/<contributor>/` (the owner's current login when the owner edits, as before); the duplicate check runs for the entry's `contributor_id`. Branch `submit/<editor id>/<key>`, so caps count the editor. `listOwn` lists every entry on the editor's own branches. |
+| `scripts/validate.js` | Submission ownership per commit: a file whose `contributor_id` is not the commit author may only be modified (identity fields kept, `editors` = the old list plus the author) or moved (deleted, with an added file in the same commit carrying the same identity); a plain add or delete stays the owner's. |
+| site | 修改 on every community card, signed in or not (the edit page asks for a sign-in); 修改：<editors> after the byline; a contributor's page also lists words they edited; the edit page loads any collected entry; the form's own-pair check uses the entry's contributor, not the editor. |
+
+Deliberately not adopted: editors derived from git history at build time (maintainer commits such as
+batch imports would show up as edits, and the Pages build would need full history).

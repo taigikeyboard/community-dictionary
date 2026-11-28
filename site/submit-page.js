@@ -25,7 +25,7 @@ import { backButton, hero, pageTitle, view } from './page.js';
 import { matchesPopover } from './search-box.js';
 import { listJoin, sentenceJoin, t, tParts } from './strings.js';
 
-// The 提交新詞 page and the 修改 page (the same form for one of the contributor's own entries): the
+// The 提交新詞 page and the 修改 page (the same form for one entry, anyone's): the
 // form, its checks and sending it to the Worker, and the page after it is sent.
 
 // a word row of the form lists only the closest few words already collected
@@ -45,7 +45,7 @@ const submitTips = () => {
 // An entry as the form's draft shape, to fill the 修改 form.
 const entryDraft = (entry) => ({ ...entry, words: [{ hanji: entry.hanji, tl: entry.tl }] });
 
-// `edit`: { path, entry, key } of the contributor's own entry; without it, the 提交新詞 form.
+// `edit`: { path, entry, key } of the entry being edited; without it, the 提交新詞 form.
 export function renderSubmit({ edit = null } = {}) {
   const draft = edit ? entryDraft(edit.entry) : takeDraft();
   const notice = h('p', { class: 'form-notice', role: 'status', hidden: true });
@@ -131,13 +131,15 @@ export function renderSubmit({ edit = null } = {}) {
     const signedIn = await session;
 
     // One's own earlier pair is refused; another contributor's does not block (D10), the
-    // contributor confirms once for this set of words.
+    // contributor confirms once for this set of words. An edit keeps the entry's contributor, so
+    // their pairs are the ones that count.
+    const ownerId = edit ? edit.entry.contributor_id : signedIn?.id;
     const already = [];
     const mine = [];
     try {
       const rows = await loadRows();
       for (const { entry, row } of entries) {
-        const dup = await duplicateStatus(rows, entry.hanji, entry.tl, signedIn?.id);
+        const dup = await duplicateStatus(rows, entry.hanji, entry.tl, ownerId);
         // an edit that keeps its pair finds itself, which is no conflict
         if (dup.status === 'mine' && dup.key !== edit?.key) mine.push({ field: 'tl', row, text: t('form.mine') });
         if (dup.status === 'attested') already.push(t('form.attested', { word: wordLabel(entry), people: listJoin(dup.contributors) }));

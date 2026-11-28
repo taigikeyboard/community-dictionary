@@ -1,7 +1,7 @@
-import { entryKey, entryPath, issue, MAX_WORDS, parseEntryPath, prepareEntry, serializeEntry } from '../../lib/entry.js';
+import { entryKey, entryPath, issue, MAX_WORDS, nextEditors, parseEntryPath, prepareEntry, serializeEntry } from '../../lib/entry.js';
 import { api, apiOrNull, GitHubError, installationToken } from './github.js';
 
-// New and edit submissions, and the contributor's own open ones: checks the contributor's rights and caps against GitHub
+// New and edit submissions (any entry may be edited, D11), and the contributor's own open ones: checks duplicates and caps against GitHub
 // state (no database), then writes one commit on a `submit/<id>/<key>` branch and opens the pull
 // request.
 
@@ -79,7 +79,7 @@ class Repo {
     return files;
   }
 
-  // Keys among `keys` that this contributor already holds on the base branch, in any directory
+  // Keys among `keys` that contributor `userId` already holds on the base branch, in any directory
   // (an account rename leaves older files under the old login).
   async ownedOnBase(userId, keys) {
     const tree = await this.call('GET', `/git/trees/${this.base}?recursive=1`);
@@ -184,8 +184,10 @@ function heldInOpenSubmission(ownFiles, key) {
   return false;
 }
 
-async function refuseHeldKeys(repo, user, ownFiles, keys) {
-  const owned = await repo.ownedOnBase(user.id, keys);
+// `contributorId` is whose entries the keys would be: the signed-in contributor's own on a new
+// submission, the stored entry's contributor on an edit.
+async function refuseHeldKeys(repo, contributorId, ownFiles, keys) {
+  const owned = await repo.ownedOnBase(contributorId, keys);
   const held = [...keys].filter((key) => owned.has(key) || heldInOpenSubmission(ownFiles, key));
   if (held.length > 0) throw new SubmitError(409, 'already_submitted', { keys: held });
 }
@@ -195,7 +197,7 @@ export async function submitNew(env, user, body, now = Date.now()) {
   if (!Array.isArray(words) || words.length === 0 || words.length > MAX_WORDS) {
     throw new SubmitError(400, 'invalid', { issues: [issue('words', 'word_count', { max: MAX_WORDS })] });
   }
-  const identity = { contributor: user.login, contributor_id: user.id, submitted: taiwanDate(now) };
+  const identity = { contributor: user.login, contributor_id: user.id, submitted: taiwanDate(now), editors: [] };
   const prepared = words.map((word) => draftEntry(body, word, identity));
   const issues = prepared.flatMap(({ issues: list }, i) => list.map((found) => ({ ...found, field: `words[${i}].${found.field}` })));
   if (issues.length > 0) throw new SubmitError(400, 'invalid', { issues });
@@ -207,7 +209,7 @@ export async function submitNew(env, user, body, now = Date.now()) {
   const repo = new Repo(env, await installationToken(env));
   const { openPrs, ownFiles } = await loadState(repo, user);
   checkCaps(env, user, openPrs);
-  await refuseHeldKeys(repo, user, ownFiles, new Set(keys));
+  await refuseHeldKeys(repo, user.id, ownFiles, new Set(keys));
 
   const title = entries.length === 1 ? `add ${wordLabel(entries[0])}` : `add ${entries.length} words`;
   const branch = await repo.writeCommit({
@@ -221,9 +223,9 @@ export async function submitNew(env, user, body, now = Date.now()) {
   return repo.openPullRequest(branch, title, prBody(user, lines));
 }
 
-// The entry at `path` that this contributor owns, read from their open submission that touches
-// it (so a second edit lands as one more commit there) or else from the base branch.
-async function ownedTarget(repo, user, ownFiles, path) {
+// The entry at `path`, whoever contributed it (D11): read from the editor's own open submission
+// that touches it (so a second edit lands as one more commit there) or else from the base branch.
+async function editTarget(repo, ownFiles, path) {
   const location = typeof path === 'string' ? parseEntryPath(path) : null;
   if (!location) throw new SubmitError(400, 'invalid', { issues: [issue('path', 'not_entry_path')] });
   const open = ownFiles.get(path);
@@ -232,33 +234,38 @@ async function ownedTarget(repo, user, ownFiles, path) {
   const ref = open ? open.pr.head.ref : repo.base;
   const entry = await repo.readEntry(path, ref);
   if (!entry) throw new SubmitError(404, 'not_found');
-  if (entry.contributor_id !== user.id) throw new SubmitError(403, 'not_owner');
   return { entry, location, pr: open?.pr };
 }
 
 export async function submitEdit(env, user, body) {
   const repo = new Repo(env, await installationToken(env));
   const { openPrs, ownFiles } = await loadState(repo, user);
-  const target = await ownedTarget(repo, user, ownFiles, body.path);
+  const target = await editTarget(repo, ownFiles, body.path);
   const old = target.entry;
+  const isOwner = old.contributor_id === user.id;
 
-  const draft = draftEntry(body, body, { contributor: old.contributor, contributor_id: user.id, submitted: old.submitted });
+  // the stored entry keeps its contributor and date; anyone else who edits joins its editors
+  const identity = { contributor: old.contributor, contributor_id: old.contributor_id, submitted: old.submitted };
+  const draft = draftEntry(body, body, { ...identity, editors: old.editors });
   if (draft.issues.length > 0) throw new SubmitError(400, 'invalid', { issues: draft.issues });
   let entry = draft.entry;
   const newKey = await entryKey(entry.hanji, entry.tl);
   const pairChanged = newKey !== target.location.key;
   if (!pairChanged && serializeEntry(entry) === serializeEntry(old)) throw new SubmitError(400, 'unchanged');
-  // A changed pair is a new file, filed under the contributor's current login.
+  entry = { ...entry, editors: nextEditors(old, user) };
+  // A changed pair is a new file in the contributor's directory: the owner's current login when
+  // the owner edits, the stored one otherwise. The contributor's other entries are on the base
+  // branch, or (owner only) in their own open submissions.
   if (pairChanged) {
-    entry = { ...entry, contributor: user.login };
-    await refuseHeldKeys(repo, user, ownFiles, new Set([newKey]));
+    if (isOwner) entry = { ...entry, contributor: user.login };
+    await refuseHeldKeys(repo, old.contributor_id, isOwner ? ownFiles : new Map(), new Set([newKey]));
   }
 
   if (!target.pr) checkCaps(env, user, openPrs);
   else if ((await repo.commitCount(target.pr)) >= MAX_SUBMISSION_COMMITS) throw new SubmitError(429, 'cap_contributor');
   const message = `edit ${wordLabel(old)}`;
   // A changed pair adds the new file and deletes the old one in the same commit.
-  const changes = pairChanged ? new Map([[entryPath(user.login, newKey), entry], [body.path, null]]) : new Map([[body.path, entry]]);
+  const changes = pairChanged ? new Map([[entryPath(entry.contributor, newKey), entry], [body.path, null]]) : new Map([[body.path, entry]]);
   const branch = await repo.writeCommit({
     branch: target.pr?.head.ref,
     newBranch: `${BRANCH_PREFIX}${user.id}/${target.location.key}`,
@@ -273,7 +280,7 @@ export async function submitEdit(env, user, body) {
 }
 
 // The signed-in contributor's open submissions, entry by entry: what `search.json` cannot show yet.
-// Only their own branches (submit/<id>/) are read, and only entries still carrying their id.
+// Only their own branches (submit/<id>/) are read: their new words and their edits of anyone's.
 export async function listOwn(env, user) {
   const repo = new Repo(env, await installationToken(env));
   const { ownFiles } = await loadState(repo, user);
@@ -281,7 +288,7 @@ export async function listOwn(env, user) {
   for (const [path, { pr, status }] of ownFiles) {
     if (status === 'removed' || !parseEntryPath(path)) continue;
     const entry = await repo.readEntry(path, pr.head.ref);
-    if (entry?.contributor_id === user.id) found.push({ path, entry, pullRequest: { url: pr.html_url, number: pr.number } });
+    if (entry) found.push({ path, entry, pullRequest: { url: pr.html_url, number: pr.number } });
   }
   return found;
 }

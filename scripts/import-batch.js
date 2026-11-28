@@ -123,7 +123,7 @@ async function main() {
     throw new Error('usage: import-batch.js --issue <number> | --csv <file> --login <github login>');
   }
   const id = Number(gh(['api', `users/${login}`, '--jq', '.id']));
-  const identity = { contributor: login, contributor_id: id, submitted: taiwanDate() };
+  const identity = { contributor: login, contributor_id: id, submitted: taiwanDate(), editors: [] };
 
   const root = fileURLToPath(new URL('..', import.meta.url));
   const { entries, errors } = await rowsToEntries(parseCsv(text), identity);

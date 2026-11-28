@@ -291,10 +291,29 @@ describe('edit', () => {
     assert.deepEqual([res.status, res.data.error], [400, 'unchanged']);
   });
 
-  it('refuses an edit of another contributor’s entry', async () => {
-    const edit = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'x' }, { user: OTHER });
-    assert.equal(edit.status, 403);
-    assert.equal(gh.commits.length, 0);
+  it('lets another contributor edit, keeping the contributor and listing the editor once', async () => {
+    const first = await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'one' }, { user: OTHER });
+    assert.equal(first.status, 200);
+    await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'two' }, { user: OTHER });
+    const pr = gh.pulls[0];
+    assert.equal(gh.pulls.length, 1);
+    assert.match(pr.head.ref, /^submit\/1\//);
+    assert.match(pr.body, /^Submitted by @someone/);
+    assert.equal(gh.branches.get(pr.head.ref).get(path), serializeEntry({ ...accentEntry(), note: 'two', editors: [{ login: 'someone', id: 1 }] }));
+  });
+
+  it('keeps another contributor’s changed pair in the original directory', async () => {
+    await post('/submit', { path, hanji: '捌', tl: 'pueh', ...form }, { user: OTHER });
+    const newPath = `entries/octocat/${await entryKey('捌', 'pueh')}.json`;
+    assert.deepEqual(gh.commits.map((c) => c.changes), [[['write', newPath], ['delete', path]]]);
+    const stored = JSON.parse(gh.branches.get(gh.pulls[0].head.ref).get(newPath));
+    assert.deepEqual([stored.contributor, stored.contributor_id, stored.editors], ['octocat', USER.id, [OTHER]]);
+  });
+
+  it('refuses another contributor’s pair change onto a word the original contributor already holds', async () => {
+    gh.branches.get('main').set(`entries/octocat/${await entryKey('捌', 'pueh')}.json`, serializeEntry({ ...accentEntry(), hanji: '捌' }));
+    const res = await post('/submit', { path, hanji: '捌', tl: 'pueh', ...form }, { user: OTHER });
+    assert.equal(res.status, 409);
   });
 
   it('answers not_found for a missing file and invalid for a bad path', async () => {
@@ -328,6 +347,14 @@ describe('own submissions', () => {
     assert.equal(mine.headers.get('Cache-Control'), 'no-store');
     assert.deepEqual(mine.data.submissions.map((s) => [s.entry.hanji, s.pullRequest.number]), [['八', 1]]);
     assert.match(mine.data.submissions[0].path, /^entries\/octocat\/[0-9a-f]{16}\.json$/);
+  });
+
+  it('lists the contributor’s edits of other people’s entries', async () => {
+    const path = `entries/someone/${KEY}.json`;
+    gh.branches.get('main').set(path, serializeEntry({ ...accentEntry(), contributor: 'someone', contributor_id: OTHER.id }));
+    await post('/submit', { path, hanji: '八', tl: 'pueh', ...form, note: 'x' });
+    const mine = await get('/mine');
+    assert.deepEqual(mine.data.submissions.map((s) => [s.path, s.entry.editors]), [[path, [USER]]]);
   });
 
   it('answers 401 signed out', async () => {

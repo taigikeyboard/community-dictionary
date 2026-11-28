@@ -4,6 +4,7 @@ import {
   checkEntryFile,
   entryPath,
   entryKey,
+  nextEditors,
   normalizeTl,
   parseEntryPath,
   prepareEntry,
@@ -127,6 +128,24 @@ test('shape: missing, unknown and mistyped fields', () => {
   assert.deepEqual(errorsFor({ contributor_id: '583231' }), ['contributor_id: must be a positive integer']);
   assert.deepEqual(errorsFor({ submitted: '2026-02-30' }), ['submitted: must be a date YYYY-MM-DD']);
   assert.deepEqual(validateEntry([]), ['entry: must be a JSON object']);
+});
+
+test('editors: shape, duplicates, never the contributor', () => {
+  const mallory = { login: 'mallory', id: 999 };
+  assert.deepEqual(errorsFor({ editors: [mallory] }), []);
+  assert.deepEqual(errorsFor({ editors: null }), ['editors: must be an array']);
+  assert.deepEqual(errorsFor({ editors: [{ id: 999, login: 'mallory' }] }), ['editors[0]: must be an object with login and id, in that order']);
+  assert.deepEqual(errorsFor({ editors: [mallory, mallory] }), ['editors: duplicate value']);
+  assert.deepEqual(errorsFor({ editors: [{ login: 'octocat', id: 583231 }] }), ['editors[0].id: the contributor is not an editor of their own entry']);
+});
+
+test('nextEditors adds anyone but the contributor, once', () => {
+  const entry = accentEntry();
+  const mallory = { id: 999, login: 'mallory' };
+  assert.deepEqual(nextEditors(entry, { id: 583231, login: 'octocat' }), []);
+  const once = nextEditors(entry, mallory);
+  assert.deepEqual(once, [{ login: 'mallory', id: 999 }]);
+  assert.equal(nextEditors({ ...entry, editors: once }, { ...mallory, login: 'mallory-renamed' }), once);
 });
 
 test('prepareEntry cleans raw form input', () => {

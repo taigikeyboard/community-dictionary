@@ -10,7 +10,7 @@ import { t } from './strings.js';
 
 // The 我貢獻 ê 詞 page (the signed-in contributor's words, in review and collected, each with 修改) and
 // the 修改 page's loading step (it finds the entry, then draws the form). Both need a GitHub
-// sign-in; the Worker checks ownership again on every edit.
+// sign-in; anyone may edit any community entry (D11), each edit is a pull request.
 
 // Signed out: what the page needs and a button that signs in and comes back to this page.
 function signInPrompt() {
@@ -83,9 +83,9 @@ export function renderMine() {
   });
 }
 
-// The 修改 page for entries/<login>/<key>.json: the copy in the contributor's open submission when
-// there is one (the Worker edits that branch), else the collected one; only an entry carrying the
-// signed-in id is offered.
+// The 修改 page for entries/<login>/<key>.json: the copy in the signed-in contributor's open
+// submission when there is one (the Worker edits that branch), else the collected one, whoever
+// contributed it.
 export function renderEdit(login, key) {
   document.title = pageTitle(t('edit.title'));
   const body = h('div', { class: 'mine' }, h('p', { class: 'empty' }, t('data.loading')));
@@ -97,9 +97,11 @@ export function renderEdit(login, key) {
     try {
       const [submissions, rows] = await Promise.all([ownSubmissions(), loadRows()]);
       if (!body.isConnected) return;
+      const row = rows.find((r) => r.key === key);
+      const collected = row?.attestations.find((a) => a.contributor === login);
       const found = submissions.map(inReview).find((word) => word.login === login && word.key === key)
-        ?? collectedBy(rows, user).find((word) => word.login === login && word.key === key);
-      if (!found || found.entry.contributor_id !== user.id) return body.replaceChildren(h('p', { class: 'empty' }, t('edit.notFound')));
+        ?? (collected && { entry: { hanji: row.hanji, tl: row.tl, ...collected } });
+      if (!found) return body.replaceChildren(h('p', { class: 'empty' }, t('edit.notFound')));
       renderSubmit({ edit: { path, key, entry: found.entry } });
     } catch {
       body.replaceChildren(h('p', { class: 'empty' }, t('data.loadError')));

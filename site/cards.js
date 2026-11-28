@@ -56,9 +56,10 @@ const copyText = (text, doneLabel) =>
 
 // A card's 複製詞目 / 分享連結 buttons (after kautian-mirror): copy "Hanji Tâi-lô"; share the
 // word page's link (`route`) through the system share sheet, or copy the link where there is none.
-// `own`, the signed-in contributor's attestation of this word, adds 修改 before them; 回報 opens
-// the repository's issue form with the word filled in (GitHub asks for a sign-in).
-function cardActions(row, route, own) {
+// `target`, the attestation a community word's 修改 edits (anyone may edit any entry, D11), adds
+// 修改 before them; 回報 opens the repository's issue form with the word filled in (GitHub asks for a
+// sign-in, as the edit page does).
+function cardActions(row, route, target) {
   const label = t('card.edit');
   const report = new URL(`${REPO_URL}/issues/new`);
   report.search = new URLSearchParams({
@@ -71,7 +72,7 @@ function cardActions(row, route, own) {
   return h(
     'div',
     { class: 'card-actions' },
-    own ? h('a', { class: 'icon-button', href: editRoute(own.contributor, row.key), title: label, 'aria-label': label }, icon('edit')) : null,
+    target ? h('a', { class: 'icon-button', href: editRoute(target.contributor, row.key), title: label, 'aria-label': label }, icon('edit')) : null,
     cardAction('copy', t('card.copy'), () => copyText(wordLabel(row), t('card.copied'))),
     cardAction('share', t('card.share'), () => {
       const url = `${location.origin}${location.pathname}${route}`;
@@ -87,10 +88,11 @@ function cardActions(row, route, own) {
 // One word card. Community rows merge their attestations (accents, meaning, examples, note,
 // contributors); iTaigi rows have readings, tags and their iTaigi contributors. With `headword`
 // the card leads with the word, linked to its own page (tag pages); a word page already names it
-// in the heading. `user` is the signed-in contributor, or null.
+// in the heading. `user` is the signed-in contributor, or null: 修改 edits their own attestation,
+// else the earliest (compile.js orders attestations by date).
 function wordCard(row, { headword, user = null }) {
   const attestations = row.attestations ?? [];
-  const own = user ? attestations.find((a) => a.contributor_id === user.id) : null;
+  const target = (user && attestations.find((a) => a.contributor_id === user.id)) ?? attestations[0] ?? null;
   const pick = (field) => unique(attestations.map((a) => a[field]));
   const tags = attestations.length > 0 ? unique(attestations.flatMap((a) => a.tags)) : (row.tags ?? []).map((index) => TAG_NAMES[index]);
   const accents = unique(attestations.flatMap((a) => a.accents.map((accent) => (accent === ACCENT_OTHER && a.place ? a.place : accent))));
@@ -102,6 +104,8 @@ function wordCard(row, { headword, user = null }) {
     [t('field.note'), pick('note').join('\n')],
   ].filter(([, value]) => value !== '');
   const contributors = attestations.length > 0 ? pick('contributor') : (row.contributors ?? []);
+  // everyone else who changed a community entry, after the contributors as 修改：…
+  const editors = unique(attestations.flatMap((a) => a.editors.map((e) => e.login))).filter((login) => !contributors.includes(login));
   // the card's foot: tags on the left, the contributors on the right as a byline (linking to their
   // pages); its 貢獻者 label is read aloud and shown on hover, the corner placement says it to the eye
   const credit =
@@ -111,6 +115,7 @@ function wordCard(row, { headword, user = null }) {
           { class: 'card-credit', title: t('card.contributors') },
           h('span', { class: 'unseen' }, t('card.byline')),
           contributorLinks(contributors),
+          editors.length > 0 ? [' · ', t('card.editors'), contributorLinks(editors)] : null,
           // an iTaigi word names its source after its contributors, as a link to iTaigi
           attestations.length === 0 ? [' · ', h('a', { class: 'card-source', href: 'https://itaigi.tw/', rel: 'noopener' }, 'iTaigi')] : null,
         )
@@ -124,7 +129,7 @@ function wordCard(row, { headword, user = null }) {
   return h(
     'article',
     { class: 'word-card' },
-    h('div', { class: 'card-head' }, first, cardActions(row, route, own)),
+    h('div', { class: 'card-head' }, first, cardActions(row, route, target)),
     second,
     details.length > 0 ? h('dl', { class: 'card-details' }, details.flatMap(([label, value]) => [h('dt', {}, label), h('dd', {}, value)])) : null,
     tagList || credit ? h('footer', { class: 'card-foot' }, tagList, credit) : null,

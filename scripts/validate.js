@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
-import { ENTRIES_DIR, NOREPLY_RE, parseEntryPath } from '../lib/entry.js';
+import { ENTRIES_DIR, nextEditors, NOREPLY_RE, parseEntryPath } from '../lib/entry.js';
 import { checkTree } from './check-tree.js';
 
 // CI gate: validates every entry file and, for a pull request, who may change entries/.
@@ -44,18 +44,45 @@ function entryAt(root, rev, path) {
   }
 }
 
-// Both sides of a change are checked, so a commit can neither take over nor give away another
-// contributor's file; a new file must sit under the contributor's current login.
-function ownershipErrors(root, sha, authorId, { status, path }) {
+// One submission commit by `author` ({ id, login }), against D11 (anyone may edit any entry,
+// maintainer 2026-11-28). Every file the commit leaves behind is either new — then it is the
+// author's own, under their directory, with no editors — or the next version of an entry: the same
+// file modified, or a file it deletes in the same commit (a changed pair). A next version keeps the
+// entry's contributor id and date (and its directory login, unless the owner refiles it under
+// their current one), and its editors are the old list plus the author unless the author is the
+// contributor or already listed. A file the commit only deletes must be the author's own.
+function commitOwnershipErrors(root, sha, author, changes) {
   const errors = [];
-  const sides = [status !== 'D' && ['new', sha], status !== 'A' && ['old', `${sha}^`]].filter(Boolean);
-  for (const [label, rev] of sides) {
-    const entry = entryAt(root, rev, path);
-    if (entry?.contributor_id !== authorId) {
-      errors.push(`${sha}: ${path} (${label} version) belongs to contributor ${entry?.contributor_id ?? 'unknown'}, not commit author ${authorId}`);
-    } else if (status === 'A' && parseEntryPath(path)?.login !== entry.contributor) {
-      errors.push(`${sha}: ${path} is not under the contributor's own directory ${ENTRIES_PREFIX}${entry.contributor}/`);
+  const at = (rev, path) => entryAt(root, rev, path);
+  const owner = (entry) => entry?.contributor_id ?? 'unknown';
+  const deleted = changes.filter((c) => c.status === 'D').map((c) => ({ path: c.path, entry: at(`${sha}^`, c.path) }));
+  for (const { status, path } of changes.filter((c) => c.status !== 'D')) {
+    const entry = at(sha, path);
+    let old = status === 'M' ? at(`${sha}^`, path) : undefined;
+    if (status === 'A') {
+      const moved = deleted.findIndex((d) => d.entry && d.entry.contributor_id === entry?.contributor_id);
+      if (moved !== -1) old = deleted.splice(moved, 1)[0].entry;
+      if (parseEntryPath(path)?.login !== entry?.contributor) {
+        errors.push(`${sha}: ${path} is not under the contributor's own directory ${ENTRIES_PREFIX}${entry?.contributor}/`);
+      }
     }
+    if (!old) {
+      if (owner(entry) !== author.id) errors.push(`${sha}: ${path} belongs to contributor ${owner(entry)}, not commit author ${author.id}`);
+      else if (entry.editors?.length !== 0) errors.push(`${sha}: ${path} is a new entry, so it lists no editors`);
+      continue;
+    }
+    const refiled = status === 'A' && old.contributor_id === author.id;
+    if (entry?.contributor_id !== old.contributor_id || entry.submitted !== old.submitted || (!refiled && entry.contributor !== old.contributor)) {
+      errors.push(`${sha}: ${path} changes who contributed contributor ${owner(old)}'s entry or when`);
+      continue;
+    }
+    const expected = nextEditors(old, author);
+    if (JSON.stringify(entry.editors) !== JSON.stringify(expected)) {
+      errors.push(`${sha}: ${path} editors must be ${JSON.stringify(expected)}`);
+    }
+  }
+  for (const { path, entry } of deleted) {
+    if (owner(entry) !== author.id) errors.push(`${sha}: ${path} belongs to contributor ${owner(entry)}; only they may delete it`);
   }
   return errors;
 }
@@ -90,9 +117,8 @@ export function validatePullRequest(root, base, head, mode) {
       errors.push(`${sha}: author ${email} is not a GitHub noreply address <id>+<login>@users.noreply.github.com`);
       continue;
     }
-    for (const change of nameStatus(root, ['diff-tree', '--no-commit-id', '-r', '--root', sha])) {
-      errors.push(...ownershipErrors(root, sha, Number(match[1]), change));
-    }
+    const changes = nameStatus(root, ['diff-tree', '--no-commit-id', '-r', '--root', sha]);
+    errors.push(...commitOwnershipErrors(root, sha, { id: Number(match[1]), login: match[2] }, changes));
   }
   return { errors, commits: commits.length };
 }

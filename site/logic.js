@@ -129,11 +129,13 @@ export function wordsWithTag(rows, itaigi, tag) {
   };
 }
 
-// Every word one contributor gave, for the contributor's card page: community rows any of whose
-// attestations is theirs (GitHub login), and every iTaigi row that credits the name.
+// Every word one contributor gave or edited, for the contributor's card page: community rows any of
+// whose attestations is theirs or lists them as an editor (GitHub login), and every iTaigi row that
+// credits the name.
 export function wordsByContributor(rows, itaigi, name) {
+  const involved = (a) => a.contributor === name || a.editors.some((e) => e.login === name);
   return {
-    community: rows.filter((row) => row.attestations.some((a) => a.contributor === name)),
+    community: rows.filter((row) => row.attestations.some(involved)),
     itaigi: itaigi.filter((row) => row.contributors.includes(name)),
   };
 }
@@ -280,6 +282,7 @@ export function formToRaw(values, identity) {
     contributor: identity.login,
     contributor_id: identity.id,
     submitted: identity.today,
+    editors: [],
   };
 }
 
